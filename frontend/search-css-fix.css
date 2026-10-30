@@ -1,0 +1,27 @@
+/* Standardized Search Input globally */
+.search-input, .appointments-search-input, .global-search-input {
+  width: 100%;
+  padding: 0.55rem 1.25rem 0.55rem 2.6rem !important;
+  border-radius: 9999px !important; /* pill-shaped */
+  border: 1.5px solid var(--border) !important;
+  background: #FFFFFF url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z' /%3E%3C/svg%") no-repeat 0.85rem center / 16px 16px !important;
+  color: var(--text) !important;
+  font-size: 0.875rem !important;
+  font-family: inherit;
+  outline: none !important;
+  height: 40px !important;
+  box-sizing: border-box !important;
+  transition: all var(--transition) !important;
+}
+
+.search-input:focus, .appointments-search-input:focus, .global-search-input:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15) !important;
+}
+
+.search-input::placeholder, .appointments-search-input::placeholder, .global-search-input::placeholder {
+  color: var(--text-muted) !important;
+}
+
+/* Hide existing manual search icons where they might overlap */
+.global-search-container svg, .appointments-search-box svg { display: none !important; }

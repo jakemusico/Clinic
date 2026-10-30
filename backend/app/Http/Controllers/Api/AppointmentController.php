@@ -1,0 +1,474 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Appointment;
+use App\Models\ClinicService;
+use App\Models\ClinicStaffSchedule;
+use App\Models\StaffUnavailability;
+use App\Models\Patient;
+use App\Models\User;
+use App\Models\Notification;
+use Carbon\Carbon;
+use App\Services\AuditLogger;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+
+class AppointmentController extends Controller
+{
+    /**
+     * GET /api/appointments/unread-count
+     * Returns dynamic unread appointment counts for management roles.
+     */
+    public function unreadCount(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if (! in_array($user->role, ['clinic_staff', 'dentist', 'admin'])) {
+            return response()->json([
+                'unread_count'         => 0,
+                'medical_unread_count' => 0,
+                'dental_unread_count'  => 0,
+            ]);
+        }
+
+        $medicalQuery = Appointment::where('appointment_type', 'medical')
+            ->where('is_read', false);
+
+        $dentalQuery = Appointment::where('appointment_type', 'dental')
+            ->where('is_read', false);
+
+        if ($user->role === 'clinic_staff') {
+            $medicalCount = $medicalQuery->count();
+            return response()->json([
+                'unread_count'         => $medicalCount,
+                'medical_unread_count' => $medicalCount,
+                'dental_unread_count'  => 0,
+            ]);
+        }
+
+        if ($user->role === 'dentist') {
+            $dentalCount = $dentalQuery->count();
+            return response()->json([
+                'unread_count'         => $dentalCount,
+                'medical_unread_count' => 0,
+                'dental_unread_count'  => $dentalCount,
+            ]);
+        }
+
+        // Admin role: authorized for all
+        $medicalCount = $medicalQuery->count();
+        $dentalCount  = $dentalQuery->count();
+
+        return response()->json([
+            'unread_count'         => $medicalCount + $dentalCount,
+            'medical_unread_count' => $medicalCount,
+            'dental_unread_count'  => $dentalCount,
+        ]);
+    }
+
+    /**
+     * POST /api/appointments/mark-read
+     * Mark all appointments of given type or role as read.
+     */
+    public function markAllRead(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if (! in_array($user->role, ['clinic_staff', 'dentist', 'admin'])) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
+        $type = $request->input('appointment_type');
+        $query = Appointment::where('is_read', false);
+
+        if ($user->role === 'clinic_staff') {
+            $query->where('appointment_type', 'medical');
+        } elseif ($user->role === 'dentist') {
+            $query->where('appointment_type', 'dental');
+        } elseif ($user->role === 'admin' && $type) {
+            $query->where('appointment_type', $type);
+        }
+
+        $affected = $query->update(['is_read' => true]);
+
+        return response()->json([
+            'message'  => "{$affected} appointment(s) marked as read.",
+            'affected' => $affected,
+        ]);
+    }
+
+    /**
+     * PATCH /api/appointments/{appointment}/read
+     * Mark a single appointment as read.
+     */
+    public function markRead(Request $request, Appointment $appointment): JsonResponse
+    {
+        $user = $request->user();
+
+        if (! in_array($user->role, ['clinic_staff', 'dentist', 'admin'])) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
+        $appointment->update(['is_read' => true]);
+
+        return response()->json([
+            'message'     => 'Appointment marked as read.',
+            'appointment' => $appointment,
+        ]);
+    }
+
+    /**
+     * GET /api/appointments
+     * Lists appointments.
+     * Student/Faculty: own appointments only.
+     * Clinic Staff/Dentist: all appointments.
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $query = Appointment::with(['patient.user', 'service', 'staff', 'clinicRecord', 'dentalConsultation']);
+
+        if (in_array($user->role, ['student', 'faculty_staff'])) {
+            $query->whereHas('patient', function ($q) use ($user) {
+                $q->where('user_id', $user->id);
+            });
+        } else {
+            // Clinic Staff / Dentist / Admin filters
+            if ($request->filled('status') && $request->status !== 'all') {
+                $query->where('status', $request->status);
+            }
+            if ($request->filled('date')) {
+                $query->whereDate('scheduled_at', $request->date);
+            }
+            if ($request->filled('staff_id') && $request->staff_id !== 'all') {
+                $query->where('staff_id', $request->staff_id);
+            }
+            if ($request->filled('patient_id') && $request->patient_id !== 'all') {
+                $query->where('patient_id', $request->patient_id);
+            }
+            if ($request->filled('appointment_type') && $request->appointment_type !== 'all') {
+                $query->where('appointment_type', $request->appointment_type);
+            }
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('patient.user', function ($qu) use ($search) {
+                    $qu->where('name', 'like', "%{$search}%")
+                       ->orWhere('student_id', 'like', "%{$search}%")
+                       ->orWhere('email', 'like', "%{$search}%");
+                })->orWhereHas('service', function ($qs) use ($search) {
+                    $qs->where('name', 'like', "%{$search}%");
+                });
+            });
+        }
+
+        $query->orderBy('scheduled_at', 'asc');
+
+        if ($request->boolean('all') || $request->get('paginate') === 'false') {
+            $appointments = $query->get();
+            return response()->json([
+                'data'         => $appointments,
+                'appointments' => $appointments,
+                'total'        => $appointments->count(),
+                'current_page' => 1,
+                'last_page'    => 1,
+                'per_page'     => $appointments->count(),
+            ]);
+        }
+
+        $perPage = (int) $request->get('per_page', 10);
+        $paginated = $query->paginate($perPage);
+
+        return response()->json([
+            'data'         => $paginated->items(),
+            'appointments' => $paginated->items(),
+            'current_page' => $paginated->currentPage(),
+            'last_page'    => $paginated->lastPage(),
+            'per_page'     => $paginated->perPage(),
+            'total'        => $paginated->total(),
+            'from'         => $paginated->firstItem(),
+            'to'           => $paginated->lastItem(),
+        ]);
+    }
+
+    /**
+     * POST /api/appointments
+     * Book an appointment (Student/Faculty).
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        // Only students and faculty/staff can book appointments as patients
+        if (!in_array($user->role, ['student', 'faculty_staff'])) {
+            return response()->json(['message' => 'Only students and faculty/staff members can book appointments.'], 403);
+        }
+
+        // Retrieve or create patient profile
+        $patient = Patient::firstOrCreate(['user_id' => $user->id]);
+
+        $validated = $request->validate([
+            'service_id'       => ['required', 'integer', 'exists:clinic_services,id'],
+            'staff_id'         => ['required', 'integer', 'exists:users,id'],
+            'scheduled_at'     => ['required', 'date', 'after:now'],
+            'appointment_type' => ['required', 'string', 'in:medical,dental'],
+            'notes'            => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $serviceId   = $validated['service_id'];
+        $staffId     = $validated['staff_id'];
+        $scheduledAt = Carbon::parse($validated['scheduled_at']);
+        $dateStr     = $scheduledAt->format('Y-m-d');
+        $timeStr     = $scheduledAt->format('H:i');
+
+        // Check if the service is active
+        $service = ClinicService::findOrFail($serviceId);
+        if (! $service->is_active) {
+            return response()->json(['message' => 'This service is currently unavailable.'], 422);
+        }
+
+        // Check staff role
+        $staff = User::findOrFail($staffId);
+        if (!in_array($staff->role, ['clinic_staff', 'dentist'])) {
+            return response()->json(['message' => 'Selected staff member is not part of the clinic crew.'], 422);
+        }
+
+        // Validate Slot Availability
+        $err = $this->validateSlot($staffId, $dateStr, $timeStr);
+        if ($err) {
+            return response()->json(['message' => $err], 422);
+        }
+
+        // Create the appointment
+        $appointment = Appointment::create([
+            'patient_id'       => $patient->id,
+            'service_id'       => $serviceId,
+            'staff_id'         => $staffId,
+            'scheduled_at'     => $scheduledAt,
+            'appointment_type' => $validated['appointment_type'],
+            'status'           => 'pending',
+            'is_read'          => false,
+            'notes'            => $validated['notes'] ?? null,
+        ]);
+
+        // Notify attending staff
+        $isDental = in_array(strtolower($service->category ?? ''), ['dental']);
+        $staffUrl = $isDental
+            ? "/dental/appointments?status=pending&highlight={$appointment->id}"
+            : "/clinic/appointments?status=pending&highlight={$appointment->id}";
+
+        Notification::create([
+            'user_id'    => $staffId,
+            'title'      => 'New Appointment Booked',
+            'message'    => "Patient {$user->name} has booked {$service->name} for " . $scheduledAt->format('M d, Y g:i A') . ".",
+            'type'       => 'info',
+            'action_url' => $staffUrl,
+        ]);
+
+        AuditLogger::log('appointment_created', Appointment::class, $appointment->id, null, $appointment->toArray());
+
+        return response()->json([
+            'message'     => 'Appointment booked successfully.',
+            'appointment' => $appointment->load(['service', 'staff']),
+        ], 201);
+    }
+
+    /**
+     * PUT /api/appointments/{id}/reschedule
+     * Reschedule appointment.
+     */
+    public function reschedule(Request $request, Appointment $appointment): JsonResponse
+    {
+        $user = $request->user();
+
+        // Authorization check
+        if (in_array($user->role, ['student', 'faculty_staff'])) {
+            if ($appointment->patient->user_id !== $user->id) {
+                return response()->json(['message' => 'Forbidden.'], 403);
+            }
+            if ($appointment->status === 'completed' || $appointment->status === 'cancelled') {
+                return response()->json(['message' => 'Cannot reschedule completed or cancelled appointments.'], 422);
+            }
+        }
+
+        $validated = $request->validate([
+            'scheduled_at' => ['required', 'date', 'after:now'],
+        ]);
+
+        $newSchedule = Carbon::parse($validated['scheduled_at']);
+        $dateStr     = $newSchedule->format('Y-m-d');
+        $timeStr     = $newSchedule->format('H:i');
+
+        // Validate Slot
+        $err = $this->validateSlot($appointment->staff_id, $dateStr, $timeStr, $appointment->id);
+        if ($err) {
+            return response()->json(['message' => $err], 422);
+        }
+
+        $oldValues = $appointment->toArray();
+        $appointment->update([
+            'scheduled_at' => $newSchedule,
+            'status'       => 'pending', // reset to pending on reschedule
+        ]);
+        $newValues = $appointment->getChanges();
+
+        AuditLogger::log('appointment_rescheduled', Appointment::class, $appointment->id, $oldValues, $newValues);
+
+        // Notify the counterpart
+        $targetUserId = (in_array($user->role, ['clinic_staff', 'dentist']))
+            ? $appointment->patient->user_id
+            : $appointment->staff_id;
+
+        $isDental = in_array(strtolower($appointment->service->category ?? ''), ['dental']);
+        $targetActionUrl = in_array($user->role, ['clinic_staff', 'dentist'])
+            ? "/appointments?status=pending&highlight={$appointment->id}"
+            : ($isDental
+                ? "/dental/appointments?status=pending&highlight={$appointment->id}"
+                : "/clinic/appointments?status=pending&highlight={$appointment->id}");
+
+        Notification::create([
+            'user_id'    => $targetUserId,
+            'title'      => 'Appointment Rescheduled',
+            'message'    => "Appointment for {$appointment->service->name} was rescheduled by {$user->name} to " . $newSchedule->format('M d, Y g:i A') . ".",
+            'type'       => 'warning',
+            'action_url' => $targetActionUrl,
+        ]);
+
+        return response()->json([
+            'message'     => 'Appointment rescheduled successfully.',
+            'appointment' => $appointment->load(['service', 'staff']),
+        ]);
+    }
+
+    /**
+     * PATCH /api/appointments/{id}/status
+     * Confirm, Complete, or Cancel an appointment.
+     */
+    public function updateStatus(Request $request, Appointment $appointment): JsonResponse
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'status'              => ['required', 'string', 'in:confirmed,completed,cancelled'],
+            'cancellation_reason' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $newStatus = $validated['status'];
+
+        // Authorization rules:
+        if (in_array($user->role, ['student', 'faculty_staff'])) {
+            // Patient can only cancel their own appointments
+            if ($appointment->patient->user_id !== $user->id) {
+                return response()->json(['message' => 'Forbidden.'], 403);
+            }
+            if ($newStatus !== 'cancelled') {
+                return response()->json(['message' => 'Patients can only cancel their own appointments.'], 403);
+            }
+        } else {
+            // Clinic Staff / Dentist can do confirm, complete, cancel
+            if (! in_array($user->role, ['clinic_staff', 'dentist', 'admin'])) {
+                return response()->json(['message' => 'Forbidden.'], 403);
+            }
+        }
+
+        $oldValues = $appointment->toArray();
+        $appointment->update([
+            'status'              => $newStatus,
+            'cancellation_reason' => $newStatus === 'cancelled' ? ($validated['cancellation_reason'] ?? 'Cancelled by user') : null,
+        ]);
+        $newValues = $appointment->getChanges();
+
+        AuditLogger::log('appointment_status_changed', Appointment::class, $appointment->id, $oldValues, $newValues);
+
+        // Notify patient or staff of status change
+        $targetUserId = (in_array($user->role, ['clinic_staff', 'dentist', 'admin']))
+            ? $appointment->patient->user_id
+            : $appointment->staff_id;
+
+        $badgeType = $newStatus === 'cancelled' ? 'error' : ($newStatus === 'confirmed' ? 'success' : 'info');
+
+        $isDental = in_array(strtolower($appointment->service->category ?? ''), ['dental']);
+        $statusActionUrl = in_array($user->role, ['clinic_staff', 'dentist', 'admin'])
+            ? "/appointments?status={$newStatus}&highlight={$appointment->id}"
+            : ($isDental
+                ? "/dental/appointments?status={$newStatus}&highlight={$appointment->id}"
+                : "/clinic/appointments?status={$newStatus}&highlight={$appointment->id}");
+
+        Notification::create([
+            'user_id'    => $targetUserId,
+            'title'      => 'Appointment ' . ucfirst($newStatus),
+            'message'    => "The appointment for {$appointment->service->name} on " . Carbon::parse($appointment->scheduled_at)->format('M d, Y g:i A') . " has been marked as {$newStatus} by {$user->name}." . ($newStatus === 'cancelled' ? " Reason: " . $appointment->cancellation_reason : ""),
+            'type'       => $badgeType,
+            'action_url' => $statusActionUrl,
+        ]);
+
+        return response()->json([
+            'message'     => "Appointment marked as {$newStatus}.",
+            'appointment' => $appointment->load(['service', 'staff']),
+        ]);
+
+    }
+
+    /**
+     * GET /api/clinic/staff-list
+     * Helper to list all available clinic staff for patients to select.
+     */
+    public function listStaff(Request $request): JsonResponse
+    {
+        $staff = User::where(function($q) {
+                $q->whereIn('role', ['clinic_staff', 'nurse', 'dentist'])
+                  ->orWhereHas('roleRelation', fn($rq) => $rq->whereIn('slug', ['clinic_staff', 'nurse', 'dentist']));
+            })
+            ->where('is_active', true)
+            ->select('id', 'name', 'email', 'role', 'role_id')
+            ->get();
+
+        return response()->json(['staff' => $staff]);
+    }
+
+    // ── Helper Slot Validator ──────────────────────────────────────────
+
+    private function validateSlot(int $staffId, string $dateStr, string $timeStr, ?int $excludeAppointmentId = null): ?string
+    {
+        $date      = Carbon::parse($dateStr);
+        $dayOfWeek = strtolower($date->format('l'));
+
+        // 1. Unavailability Check
+        $isUnavailable = StaffUnavailability::where('user_id', $staffId)
+            ->whereDate('unavailable_date', $date)
+            ->exists();
+        if ($isUnavailable) {
+            return 'Staff member is unavailable on this date.';
+        }
+
+        // 2. Schedule Window Check
+        // Check if the staff has an active schedule covering the specific day of week and slot
+        $hasSchedule = ClinicStaffSchedule::where('user_id', $staffId)
+            ->where('day_of_week', $dayOfWeek)
+            ->where('is_available', true)
+            ->where('start_time', '<=', $timeStr)
+            ->where('end_time', '>', $timeStr)
+            ->exists();
+        if (! $hasSchedule) {
+            return 'Selected time is outside the staff member\'s working hours.';
+        }
+
+        // 3. Double Booking Check
+        $isBooked = Appointment::where('staff_id', $staffId)
+            ->whereDate('scheduled_at', $date)
+            ->whereTime('scheduled_at', $timeStr)
+            ->whereIn('status', ['pending', 'confirmed'])
+            ->when($excludeAppointmentId, fn($q) => $q->where('id', '!=', $excludeAppointmentId))
+            ->exists();
+        if ($isBooked) {
+            return 'This slot is already booked.';
+        }
+
+        return null;
+    }
+}

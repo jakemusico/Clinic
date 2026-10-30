@@ -1,0 +1,249 @@
+/* ==========================================================================
+   mobile.css — System-wide mobile & tablet responsiveness
+   Imported after index.css in main.jsx. All rules use breakpoints only;
+   they must NOT change colors, fonts, or desktop layout (≥ 1024px).
+   ========================================================================== */
+
+/* ────────────────────────────────────────────────────────────────────────────
+   1. PASSWORD FORMS  (ProfilePage, StaffProfile, SettingsPage, ChangePasswordPage)
+   ────────────────────────────────────────────────────────────────────────────*/
+@media (max-width: 767px) {
+  /* Force password section grid to single column */
+  .profile-form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Profile / staff password inputs: minimum tap target height */
+  .profile-input {
+    min-height: 44px !important;
+    box-sizing: border-box;
+  }
+
+  /* Strength bar: full width, no max-width constraint */
+  .password-strength-wrap {
+    max-width: 100% !important;
+    width: 100%;
+  }
+
+  /* Password rule checklist: always a single column, no horizontal overflow */
+  .pw-rule-list {
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+  }
+
+  /* Password action button row: full-width stacked, Update on top */
+  .pw-form-actions {
+    flex-direction: column !important;
+    width: 100%;
+    gap: 0.5rem;
+  }
+  .pw-form-actions button {
+    width: 100% !important;
+    min-height: 44px;
+  }
+
+  /* Settings page password form grid: single column */
+  .settings-card form > div[style*="grid"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Settings page submit button row: full width */
+  .settings-card form > div[style*="flex-end"] {
+    justify-content: stretch !important;
+  }
+  .settings-card form > div[style*="flex-end"] button {
+    width: 100% !important;
+    min-height: 44px;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   2. MODAL / DIALOG
+   ────────────────────────────────────────────────────────────────────────────*/
+@media (max-width: 767px) {
+  .modal-card,
+  .modal-card.modal-sm,
+  .modal-card.modal-lg {
+    max-width: 95vw !important;
+    width: 95vw !important;
+    margin: 0 auto;
+  }
+
+  /* Modal content scrolls inside on small screens */
+  .modal-card {
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   3. HEADER NOTIFICATION DROPDOWN
+   ────────────────────────────────────────────────────────────────────────────*/
+@media (max-width: 767px) {
+  .header-notif-dropdown {
+    right: 0 !important;
+    left: auto !important;
+    width: calc(100vw - 1rem) !important;
+    max-width: 95vw !important;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   4. DATA TABLES — horizontal scroll + sticky first column
+   ────────────────────────────────────────────────────────────────────────────*/
+@media (max-width: 767px) {
+  /* Smooth touch-scroll on iOS */
+  .data-table-wrap {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Sticky first column (name / ID column) */
+  .data-table th:first-child,
+  .data-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--card, #fff);
+  }
+  /* Slightly darker background for header sticky cell */
+  .data-table thead th:first-child {
+    background: var(--table-header-bg, #F8FAFC);
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   5. FILTER BARS — wrap on small screens
+   ────────────────────────────────────────────────────────────────────────────*/
+@media (max-width: 767px) {
+  /* Styled select wrappers from the shared component */
+  .styled-select-wrap {
+    flex: 1 1 140px !important;
+    min-width: 0 !important;
+  }
+
+  /* Date-input labels wrapper (if used) */
+  .filter-date-wrap {
+    flex: 1 1 140px !important;
+    min-width: 0 !important;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   6. PAGINATION — wrap nicely on small screens
+   ────────────────────────────────────────────────────────────────────────────*/
+@media (max-width: 480px) {
+  .pagination-container {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .pagination-controls {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .pagination-numbers {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   7. CHATBOT — full-screen on mobile, FAB above bottom nav
+   ────────────────────────────────────────────────────────────────────────────*/
+@media (max-width: 767px) {
+  /* Make the chat window fill the entire screen */
+  .chatbot-window {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    bottom: 0 !important;
+    right: 0 !important;
+    top: 0 !important;
+    left: 0 !important;
+    border-radius: 0 !important;
+    z-index: 9999 !important;
+  }
+
+  /* Push FAB above the mobile bottom nav bar (height ~68px) */
+  .chatbot-fab {
+    bottom: 80px !important;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   8. PROFILE TABS — horizontal scroll (already exists but reinforce)
+   ────────────────────────────────────────────────────────────────────────────*/
+@media (max-width: 767px) {
+  .profile-nav-tabs-wrap,
+  .profile-tab-list {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .profile-nav-tabs-wrap::-webkit-scrollbar,
+  .profile-tab-list::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   9. FORMS — min tap target on all inputs / buttons system-wide
+   ────────────────────────────────────────────────────────────────────────────*/
+@media (max-width: 767px) {
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="tel"],
+  input[type="date"],
+  input[type="search"],
+  textarea,
+  select {
+    min-height: 44px;
+    font-size: 14px !important;
+    box-sizing: border-box;
+  }
+
+  button,
+  .btn-primary,
+  .btn-secondary,
+  .btn-ghost,
+  .btn-danger {
+    min-height: 44px;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   10. STAT CARDS — ensure 1-column on very small screens
+   ────────────────────────────────────────────────────────────────────────────*/
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dash-stats-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .dash-stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   11. PREVENT HORIZONTAL OVERFLOW GLOBALLY
+   ────────────────────────────────────────────────────────────────────────────*/
+@media (max-width: 767px) {
+  .page-content,
+  .main-content,
+  .content-area {
+    overflow-x: hidden;
+    max-width: 100%;
+  }
+}
+

@@ -1,0 +1,114 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\ClinicService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class ClinicServiceController extends Controller
+{
+    /**
+     * GET /api/clinic/services
+     * All authenticated users can view active services.
+     * Clinic staff & admin can see all (including inactive).
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $query = ClinicService::query()->orderBy('name');
+
+        // Non-staff/admin only see active services
+        if (! in_array($user?->role, ['clinic_staff', 'dentist', 'admin'])) {
+            $query->where('is_active', true);
+        }
+
+        return response()->json([
+            'services' => $query->get(),
+        ]);
+    }
+
+    /**
+     * POST /api/clinic/services
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name'             => ['required', 'string', 'max:200', 'unique:clinic_services'],
+            'description'      => ['nullable', 'string'],
+            'duration_minutes' => ['required', 'integer', 'min:5', 'max:480'],
+            'fee'              => ['required', 'numeric', 'min:0'],
+            'is_active'        => ['boolean'],
+        ]);
+
+        $service = ClinicService::create($validated);
+
+        return response()->json([
+            'message' => 'Service created successfully.',
+            'service' => $service,
+        ], 201);
+    }
+
+    /**
+     * GET /api/clinic/services/{id}
+     */
+    public function show(ClinicService $clinicService): JsonResponse
+    {
+        return response()->json(['service' => $clinicService]);
+    }
+
+    /**
+     * PUT /api/clinic/services/{id}
+     */
+    public function update(Request $request, ClinicService $clinicService): JsonResponse
+    {
+        $validated = $request->validate([
+            'name'             => ['required', 'string', 'max:200', 'unique:clinic_services,name,' . $clinicService->id],
+            'description'      => ['nullable', 'string'],
+            'duration_minutes' => ['required', 'integer', 'min:5', 'max:480'],
+            'fee'              => ['required', 'numeric', 'min:0'],
+            'is_active'        => ['boolean'],
+        ]);
+
+        $clinicService->update($validated);
+
+        return response()->json([
+            'message' => 'Service updated successfully.',
+            'service' => $clinicService->fresh(),
+        ]);
+    }
+
+    /**
+     * PATCH /api/clinic/services/{id}/toggle
+     * Toggle the active/inactive status of a service.
+     */
+    public function toggle(ClinicService $clinicService): JsonResponse
+    {
+        $clinicService->update(['is_active' => ! $clinicService->is_active]);
+
+        return response()->json([
+            'message' => $clinicService->is_active
+                ? 'Service activated.'
+                : 'Service deactivated.',
+            'service' => $clinicService,
+        ]);
+    }
+
+    /**
+     * DELETE /api/clinic/services/{id}
+     */
+    public function destroy(ClinicService $clinicService): JsonResponse
+    {
+        // Check if the service has any appointments before deleting
+        if ($clinicService->appointments()->count() > 0) {
+            return response()->json([
+                'message' => 'Cannot delete a service that has existing appointments. Deactivate it instead.',
+            ], 422);
+        }
+
+        $clinicService->delete();
+
+        return response()->json(['message' => 'Service deleted successfully.']);
+    }
+}

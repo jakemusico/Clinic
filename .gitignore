@@ -1,0 +1,9 @@
+# Project-wide ignores (backend/ and frontend/ have their own .gitignore files too)
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
+.env
+.env.local
+.env.*.local
