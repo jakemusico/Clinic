@@ -319,6 +319,15 @@ class AuthController extends Controller
         /** @var User $user */
         $user = $request->user();
 
+        // Staff (nurse / dentist / admin) use an 11-digit PH mobile number, same as the form.
+        $isStaffRole = $user->isAdmin() || $user->isClinicStaff() || $user->isDentist();
+        $contactRules = ['nullable', 'string', 'max:50'];
+        if ($isStaffRole) {
+            $contactRules[] = 'regex:/^09\d{9}$/';
+        }
+
+        // NOTE: the profile photo is NOT accepted here. It is uploaded as a file
+        // through POST /api/profile/photo, and only its path is stored.
         $validated = $request->validate([
             // User identification & Name fields
             'name'                  => ['nullable', 'string', 'max:255'],
@@ -328,19 +337,19 @@ class AuthController extends Controller
             'suffix'                => ['nullable', 'string', 'max:50'],
             'email'                 => ['nullable', 'string', 'email', 'max:255'],
             'current_password'      => ['nullable', 'string'],
-            'student_id'            => ['nullable', 'string', 'max:50'],
+            'student_id'            => ['nullable', 'string', 'max:50', \Illuminate\Validation\Rule::unique('users', 'student_id')->ignore($user->id)],
+            'license_no'            => ['nullable', 'string', 'max:100'],
             'grade_level'           => ['nullable', 'string', 'max:50'],
             'section'               => ['nullable', 'string', 'max:100'],
             'school_year'           => ['nullable', 'string', 'max:50'],
-            'contact_no'            => ['nullable', 'string', 'max:50'],
+            'contact_no'            => $contactRules,
             'address'               => ['nullable', 'string', 'max:500'],
             'age'                   => ['nullable', 'integer', 'min:1', 'max:120'],
-            'avatar'                => ['nullable', 'string'],
             'department'            => ['nullable', 'string', 'max:255'],
             'sex'                   => ['nullable', 'string', 'in:male,female'],
 
             // Patient / Health Details
-            'date_of_birth'         => ['nullable', 'date'],
+            'date_of_birth'         => ['nullable', 'date', 'before_or_equal:today'],
             'gender'                => ['nullable', 'string', 'in:male,female,other'],
             'blood_type'            => ['nullable', 'string', 'max:10'],
             'allergies'             => ['nullable', 'string', 'max:1000'],
@@ -360,6 +369,17 @@ class AuthController extends Controller
             'emergency_relationship'=> ['nullable', 'string', 'max:100'],
             'emergency_contact_no'  => ['nullable', 'string', 'max:50'],
             'emergency_alt_contact' => ['nullable', 'string', 'max:50'],
+        ], [
+            'student_id.unique'            => 'This ID is already used by another account.',
+            'student_id.max'               => 'The ID must not be longer than 50 characters.',
+            'license_no.max'               => 'The PRC license number must not be longer than 100 characters.',
+            'contact_no.regex'             => 'Contact number must be 11 digits starting with 09 (e.g. 09123456789).',
+            'date_of_birth.date'           => 'Please enter a valid date of birth.',
+            'date_of_birth.before_or_equal'=> 'Date of birth cannot be in the future.',
+            'sex.in'                       => 'Please select Male or Female.',
+            'email.email'                  => 'Please enter a valid email address.',
+            'first_name.max'               => 'First name must not be longer than 100 characters.',
+            'last_name.max'                => 'Last name must not be longer than 100 characters.',
         ]);
 
         $oldUserValues = $user->toArray();
@@ -438,6 +458,13 @@ class AuthController extends Controller
             'sex'           => array_key_exists('sex', $validated) ? $validated['sex'] : $user->sex,
         ];
 
+        // PRC license number is only meaningful for nurses / dentists.
+        if (array_key_exists('license_no', $validated) && ($user->isClinicStaff() || $user->isDentist())) {
+            $userUpdateData['license_no'] = $validated['license_no'] !== null && trim($validated['license_no']) !== ''
+                ? trim($validated['license_no'])
+                : null;
+        }
+
         if ($dobValue !== null) {
             $userUpdateData['date_of_birth'] = $dobValue;
         } elseif (array_key_exists('date_of_birth', $validated)) {
@@ -448,10 +475,6 @@ class AuthController extends Controller
             $userUpdateData['age'] = $computedAge;
         } elseif (array_key_exists('age', $validated)) {
             $userUpdateData['age'] = $validated['age'];
-        }
-
-        if (array_key_exists('avatar', $validated)) {
-            $userUpdateData['avatar'] = $validated['avatar'];
         }
 
         $user->update($userUpdateData);

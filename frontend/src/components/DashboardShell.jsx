@@ -10,6 +10,7 @@ import { chatApi } from '../api/chat'
 import ChatbotWidget from './ChatbotWidget'
 import fsuuLogo from '../assets/fsuu_logo.png'
 import PatientSearchBar from './PatientSearchBar'
+import Avatar from './Avatar'
 import EventDetailsModal from './EventDetailsModal'
 import { formatNotificationTime, isAnnouncementItem, isAppointmentItem, getAppointmentTargetUrl } from '../utils/notificationHelpers'
 
@@ -540,23 +541,17 @@ export default function DashboardShell() {
       ? [user?.student_id, user?.department].filter(Boolean).join(' · ')
       : null)
 
-  const renderAvatar = (className, sizeStyle = {}) => {
-    if (user?.avatar) {
-      return (
-        <img
-          src={user.avatar}
-          alt={user?.name || 'User Avatar'}
-          className={className}
-          style={{ ...sizeStyle, objectFit: 'cover', borderRadius: '50%' }}
-        />
-      )
-    }
-    return (
-      <div className={className} style={sizeStyle}>
-        {user?.name?.[0]?.toUpperCase() || 'U'}
-      </div>
-    )
-  }
+  // Header + sidebar avatar: photo from the shared user (updates instantly after a profile photo change)
+  const renderAvatar = (className, sizeStyle = {}) => (
+    <Avatar
+      src={user?.avatar_url}
+      name={user?.name}
+      className={className}
+      fallbackText={user?.name?.[0]?.toUpperCase() || 'U'}
+      alt={user?.name || 'User Avatar'}
+      style={sizeStyle}
+    />
+  )
 
   return (
     <div className="dashboard-root">

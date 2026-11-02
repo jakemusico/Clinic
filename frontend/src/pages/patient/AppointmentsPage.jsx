@@ -8,6 +8,7 @@ import ConfirmModal from '../../components/ConfirmModal'
 import { appointmentsApi } from '../../api/appointments'
 import { servicesApi } from '../../api/services'
 import { formatAppointmentDate, formatAppointmentTime } from '../../utils/dateUtils'
+import Avatar from '../../components/Avatar'
 
 const STATUS_BADGES = {
   pending:   'status-badge pending',
@@ -1005,11 +1006,14 @@ export default function AppointmentsPage() {
 
                             {/* Provider Column */}
                             <td>
-                              <div className="provider-table-cell">
-                                <span className="provider-cell-name">{a.staff?.name || 'Attending Staff'}</span>
-                                <span className="provider-cell-role">
-                                  {isDental ? 'Dentist' : 'Clinic Nurse'}
-                                </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                <Avatar src={a.staff?.avatar_url} name={a.staff?.name} size={32} />
+                                <div className="provider-table-cell">
+                                  <span className="provider-cell-name">{a.staff?.name || 'Attending Staff'}</span>
+                                  <span className="provider-cell-role">
+                                    {isDental ? 'Dentist' : 'Clinic Nurse'}
+                                  </span>
+                                </div>
                               </div>
                             </td>
 

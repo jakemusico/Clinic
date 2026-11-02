@@ -11,6 +11,7 @@ import {
   MoreDotsIcon,
 } from '../../components/MessageActionSheet'
 import DeleteMessageModal from '../../components/DeleteMessageModal'
+import Avatar from '../../components/Avatar'
 
 /* ── Date and Time Formatting Helpers ─────────────────────────────── */
 
@@ -537,7 +538,7 @@ export default function StaffMessagesPage() {
       clientId,
       body: text,
       sender_id: user?.id,
-      sender: { id: user?.id, name: user?.name, role: user?.role },
+      sender: { id: user?.id, name: user?.name, role: user?.role, avatar_url: user?.avatar_url },
       created_at: new Date().toISOString(),
       status: 'sending',
     }
@@ -851,25 +852,20 @@ export default function StaffMessagesPage() {
                       boxSizing: 'border-box',
                     }}
                   >
-                    {/* Initials Avatar */}
-                    <div
+                    {/* Student photo, or initials when none */}
+                    <Avatar
+                      src={student.avatar_url}
+                      name={name}
+                      size={40}
+                      fallbackText={getInitials(name)}
                       style={{
-                        width: '40px',
-                        height: '40px',
-                        borderRadius: '50%',
                         background: isSelected ? 'var(--accent)' : '#e2e8f0',
                         color: isSelected ? '#ffffff' : '#334155',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
                         fontWeight: 700,
                         fontSize: '0.82rem',
-                        flexShrink: 0,
                         letterSpacing: '0.5px',
                       }}
-                    >
-                      {getInitials(name)}
-                    </div>
+                    />
 
                     {/* Middle Info Column */}
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -1001,23 +997,13 @@ export default function StaffMessagesPage() {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <div
-                    style={{
-                      width: '40px',
-                      height: '40px',
-                      borderRadius: '50%',
-                      background: 'var(--accent)',
-                      color: '#ffffff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontWeight: 700,
-                      fontSize: '0.85rem',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {getInitials(conversation.student?.name)}
-                  </div>
+                  <Avatar
+                    src={conversation.student?.avatar_url}
+                    name={conversation.student?.name}
+                    size={40}
+                    fallbackText={getInitials(conversation.student?.name)}
+                    style={{ background: 'var(--accent)', color: '#ffffff', fontWeight: 700, fontSize: '0.85rem' }}
+                  />
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
                       <div style={{ fontWeight: 700, fontSize: '0.98rem', color: 'var(--text)' }}>
@@ -1172,8 +1158,18 @@ export default function StaffMessagesPage() {
                               color: 'var(--text-muted)',
                               marginBottom: '2px',
                               paddingLeft: '4px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
                             }}
                           >
+                            <Avatar
+                              src={conversation.student.avatar_url}
+                              name={conversation.student.name}
+                              size={22}
+                              fallbackText={getInitials(conversation.student.name)}
+                              style={{ fontSize: '0.62rem' }}
+                            />
                             {conversation.student.name}
                           </div>
                         )}

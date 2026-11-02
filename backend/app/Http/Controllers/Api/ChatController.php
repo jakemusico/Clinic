@@ -239,7 +239,7 @@ class ChatController extends Controller
 
         $conversation->load(['messages' => function ($q) {
             $q->withTrashed()->orderBy('created_at');
-        }, 'messages.sender:id,name,role']);
+        }, 'messages.sender:id,name,first_name,middle_name,last_name,suffix,title,role,avatar']);
 
         return response()->json($conversation);
     }
@@ -384,7 +384,7 @@ class ChatController extends Controller
             'messages' => function ($q) {
                 $q->withTrashed()->orderBy('created_at');
             },
-            'messages.sender:id,name,role',
+            'messages.sender:id,name,first_name,middle_name,last_name,suffix,title,role,avatar',
         ]);
 
         return response()->json($conversation);
@@ -419,7 +419,7 @@ class ChatController extends Controller
                 ->where('sender_id', $user->id)
                 ->first();
             if ($existing) {
-                $existing->load('sender:id,name,role');
+                $existing->load('sender:id,name,first_name,middle_name,last_name,suffix,title,role,avatar');
                 return response()->json([
                     'message'      => $existing,
                     'conversation' => $conversation->fresh([
@@ -482,7 +482,7 @@ class ChatController extends Controller
             \Log::error('Chat notification error: ' . $e->getMessage());
         }
 
-        $message->load('sender:id,name,role');
+        $message->load('sender:id,name,first_name,middle_name,last_name,suffix,title,role,avatar');
 
         return response()->json([
             'message'      => $message,
@@ -524,7 +524,7 @@ class ChatController extends Controller
 
         return response()->json([
             'message' => 'Message updated successfully.',
-            'data'    => $message->fresh(['sender:id,name,role']),
+            'data'    => $message->fresh(['sender:id,name,first_name,middle_name,last_name,suffix,title,role,avatar']),
         ]);
     }
 

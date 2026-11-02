@@ -4,6 +4,7 @@ import DashboardLayout from '../../components/DashboardLayout'
 import api from '../../api/axios'
 import { useAuth } from '../../context/AuthContext'
 import { formatAppointmentDate } from '../../utils/dateUtils'
+import Avatar from '../../components/Avatar'
 
 export default function PersonProfilePage() {
   const { id } = useParams()
@@ -74,17 +75,8 @@ export default function PersonProfilePage() {
           
           <div className="card" style={{ padding: '2rem 1.5rem' }}>
             <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-              <div style={{
-                width: '100px', height: '100px', borderRadius: '50%', background: 'var(--border)',
-                margin: '0 auto 1rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '2rem', fontWeight: 700, color: 'var(--text-sub)', overflow: 'hidden'
-              }}>
-                {profileUser.avatar ? (
-                  <img src={profileUser.avatar} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Avatar" />
-                ) : (
-                  profileUser.name[0]?.toUpperCase()
-                )}
-              </div>
+              <Avatar src={profileUser.avatar_url} name={profileUser.name} size={100}
+                style={{ margin: '0 auto 1rem', fontSize: '2rem', fontWeight: 700 }} />
               <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text)', marginBottom: '0.25rem' }}>
                 {profileUser.name}
               </h2>

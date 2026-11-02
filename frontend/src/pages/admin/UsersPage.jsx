@@ -9,6 +9,7 @@ import ConfirmModal from '../../components/ConfirmModal'
 import { adminApi } from '../../api/admin'
 import axios from 'axios'
 import { DEPARTMENTS, GRADE_LEVELS } from '../../constants/schoolData'
+import Avatar from '../../components/Avatar'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -538,7 +539,10 @@ export default function UsersPage() {
                 {users.map(user => (
                   <tr key={user.id} style={{ opacity: user.is_active ? 1 : 0.55 }}>
                     <td data-label="Name">
-                      <div style={{ fontWeight: 600, color: 'var(--text)' }}>{user.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                        <Avatar src={user.avatar_url} name={user.name} size={32} />
+                        <div style={{ fontWeight: 600, color: 'var(--text)' }}>{user.name}</div>
+                      </div>
                     </td>
                     <td data-label="Email">{user.email}</td>
                     <td data-label="Role">

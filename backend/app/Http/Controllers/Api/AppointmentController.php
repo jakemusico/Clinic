@@ -425,7 +425,7 @@ class AppointmentController extends Controller
                   ->orWhereHas('roleRelation', fn($rq) => $rq->whereIn('slug', ['clinic_staff', 'nurse', 'dentist']));
             })
             ->where('is_active', true)
-            ->select('id', 'name', 'email', 'role', 'role_id')
+            ->select('id', 'name', 'title', 'first_name', 'middle_name', 'last_name', 'suffix', 'email', 'role', 'role_id', 'avatar')
             ->get();
 
         return response()->json(['staff' => $staff]);

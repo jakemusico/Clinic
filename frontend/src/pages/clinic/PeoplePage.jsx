@@ -7,6 +7,7 @@ import api from '../../api/axios'
 import { useAuth } from '../../context/AuthContext'
 import { ConsultationModal } from '../../components/ConsultationModal'
 import { DentalConsultationModal } from '../../components/DentalConsultationModal'
+import Avatar from '../../components/Avatar'
 
 export default function PeoplePage() {
   const { user } = useAuth()
@@ -142,9 +143,7 @@ export default function PeoplePage() {
                   <tr key={p.id}>
                     <td className="td-name">
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-sub)' }}>
-                          {p.avatar ? <img src={p.avatar} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} alt="Avatar" /> : p.name[0]?.toUpperCase()}
-                        </div>
+                        <Avatar src={p.avatar_url} name={p.name} size={32} />
                         {p.name}
                       </div>
                     </td>

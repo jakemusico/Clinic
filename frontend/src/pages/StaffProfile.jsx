@@ -5,6 +5,9 @@ import { useAuth } from '../context/AuthContext'
 import { authApi } from '../api/auth'
 import PasswordStrength, { checkPasswordRules } from '../components/PasswordStrength'
 import NameFields, { formatFullName } from '../components/NameFields'
+import Avatar from '../components/Avatar'
+import useProfilePhoto from '../hooks/useProfilePhoto'
+import { getApiErrorMessage, getFieldErrors } from '../utils/apiError'
 import './ProfilePage.css'
 
 // ── SVG Icon Helper ──────────────────────────────────────────────────────────
@@ -38,7 +41,8 @@ function validateContact(val) {
 
 export default function StaffProfile() {
   const { user, updateUser, refreshUser } = useAuth()
-  const fileInputRef = useRef(null)
+  // Profile photo: crop dialog + multipart upload/remove (shared by every role)
+  const { pickPhoto, requestRemove, busy: photoBusy, photoUi } = useProfilePhoto()
 
   const isAdmin   = user?.role === 'admin'
   const isDentist = user?.role === 'dentist'
@@ -49,6 +53,9 @@ export default function StaffProfile() {
 
   // ── View / Edit Mode ────────────────────────────────────────────────────────
   const [isEditing, setIsEditing] = useState(false)
+  const [loadingProfile, setLoadingProfile] = useState(true)
+  const isEditingRef = useRef(false)
+  useEffect(() => { isEditingRef.current = isEditing }, [isEditing])
   const [saving, setSaving] = useState(false)
   const [showDiscardModal, setShowDiscardModal] = useState(false)
   const [pendingTab, setPendingTab] = useState(null)
@@ -64,9 +71,8 @@ export default function StaffProfile() {
     name:          user?.name          || '',
     email:         user?.email         || '',
     student_id:    user?.student_id    || '',
-    department:    user?.department    || '',
+    license_no:    user?.license_no    || '',
     contact_no:    user?.contact_no    || '',
-    avatar:        user?.avatar        || '',
     sex:           user?.sex           || user?.patient?.gender || 'male',
     date_of_birth: user?.date_of_birth || user?.patient?.date_of_birth || '',
   })
@@ -85,31 +91,49 @@ export default function StaffProfile() {
   const [showPasswords, setShowPasswords] = useState({ current: false, new: false, confirm: false })
   const [changingPassword, setChangingPassword] = useState(false)
 
-  // Sync from auth context
-  useEffect(() => {
-    if (user) {
-      const p = user.patient || {}
-      const fresh = {
-        first_name:  user.first_name  !== undefined ? user.first_name  : '',
-        middle_name: user.middle_name !== undefined ? user.middle_name : '',
-        last_name:   user.last_name   !== undefined ? user.last_name   : '',
-        suffix:      user.suffix      !== undefined ? user.suffix      : '',
-        name:        user.name        || '',
-        email:       user.email       || '',
-        student_id:  user.student_id  || '',
-        department:  user.department  || '',
-        contact_no:  user.contact_no  || '',
-        avatar:      user.avatar      || '',
-        sex:         user.sex         || p.gender || 'male',
-        date_of_birth: user.date_of_birth
-          ? (user.date_of_birth.includes('T') ? user.date_of_birth.split('T')[0] : user.date_of_birth)
-          : (p.date_of_birth
-            ? (p.date_of_birth.includes('T') ? p.date_of_birth.split('T')[0] : p.date_of_birth)
-            : ''),
-      }
-      setFormData(fresh)
-      setSavedData(fresh)
+  // Build the form from a user object returned by the API
+  const buildForm = (u) => {
+    const p = u?.patient || {}
+    const dob = u?.date_of_birth || p.date_of_birth || ''
+    return {
+      first_name:  u?.first_name  ?? '',
+      middle_name: u?.middle_name ?? '',
+      last_name:   u?.last_name   ?? '',
+      suffix:      u?.suffix      ?? '',
+      name:        u?.name        || '',
+      email:       u?.email       || '',
+      student_id:  u?.student_id  || '',
+      license_no:  u?.license_no  || '',
+      contact_no:  u?.contact_no  || '',
+      sex:         u?.sex         || p.gender || 'male',
+      date_of_birth: dob.includes('T') ? dob.split('T')[0] : dob,
     }
+  }
+
+  // Load this profile from the database (via the API) every time the page opens.
+  useEffect(() => {
+    let alive = true
+    authApi.getProfile()
+      .then(res => {
+        if (!alive) return
+        if (res.data?.user) updateUser(res.data.user)
+      })
+      .catch(err => {
+        if (alive) toast.error(getApiErrorMessage(err, 'Could not load your profile. Showing the last saved copy.'))
+      })
+      .finally(() => { if (alive) setLoadingProfile(false) })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Keep the form in step with the shared user, except while the user is mid-edit
+  // (a photo change or background refresh must not wipe unsaved typing).
+  useEffect(() => {
+    if (!user || isEditingRef.current) return
+    const fresh = buildForm(user)
+    setFormData(fresh)
+    setSavedData(fresh)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
   // Display Name calculation
@@ -138,16 +162,6 @@ export default function StaffProfile() {
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }))
     if (fieldErrors[field]) setFieldErrors(prev => ({ ...prev, [field]: '' }))
-  }
-
-  const handlePhotoUpload = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!file.type.startsWith('image/')) { toast.error('Please upload a valid image file (PNG, JPG, WEBP).'); return }
-    if (file.size > 3 * 1024 * 1024) { toast.error('Image size must be less than 3MB.'); return }
-    const reader = new FileReader()
-    reader.onload = (event) => { handleChange('avatar', event.target.result); toast.success('Profile photo uploaded.') }
-    reader.readAsDataURL(file)
   }
 
   const handleStartEdit = () => {
@@ -223,24 +237,21 @@ export default function StaffProfile() {
       }
 
       const res = await authApi.updateProfile(payload)
+      // Show exactly what the database now holds (server may trim / normalise values).
+      const saved = res.data?.user ? buildForm(res.data.user) : { ...formData }
+      isEditingRef.current = false
       if (res.data?.user) updateUser(res.data.user)
       if (typeof refreshUser === 'function') await refreshUser()
-      const updated = { ...formData }
-      setFormData(updated)
-      setSavedData(updated)
+      setFormData(saved)
+      setSavedData(saved)
       setEmailPassword('')
       toast.success('Profile saved successfully.')
       setIsEditing(false)
       setShowEmailPw(false)
     } catch (err) {
-      const msg =
-        err.response?.data?.errors?.email?.[0] ||
-        err.response?.data?.errors?.current_password?.[0] ||
-        err.response?.data?.errors?.first_name?.[0] ||
-        err.response?.data?.errors?.last_name?.[0] ||
-        err.response?.data?.message ||
-        'Failed to save profile.'
-      toast.error(msg)
+      const serverErrors = getFieldErrors(err)
+      if (Object.keys(serverErrors).length > 0) setFieldErrors(prev => ({ ...prev, ...serverErrors }))
+      toast.error(getApiErrorMessage(err, 'Failed to save profile. Please try again.'))
     } finally { setSaving(false) }
   }
 
@@ -286,17 +297,13 @@ export default function StaffProfile() {
             {/* Avatar */}
             <div
               className="staff-avatar-wrapper"
-              onClick={() => isEditing && fileInputRef.current?.click()}
-              title={isEditing ? 'Click to upload profile photo' : undefined}
+              onClick={() => isEditing && pickPhoto()}
+              title={isEditing ? 'Click to change profile photo' : undefined}
               style={{ cursor: isEditing ? 'pointer' : 'default' }}
             >
-              {formData.avatar ? (
-                <img src={formData.avatar} alt="Profile" className="staff-avatar-img" />
-              ) : (
-                <div className="staff-avatar-fallback">
-                  {(formData.first_name || formData.name)?.[0]?.toUpperCase() || 'A'}
-                </div>
-              )}
+              <Avatar src={user?.avatar_url} name={formData.first_name || formData.name}
+                className="staff-avatar-img" fallbackClassName="staff-avatar-fallback"
+                fallbackText={(formData.first_name || formData.name)?.[0]?.toUpperCase() || 'A'} alt="Profile" />
               {isEditing && (
                 <div className="staff-avatar-overlay" title="Upload Photo">
                   <ProfileIcon name="camera" size={13} />
@@ -304,10 +311,10 @@ export default function StaffProfile() {
               )}
             </div>
 
-            <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoUpload} />
+            {photoUi}
 
             {isEditing && (
-              <button type="button" className="staff-upload-photo-btn" onClick={() => fileInputRef.current?.click()}>
+              <button type="button" className="staff-upload-photo-btn" onClick={pickPhoto} disabled={photoBusy}>
                 <ProfileIcon name="camera" size={14} /> Change Photo
               </button>
             )}
@@ -328,10 +335,10 @@ export default function StaffProfile() {
                 <span className="staff-meta-label">Employee ID</span>
                 <span className="staff-meta-val">{formData.student_id || '—'}</span>
               </div>
-              {!isAdmin && formData.department && (
+              {!isAdmin && formData.license_no && (
                 <div className="staff-meta-item">
                   <span className="staff-meta-label">PRC License</span>
-                  <span className="staff-meta-val">{formData.department}</span>
+                  <span className="staff-meta-val">{formData.license_no}</span>
                 </div>
               )}
               <div className="staff-meta-item">
@@ -374,20 +381,18 @@ export default function StaffProfile() {
 
                   {/* Profile Photo Control */}
                   <div className="profile-field-group" style={{ gridColumn: '1 / -1' }}>
-                    <label>Profile Photo {isEditing && <span className="optional">PNG, JPG or WEBP up to 3MB</span>}</label>
+                    <label>Profile Photo {isEditing && <span className="optional">PNG, JPG or WEBP. You can crop it after choosing.</span>}</label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap' }}>
-                      <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#F8FAFC', border: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', fontWeight: 700, color: '#2563EB', overflow: 'hidden', flexShrink: 0 }}>
-                        {formData.avatar ? (
-                          <img src={formData.avatar} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        ) : (
-                          (formData.first_name || formData.name)?.[0]?.toUpperCase() || 'A'
-                        )}
-                      </div>
+                      <Avatar src={user?.avatar_url} name={formData.first_name || formData.name} size={48} alt="Avatar"
+                        fallbackText={(formData.first_name || formData.name)?.[0]?.toUpperCase() || 'A'}
+                        style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#2563EB', fontWeight: 700, fontSize: '1.2rem' }} />
                       {isEditing && (
                         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                          <button type="button" className="btn-secondary" style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }} onClick={() => fileInputRef.current?.click()}>Upload Photo</button>
-                          {formData.avatar && (
-                            <button type="button" className="btn-secondary" style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', color: '#64748B' }} onClick={() => handleChange('avatar', '')}>Remove Photo</button>
+                          <button type="button" className="btn-secondary" style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }} onClick={pickPhoto} disabled={photoBusy}>
+                            {user?.avatar_url ? 'Change Photo' : 'Upload Photo'}
+                          </button>
+                          {user?.avatar_url && (
+                            <button type="button" className="btn-secondary" style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', color: '#64748B' }} onClick={requestRemove} disabled={photoBusy}>Remove Photo</button>
                           )}
                         </div>
                       )}
@@ -416,8 +421,8 @@ export default function StaffProfile() {
                   {!isAdmin && (
                     <div className="profile-field-group">
                       <label>PRC License Number</label>
-                      <input type="text" className={inputCls} value={formData.department}
-                        onChange={e => handleChange('department', e.target.value)} disabled={ro} />
+                      <input type="text" className={inputCls} value={formData.license_no} maxLength={100}
+                        onChange={e => handleChange('license_no', e.target.value)} disabled={ro} />
                     </div>
                   )}
 
@@ -498,7 +503,7 @@ export default function StaffProfile() {
                   </span>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     {!isEditing ? (
-                      <button type="button" className="btn-primary" onClick={handleStartEdit}>
+                      <button type="button" className="btn-primary" onClick={handleStartEdit} disabled={loadingProfile}>
                         <ProfileIcon name="edit" size={14} /> Edit Profile
                       </button>
                     ) : (

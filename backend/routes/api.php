@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ProfilePhotoController;
 use App\Http\Controllers\Api\ClinicServiceController;
 use App\Http\Controllers\Api\ClinicStaffScheduleController;
 use App\Http\Controllers\Api\ClinicRecordController;
@@ -54,6 +55,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Profile
     Route::get('profile',               [AuthController::class, 'getProfile']);
     Route::match(['put', 'patch'], 'profile', [AuthController::class, 'updateProfile']);
+    Route::post('profile/photo',        [ProfilePhotoController::class, 'store']);
+    Route::delete('profile/photo',      [ProfilePhotoController::class, 'destroy']);
 
     // ── Clinic Services (read: all auth users; write: clinic_staff + dentist + admin) ──
     Route::get('clinic/services', [ClinicServiceController::class, 'index']);

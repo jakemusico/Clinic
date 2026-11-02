@@ -10,6 +10,7 @@ import { recordsApi } from '../../api/records'
 import { servicesApi } from '../../api/services'
 import { toast } from 'react-hot-toast'
 import { useAuth } from '../../context/AuthContext'
+import Avatar from '../../components/Avatar'
 
 // FDI Notation Quadrants
 const QUADRANTS = {
@@ -906,6 +907,9 @@ export default function DentalConsultationsPage() {
                           {formatDate(c.consultation_date)}
                         </td>
                         <td className="td-name" style={{ whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                          <Avatar src={patientUser.avatar_url} name={patientUser.name} size={30} />
+                          <div>
                           <div style={{ fontWeight: 600, color: 'var(--text)' }}>
                             {patientUser.name || 'Patient'}
                           </div>
@@ -918,6 +922,8 @@ export default function DentalConsultationsPage() {
                               {patientUser.email}
                             </div>
                           ) : null}
+                          </div>
+                          </div>
                         </td>
                         <td style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', whiteSpace: 'nowrap' }}>
                           {serviceName}
@@ -928,7 +934,10 @@ export default function DentalConsultationsPage() {
                           </span>
                         </td>
                         <td style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-                          {c.dentist?.name || 'Dentist'}
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <Avatar src={c.dentist?.avatar_url} name={c.dentist?.name} size={24} />
+                            {c.dentist?.name || 'Dentist'}
+                          </span>
                         </td>
                         <td style={{ textAlign: 'center' }}>
                           <button

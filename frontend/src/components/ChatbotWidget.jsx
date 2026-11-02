@@ -12,6 +12,7 @@ import { chatApi } from '../api/chat'
 import { adminApi } from '../api/admin'
 import { useChatbot } from '../context/ChatbotContext'
 import { useAuth } from '../context/AuthContext'
+import Avatar from './Avatar'
 
 /* ─────────────────────────────────────────────────────────────────────────
    CATEGORY → NAVIGATION ACTIONS
@@ -1104,7 +1105,7 @@ export default function ChatbotWidget() {
       clientId,
       body: text,
       sender_id: user?.id,
-      sender: { id: user?.id, name: user?.name, role: user?.role },
+      sender: { id: user?.id, name: user?.name, role: user?.role, avatar_url: user?.avatar_url },
       created_at: new Date().toISOString(),
       status: 'sending',
     }
@@ -1374,7 +1375,13 @@ export default function ChatbotWidget() {
                               color: 'var(--text-muted)',
                               marginBottom: '2px',
                               paddingLeft: '2px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '5px',
                             }}>
+                              <Avatar src={m.sender.avatar_url} name={m.sender.name} size={20}
+                                fallbackText={m.sender.name.replace(/^(Dr\.|Nurse)\s+/i, '').charAt(0)}
+                                style={{ fontSize: '0.58rem' }} />
                               {m.sender.name}
                             </div>
                           )}

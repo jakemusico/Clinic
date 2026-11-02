@@ -6,6 +6,7 @@ import { appointmentsApi } from '../../api/appointments'
 import { toast } from 'react-hot-toast'
 import { formatAppointmentDateTime } from '../../utils/dateUtils'
 import Pagination from '../../components/Pagination'
+import Avatar from '../../components/Avatar'
 
 const STATUS_BADGES = {
   pending:   'status-badge pending',
@@ -146,7 +147,12 @@ export default function DentalAppointmentsPage() {
                   <td className="td-name">
                     {formatAppointmentDateTime(appt)}
                   </td>
-                  <td>{appt.patient?.user?.name || 'Patient'}</td>
+                  <td>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Avatar src={appt.patient?.user?.avatar_url} name={appt.patient?.user?.name} size={28} />
+                      {appt.patient?.user?.name || 'Patient'}
+                    </span>
+                  </td>
                   <td style={{ fontSize: '0.82rem', color: 'var(--text-sub)' }}>
                     {appt.patient?.user?.student_id || appt.patient?.user?.department || '—'}
                   </td>

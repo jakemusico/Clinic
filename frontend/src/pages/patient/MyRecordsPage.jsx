@@ -6,6 +6,7 @@ import PrintableRecord from '../../components/PrintableRecord'
 import Pagination from '../../components/Pagination'
 import { recordsApi } from '../../api/records'
 import { dentalApi } from '../../api/dental'
+import Avatar from '../../components/Avatar'
 
 const Icon = ({ d, size = 16 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
@@ -420,7 +421,12 @@ export default function MyRecordsPage() {
                     </td>
                     <td>{r.appointment?.service?.name || r.service_name || 'Medical Consultation'}</td>
                     <td className="td-name">{r.diagnosis || r.assessment || 'General Check-up'}</td>
-                    <td>{r.created_by?.name || 'Nurse'}</td>
+                    <td>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Avatar src={r.created_by?.avatar_url} name={r.created_by?.name} size={24} />
+                        {r.created_by?.name || 'Nurse'}
+                      </span>
+                    </td>
                     <td style={{ textAlign: 'right' }}>
                       <button className="btn-secondary" onClick={() => setViewMedicalRecord(r)}>
                         View Record
@@ -479,7 +485,12 @@ export default function MyRecordsPage() {
                     </td>
                     <td style={{ fontWeight: 600 }}>{r.diagnosis || '—'}</td>
                     <td style={{ fontSize: '0.82rem', color: 'var(--text-sub)' }}>{r.treatment_performed || '—'}</td>
-                    <td style={{ fontSize: '0.82rem' }}>{r.dentist?.name || 'Dentist'}</td>
+                    <td style={{ fontSize: '0.82rem' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Avatar src={r.dentist?.avatar_url} name={r.dentist?.name} size={24} />
+                        {r.dentist?.name || 'Dentist'}
+                      </span>
+                    </td>
                     <td style={{ textAlign: 'right' }}>
                       <button className="btn-secondary" onClick={() => setViewDentalRecord(r)}>
                         View Record

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { toast } from 'react-hot-toast'
 import DashboardLayout from '../components/DashboardLayout'
 import { useAuth } from '../context/AuthContext'
@@ -8,6 +8,9 @@ import StaffProfile from './StaffProfile'
 import PasswordStrength, { checkPasswordRules } from '../components/PasswordStrength'
 import { validateMobile } from '../components/MobileInput'
 import NameFields, { formatFullName } from '../components/NameFields'
+import Avatar from '../components/Avatar'
+import useProfilePhoto from '../hooks/useProfilePhoto'
+import { getApiErrorMessage, getFieldErrors } from '../utils/apiError'
 import { SCHOOL_YEARS } from '../constants/schoolData'
 import './ProfilePage.css'
 
@@ -73,7 +76,6 @@ function buildFormData(user) {
     gender: p.gender || user?.sex || '',
     address: user?.address || '',
     contact_no: user?.contact_no || '',
-    avatar: user?.avatar || '',
     guardian_name: p.guardian_name || '',
     guardian_relationship: p.guardian_relationship || user?.guardian_relationship || '',
     guardian_contact: p.guardian_contact || '',
@@ -91,14 +93,22 @@ function buildFormData(user) {
   }
 }
 
+// Nurse / Dentist / Admin get the staff profile; students and faculty get this one.
 export default function ProfilePage() {
-  const { user, updateUser, refreshUser } = useAuth()
+  const { user } = useAuth()
 
   if (user?.role === 'clinic_staff' || user?.role === 'dentist' || user?.role === 'admin') {
     return <StaffProfile />
   }
 
-  const fileInputRef = useRef(null)
+  return <PatientProfilePage />
+}
+
+function PatientProfilePage() {
+  const { user, updateUser, refreshUser } = useAuth()
+
+  // Profile photo: crop dialog + multipart upload/remove (shared by every role)
+  const { pickPhoto, requestRemove, busy: photoBusy, photoUi } = useProfilePhoto()
 
   const [activeTab, setActiveTab] = useState('student')
   const [saving, setSaving] = useState(false)
@@ -187,16 +197,6 @@ export default function ProfilePage() {
   }, [passwordForm.password])
 
   const handleChange = (field, value) => setFormData(prev => ({ ...prev, [field]: value }))
-
-  const handlePhotoUpload = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!file.type.startsWith('image/')) { toast.error('Please upload a valid image file (PNG, JPG, WEBP).'); return }
-    if (file.size > 3 * 1024 * 1024) { toast.error('Image size must be less than 3MB.'); return }
-    const reader = new FileReader()
-    reader.onload = (event) => { handleChange('avatar', event.target.result); toast.success('Profile photo uploaded.') }
-    reader.readAsDataURL(file)
-  }
 
   const handleCopyParentToEmergency = () => {
     setFormData(prev => ({
@@ -287,15 +287,9 @@ export default function ProfilePage() {
       setIsEditing(false)
       setShowEmailPassword(false)
     } catch (err) {
-      const responseData = err.response?.data
-      if (responseData?.errors) {
-        const backendErrors = {}
-        Object.entries(responseData.errors).forEach(([k, msgs]) => { backendErrors[k] = Array.isArray(msgs) ? msgs[0] : msgs })
-        setFieldErrors(backendErrors)
-        toast.error(Object.values(backendErrors)[0] || 'Please fix the errors indicated.')
-      } else {
-        toast.error(responseData?.message || 'Failed to save profile. Please check your inputs.')
-      }
+      const backendErrors = getFieldErrors(err)
+      if (Object.keys(backendErrors).length > 0) setFieldErrors(backendErrors)
+      toast.error(getApiErrorMessage(err, 'Failed to save profile. Please check your inputs and try again.'))
     } finally { setSaving(false) }
   }
 
@@ -328,13 +322,11 @@ export default function ProfilePage() {
           <div className="profile-hero-left">
             <div
               className="profile-avatar-wrapper"
-              onClick={() => isEditing && fileInputRef.current?.click()}
-              title={isEditing ? 'Click to upload profile photo' : undefined}
+              onClick={() => isEditing && pickPhoto()}
+              title={isEditing ? 'Click to change profile photo' : undefined}
               style={{ cursor: isEditing ? 'pointer' : 'default' }}
             >
-              {displayData.avatar
-                ? <img src={displayData.avatar} alt="Profile" className="profile-avatar-img" />
-                : <div className="profile-avatar-img">{displayData.name?.[0]?.toUpperCase() || 'S'}</div>}
+              <Avatar src={user?.avatar_url} name={displayData.name} className="profile-avatar-img" fallbackText={displayData.name?.[0]?.toUpperCase() || 'S'} alt="Profile" />
               {isEditing && (
                 <div className="profile-avatar-overlay" title="Upload Photo">
                   <ProfileIcon name="camera" size={13} />
@@ -368,7 +360,7 @@ export default function ProfilePage() {
                 <ProfileIcon name="print" size={14} /> Print Health Card
               </button>
               {!isEditing ? (
-                <button type="button" className="btn-primary" onClick={handleStartEdit}
+                <button type="button" className="btn-primary" onClick={handleStartEdit} disabled={loadingProfile}
                   style={{ fontSize: '0.82rem', padding: '0.45rem 1rem' }}>
                   <ProfileIcon name="edit" size={14} /> Edit Profile
                 </button>
@@ -388,7 +380,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoUpload} />
+        {photoUi}
 
         {/* TABS */}
         <div className="profile-nav-tabs-wrap">
@@ -425,16 +417,18 @@ export default function ProfilePage() {
             <div className="profile-form-grid">
               {/* Photo */}
               <div className="profile-field-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Profile Photo {isEditing && <span className="optional">PNG, JPG or WEBP up to 3MB</span>}</label>
+                <label>Profile Photo {isEditing && <span className="optional">PNG, JPG or WEBP. You can crop it after choosing.</span>}</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap' }}>
-                  <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#F8FAFC', border: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', fontWeight: 700, color: '#2563EB', overflow: 'hidden', flexShrink: 0 }}>
-                    {formData.avatar ? <img src={formData.avatar} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (formData.name?.[0]?.toUpperCase() || 'S')}
-                  </div>
+                  <Avatar src={user?.avatar_url} name={formData.name} size={48} alt="Avatar"
+                    fallbackText={formData.name?.[0]?.toUpperCase() || 'S'}
+                    style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#2563EB', fontWeight: 700, fontSize: '1.2rem' }} />
                   {isEditing && (
                     <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                      <button type="button" className="btn-secondary" style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }} onClick={() => fileInputRef.current?.click()}>Upload Photo</button>
-                      {formData.avatar && (
-                        <button type="button" className="btn-secondary" style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', color: '#64748B' }} onClick={() => handleChange('avatar', '')}>Remove Photo</button>
+                      <button type="button" className="btn-secondary" style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }} onClick={pickPhoto} disabled={photoBusy}>
+                        {user?.avatar_url ? 'Change Photo' : 'Upload Photo'}
+                      </button>
+                      {user?.avatar_url && (
+                        <button type="button" className="btn-secondary" style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', color: '#64748B' }} onClick={requestRemove} disabled={photoBusy}>Remove Photo</button>
                       )}
                     </div>
                   )}

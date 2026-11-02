@@ -38,6 +38,7 @@ Create an empty MySQL database (default name `clinic_db`) and set `DB_USERNAME` 
 ```bash
 php artisan key:generate
 php artisan migrate --seed
+php artisan storage:link    # makes uploaded profile photos reachable at /storage/...
 php artisan serve
 ```
 

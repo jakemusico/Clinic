@@ -56,6 +56,7 @@ class User extends Authenticatable
     protected $appends = [
         'name',
         'role_slug',
+        'avatar_url',
     ];
 
     protected function casts(): array
@@ -91,6 +92,41 @@ class User extends Authenticatable
         }
 
         return $computed ?: ($this->attributes['name'] ?? '');
+    }
+
+    /**
+     * Public URL of the profile photo, or null when the user has none.
+     * `avatar` stores only the relative path inside the public disk
+     * (e.g. "profile-photos/user3_<uuid>.jpg"). The URL is returned relative
+     * to the site root so it works from any host the app is opened on
+     * (localhost, LAN IP on a phone, production domain).
+     */
+    public function getAvatarUrlAttribute(): ?string
+    {
+        $path = $this->attributes['avatar'] ?? null;
+
+        if (! is_string($path) || $path === '' || str_contains($path, '..')) {
+            return null;
+        }
+
+        return '/storage/' . ltrim($path, '/');
+    }
+
+    /**
+     * The standard user JSON used by the auth / profile endpoints.
+     */
+    public function toApiArray(): array
+    {
+        $this->loadMissing(['patient', 'roleRelation']);
+
+        $payload = $this->toArray();
+        $payload['name']      = $this->name;
+        $payload['role']      = $this->role_slug;
+        $payload['role_id']   = $this->role_id;
+        $payload['role_name'] = $this->role_name;
+        $payload['patient']   = $this->patient;
+
+        return $payload;
     }
 
     /**

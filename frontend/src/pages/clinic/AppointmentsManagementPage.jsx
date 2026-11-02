@@ -7,6 +7,7 @@ import { ViewConsultationModal } from '../../components/ViewConsultationModal'
 import { useAuth } from '../../context/AuthContext'
 import { formatAppointmentDateTime } from '../../utils/dateUtils'
 import Pagination from '../../components/Pagination'
+import Avatar from '../../components/Avatar'
 
 const STATUS_BADGES = {
   pending:   'status-badge inactive',
@@ -264,9 +265,19 @@ export default function AppointmentsManagementPage() {
                   <td className="td-name">
                     {formatAppointmentDateTime(a)}
                   </td>
-                  <td>{a.patient?.user?.name || 'Deleted User'}</td>
+                  <td>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Avatar src={a.patient?.user?.avatar_url} name={a.patient?.user?.name} size={28} />
+                      {a.patient?.user?.name || 'Deleted User'}
+                    </span>
+                  </td>
                   <td>{a.service?.name}</td>
-                  <td>{a.staff?.name}</td>
+                  <td>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Avatar src={a.staff?.avatar_url} name={a.staff?.name} size={28} />
+                      {a.staff?.name}
+                    </span>
+                  </td>
                   <td>
                     <span className={STATUS_BADGES[a.status] || 'status-badge inactive'}>
                       {a.status}

@@ -11,6 +11,7 @@ import { servicesApi } from '../../api/services'
 import { useAuth } from '../../context/AuthContext'
 import Pagination from '../../components/Pagination'
 import StyledSelect, { DateInput } from '../../components/StyledSelect'
+import Avatar from '../../components/Avatar'
 
 export default function ConsultationsPage() {
   const { user } = useAuth()
@@ -393,6 +394,9 @@ export default function ConsultationsPage() {
                           {formatDate(r.visit_date)}
                         </td>
                         <td className="td-name" style={{ whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                          <Avatar src={patientUser.avatar_url} name={patientUser.name} size={30} />
+                          <div>
                           <div style={{ fontWeight: 600, color: 'var(--text)' }}>
                             {patientUser.name || 'Patient'}
                           </div>
@@ -405,6 +409,8 @@ export default function ConsultationsPage() {
                               {patientUser.email}
                             </div>
                           ) : null}
+                          </div>
+                          </div>
                         </td>
                         <td style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', whiteSpace: 'nowrap' }}>
                           {serviceName}
@@ -415,7 +421,10 @@ export default function ConsultationsPage() {
                           </span>
                         </td>
                         <td style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-                          {r.created_by?.name || 'Clinic Staff'}
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <Avatar src={r.created_by?.avatar_url} name={r.created_by?.name} size={24} />
+                            {r.created_by?.name || 'Clinic Staff'}
+                          </span>
                         </td>
                         <td style={{ textAlign: 'center' }}>
                           <button

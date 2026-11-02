@@ -12,7 +12,21 @@ export function AuthProvider({ children }) {
     const storedUser  = localStorage.getItem('auth_user')
     const storedToken = localStorage.getItem('auth_token')
     if (storedUser && storedToken) {
-      setUser(JSON.parse(storedUser))
+      try {
+        setUser(JSON.parse(storedUser))
+      } catch (_) {
+        localStorage.removeItem('auth_user')
+      }
+      // The stored copy is only a quick first paint. Always re-read the real
+      // profile (name, role, photo, ...) from the database through the API.
+      authApi.me()
+        .then(({ data }) => {
+          if (data?.user) {
+            localStorage.setItem('auth_user', JSON.stringify(data.user))
+            setUser(data.user)
+          }
+        })
+        .catch(() => { /* 401 is handled by the axios interceptor; offline keeps the stored copy */ })
     }
     setLoading(false)
   }, [])

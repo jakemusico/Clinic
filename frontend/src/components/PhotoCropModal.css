@@ -1,0 +1,96 @@
+/* Profile photo crop dialog (shared by all roles). Reuses .modal-overlay / .modal-card from index.css. */
+
+.photo-crop-overlay {
+  z-index: 10000;
+}
+
+.photo-crop-card {
+  width: min(95vw, 480px);
+  max-width: 95vw;
+  max-height: 95dvh;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.photo-crop-body {
+  padding: 1rem 1.25rem 0.5rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+/* The cropper needs a positioned box with an explicit height. */
+.photo-crop-area {
+  position: relative;
+  width: 100%;
+  height: min(78vw, 340px);
+  background: #0f172a;
+  border-radius: var(--radius-sm, 10px);
+  overflow: hidden;
+  touch-action: none; /* lets touch drag + pinch zoom work without scrolling the page */
+}
+
+.photo-crop-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.photo-crop-zoom {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+}
+
+.photo-crop-zoom-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-sub, #1e293b);
+}
+
+.photo-crop-zoom input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  height: 28px;           /* comfortable touch target */
+  accent-color: var(--accent, #2563eb);
+}
+
+.photo-crop-rotate {
+  flex-shrink: 0;
+  gap: 0.4rem;
+  min-height: 38px;
+}
+
+.photo-crop-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted, #64748b);
+  text-align: center;
+}
+
+.photo-crop-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  padding: 0.85rem 1.25rem 1.1rem;
+  border-top: 1px solid var(--border, #e2e8f0);
+}
+
+.photo-crop-footer .btn-primary,
+.photo-crop-footer .btn-secondary {
+  min-height: 40px;
+  min-width: 96px;
+  justify-content: center;
+}
+
+@media (max-width: 480px) {
+  .photo-crop-body { padding: 0.85rem 0.9rem 0.4rem; }
+  .photo-crop-footer { padding: 0.75rem 0.9rem 0.9rem; }
+  .photo-crop-footer .btn-primary,
+  .photo-crop-footer .btn-secondary { flex: 1; }
+}
