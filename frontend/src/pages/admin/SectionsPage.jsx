@@ -4,7 +4,7 @@ import api from '../../api/axios'
 import DashboardLayout from '../../components/DashboardLayout'
 import Pagination from '../../components/Pagination'
 import { usePagination } from '../../hooks/usePagination'
-import StyledSelect from '../../components/StyledSelect'
+import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/ConfirmModal'
 import { GRADE_LEVELS, STRANDS } from '../../constants/schoolData'
 
@@ -134,13 +134,12 @@ export default function SectionsPage() {
 
         {/* Grade level filter */}
         <div style={{ minWidth: '170px' }}>
-          <StyledSelect
+          <Dropdown
+            variant="filter"
             value={gradeFilter}
-            onChange={e => setGradeFilter(e.target.value)}
-          >
-            <option value="all">All Grade Levels</option>
-            {GRADE_LEVELS.map(g => <option key={g} value={g}>{g}</option>)}
-          </StyledSelect>
+            onChange={setGradeFilter}
+            options={[{ value: 'all', label: 'All Grade Levels' }, ...GRADE_LEVELS]}
+          />
         </div>
 
         {/* Add Section — far right */}
@@ -232,26 +231,22 @@ export default function SectionsPage() {
 
                 <div className="form-group">
                   <label>Grade Level *</label>
-                  <select
+                  <Dropdown
                     required
-                    value={formData.grade_level}
-                    onChange={e => {
-                      const newGrade = e.target.value
+                    value={formData.grade_level || ''}
+                    onChange={newGrade => {
                       setFormData(prev => ({
                         ...prev,
                         grade_level: newGrade,
                         strand: (newGrade === 'Grade 11' || newGrade === 'Grade 12') ? prev.strand : '',
                       }))
                     }}
-                  >
-                    <option value="">Select Grade Level</option>
-                    {GRADE_LEVELS.map(g => (
-                      <option key={g} value={g}>{g}</option>
-                    ))}
-                    {formData.grade_level && !GRADE_LEVELS.includes(formData.grade_level) && (
-                      <option value={formData.grade_level}>{formData.grade_level}</option>
-                    )}
-                  </select>
+                    options={[
+                      ...GRADE_LEVELS,
+                      ...(formData.grade_level && !GRADE_LEVELS.includes(formData.grade_level) ? [formData.grade_level] : []),
+                    ]}
+                    placeholder="Select Grade Level"
+                  />
                 </div>
 
                 <div className="form-group">
@@ -267,18 +262,19 @@ export default function SectionsPage() {
                 {(formData.grade_level === 'Grade 11' || formData.grade_level === 'Grade 12') && (
                   <div className="form-group">
                     <label>Strand <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(optional)</span></label>
-                    <select
+                    <Dropdown
+                      ariaLabel="Strand"
                       value={formData.strand}
-                      onChange={e => setFormData({ ...formData, strand: e.target.value })}
-                    >
-                      <option value="">Select Strand</option>
-                      {STRANDS.map(s => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                      {formData.strand && !STRANDS.includes(formData.strand) && (
-                        <option value={formData.strand}>{formData.strand}</option>
-                      )}
-                    </select>
+                      onChange={v => setFormData({ ...formData, strand: v })}
+                      placeholder="Select Strand"
+                      options={[
+                        { value: '', label: 'Select Strand' },
+                        ...STRANDS.map(s => ({ value: s, label: s })),
+                        ...(formData.strand && !STRANDS.includes(formData.strand)
+                          ? [{ value: formData.strand, label: formData.strand }]
+                          : []),
+                      ]}
+                    />
                   </div>
                 )}
               </div>

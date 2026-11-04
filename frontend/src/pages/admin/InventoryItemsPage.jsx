@@ -1,8 +1,8 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import DashboardLayout from '../../components/DashboardLayout'
-import StyledSelect from '../../components/StyledSelect'
+import Dropdown from '../../components/Dropdown'
 import Pagination from '../../components/Pagination'
 import { inventoryApi } from '../../api/inventory'
 
@@ -84,6 +84,9 @@ const ICONS = {
   clock: 'M12 2a10 10 0 100 20A10 10 0 0012 2zM12 6v6l4 2',
 }
 
+// Fixed id so repeated failures replace one toast instead of stacking
+const LOAD_ERROR_TOAST_ID = 'inventory-items-load-error'
+
 const fmtDate = (d) => {
   if (!d) return '—'
   const dateObj = new Date(d + (d.length === 10 ? 'T00:00:00' : ''))
@@ -98,6 +101,8 @@ export default function InventoryItemsPage() {
   const [items,      setItems]      = useState([])
   const [summary,    setSummary]    = useState({ total_items: 0, low_stock: 0, expiring_soon: 0, out_of_stock: 0 })
   const [loading,    setLoading]    = useState(true)
+  const [loadError,  setLoadError]  = useState(null) // null | string (message shown with a Retry button)
+  const loadAbortRef = useRef(null)
 
   // Modals: null | 'new' | 'edit' | 'detail' | 'stock_in' | 'stock_out'
   const [modal,            setModal]            = useState(null)
@@ -134,8 +139,16 @@ export default function InventoryItemsPage() {
   }, [searchParams])
 
   // Load items & summary
+  // A newer load (or leaving the page) aborts the one in flight, so React
+  // StrictMode's double effect run or a filter change that also resets the page
+  // never produces two results, and a failure produces exactly one toast.
   const load = async () => {
+    loadAbortRef.current?.abort()
+    const controller = new AbortController()
+    loadAbortRef.current = controller
+
     setLoading(true)
+    setLoadError(null)
     try {
       const { data } = await inventoryApi.listItems({
         search,
@@ -143,23 +156,35 @@ export default function InventoryItemsPage() {
         status: filterStat,
         page,
         per_page: pageSize,
-      })
+      }, { signal: controller.signal })
       setItems(data.items || [])
       setLastPage(data.last_page || 1)
       setTotal(data.total ?? (data.items || []).length)
       if (data.summary) {
         setSummary(data.summary)
       }
-    } catch {
-      toast.error('Failed to load inventory items.')
+      toast.dismiss(LOAD_ERROR_TOAST_ID)
+    } catch (err) {
+      if (controller.signal.aborted) return // superseded: the newer load owns the state
+      const status = err.response?.status
+      const unreachable = !err.response || [502, 503, 504].includes(status)
+      setLoadError(
+        unreachable
+          ? 'The server could not be reached. Make sure the backend is running, then try again.'
+          : `The server returned an error${status ? ` (HTTP ${status})` : ''}. Please try again.`
+      )
+      toast.error('Failed to load inventory items.', { id: LOAD_ERROR_TOAST_ID })
     } finally {
-      setLoading(false)
+      if (!controller.signal.aborted) setLoading(false)
     }
   }
 
   useEffect(() => {
     load()
   }, [filterCat, filterStat, page, pageSize])
+
+  // Abort any in-flight load when leaving the page
+  useEffect(() => () => loadAbortRef.current?.abort(), [])
 
   // Reset page when search or filters change
   useEffect(() => {
@@ -355,17 +380,12 @@ export default function InventoryItemsPage() {
     }
   }
 
-  const lowStockCount = useMemo(() => {
-    return items.filter(
-      i => i.category !== 'Equipment' && Number(i.current_stock ?? 0) > 0 && Number(i.current_stock ?? 0) <= Number(i.reorder_level ?? 0)
-    ).length
-  }, [items])
-
-  const outOfStockCount = useMemo(() => {
-    return items.filter(
-      i => i.category !== 'Equipment' && Number(i.current_stock ?? 0) === 0
-    ).length
-  }, [items])
+  // Stat cards come from the server summary (all items). Counting the rows of
+  // the current page would miss anything on the other pages.
+  const lowStockCount   = Number(summary.low_stock ?? 0)
+  const outOfStockCount = Number(summary.out_of_stock ?? 0)
+  // While the request is failing, show a dash instead of a misleading 0
+  const statText = (v) => (loadError ? '—' : v)
 
   const filtered = useMemo(() => {
     return items.filter(i => {
@@ -505,7 +525,7 @@ export default function InventoryItemsPage() {
             <Icon d={ICONS.box} size={20} />
           </div>
           <div className="stat-info">
-            <span className="stat-value">{summary.total_items}</span>
+            <span className="stat-value">{statText(summary.total_items)}</span>
             <span className="stat-label">Total Items</span>
           </div>
         </div>
@@ -515,7 +535,7 @@ export default function InventoryItemsPage() {
             <Icon d={ICONS.alert} size={20} />
           </div>
           <div className="stat-info">
-            <span className="stat-value">{lowStockCount}</span>
+            <span className="stat-value">{statText(lowStockCount)}</span>
             <span className="stat-label">
               Low Stock
               {lowStockCount > 0 && (
@@ -532,7 +552,7 @@ export default function InventoryItemsPage() {
             <Icon d={ICONS.clock} size={20} />
           </div>
           <div className="stat-info">
-            <span className="stat-value">{summary.expiring_soon}</span>
+            <span className="stat-value">{statText(summary.expiring_soon)}</span>
             <span className="stat-label">
               Expiring Soon
               {summary.expiring_soon > 0 && (
@@ -555,7 +575,7 @@ export default function InventoryItemsPage() {
             </Icon>
           </div>
           <div className="stat-info">
-            <span className="stat-value">{outOfStockCount}</span>
+            <span className="stat-value">{statText(outOfStockCount)}</span>
             <span className="stat-label">
               Out of Stock
               {outOfStockCount > 0 && (
@@ -593,20 +613,23 @@ export default function InventoryItemsPage() {
             />
           </div>
 
-          {/* Category Filter — same StyledSelect style as Status */}
+          {/* Category Filter — same Dropdown style as Status */}
           <div style={{ width: '165px' }}>
-            <StyledSelect
+            <Dropdown
+              variant="filter"
+              ariaLabel="Category"
               value={filterCat}
-              onChange={e => setFilterCat(e.target.value)}
+              onChange={setFilterCat}
               options={CATEGORY_FILTER_OPTIONS}
             />
           </div>
 
           {/* Status Filter */}
           <div style={{ width: '165px' }}>
-            <StyledSelect
+            <Dropdown
+              variant="filter"
               value={filterStat}
-              onChange={e => setFilterStat(e.target.value)}
+              onChange={setFilterStat}
               options={STATUS_FILTER_OPTIONS}
             />
           </div>
@@ -650,6 +673,37 @@ export default function InventoryItemsPage() {
       {loading ? (
         <div className="table-loading" style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <span className="loader-ring" />
+        </div>
+      ) : loadError ? (
+        <div
+          className="empty-state"
+          role="alert"
+          style={{
+            flex: 1,
+            minHeight: 0,
+            padding: '3.5rem 1rem',
+            textAlign: 'center',
+            color: 'var(--text-muted)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text)', marginBottom: '0.35rem' }}>
+            Couldn&apos;t load inventory items
+          </div>
+          <div style={{ fontSize: '0.85rem', marginBottom: '1rem', maxWidth: '420px' }}>
+            {loadError}
+          </div>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => load()}
+            style={{ fontSize: '0.82rem', padding: '0.45rem 1rem' }}
+          >
+            Retry
+          </button>
         </div>
       ) : sorted.length === 0 ? (
         <div
@@ -913,7 +967,7 @@ export default function InventoryItemsPage() {
             pageSize={pageSize}
             onPageChange={setPage}
             onPageSizeChange={(newSize) => {
-              // We're doing client-side pagination so just update page
+              setPageSize(newSize)
               setPage(1)
             }}
           />
@@ -1264,15 +1318,12 @@ export default function InventoryItemsPage() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Reason *</label>
-                  <select
-                    className="form-input"
+                  <Dropdown
+                    ariaLabel="Reason"
                     value={stockOutForm.reason}
-                    onChange={e => setStockOutForm(p => ({ ...p, reason: e.target.value }))}
-                  >
-                    {STOCK_OUT_REASONS.map(r => (
-                      <option key={r} value={r}>{r}</option>
-                    ))}
-                  </select>
+                    onChange={v => setStockOutForm(p => ({ ...p, reason: v }))}
+                    options={STOCK_OUT_REASONS}
+                  />
                 </div>
               </div>
 
@@ -1328,31 +1379,24 @@ export default function InventoryItemsPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <div className="form-group">
                   <label className="form-label">Category *</label>
-                  <select
-                    className="form-input"
+                  <Dropdown
+                    ariaLabel="Category"
                     value={form.category}
-                    onChange={e => {
-                      const cat = e.target.value
+                    onChange={cat => {
                       const defaultUnit = CATEGORY_UNITS[cat][0]
                       setForm(p => ({ ...p, category: cat, unit: defaultUnit }))
                     }}
-                  >
-                    <option value="Medicine">Medicine</option>
-                    <option value="Supply">Supply</option>
-                    <option value="Equipment">Equipment</option>
-                  </select>
+                    options={['Medicine', 'Supply', 'Equipment']}
+                  />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Unit *</label>
-                  <select
-                    className="form-input"
+                  <Dropdown
                     value={form.unit}
-                    onChange={e => setForm(p => ({ ...p, unit: e.target.value }))}
-                  >
-                    {(CATEGORY_UNITS[form.category] || []).map(u => (
-                      <option key={u} value={u}>{u}</option>
-                    ))}
-                  </select>
+                    onChange={v => setForm(p => ({ ...p, unit: v }))}
+                    options={CATEGORY_UNITS[form.category] || []}
+                    placeholder="Select unit"
+                  />
                 </div>
               </div>
 
@@ -1374,16 +1418,12 @@ export default function InventoryItemsPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                   <div className="form-group">
                     <label className="form-label">Equipment Status / Condition</label>
-                    <select
-                      className="form-input"
+                    <Dropdown
+                      ariaLabel="Equipment status"
                       value={form.equipment_status}
-                      onChange={e => setForm(p => ({ ...p, equipment_status: e.target.value }))}
-                    >
-                      <option value="Available">Available</option>
-                      <option value="In Use">In Use</option>
-                      <option value="Under Repair">Under Repair</option>
-                      <option value="Retired">Retired</option>
-                    </select>
+                      onChange={v => setForm(p => ({ ...p, equipment_status: v }))}
+                      options={['Available', 'In Use', 'Under Repair', 'Retired']}
+                    />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Location</label>

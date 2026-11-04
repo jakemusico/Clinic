@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider } from './context/AuthContext'
 import { ChatbotProvider } from './context/ChatbotContext'
@@ -49,6 +49,11 @@ import DentalConsultationsPage  from './pages/dental/DentalConsultationsPage'
 import DentalChartPage          from './pages/dental/DentalChartPage'
 import DentalPatientRecordsPage from './pages/dental/DentalPatientRecordsPage'
 
+/** /admin/inventory/... -> /clinic/inventory/... (keeps ?search= and #hash) */
+function LegacyInventoryRedirect() {
+  const { pathname, search, hash } = useLocation()
+  return <Navigate to={pathname.replace(/^\/admin\/inventory/, '/clinic/inventory') + search + hash} replace />
+}
 export default function App() {
   return (
     <AuthProvider>
@@ -134,7 +139,7 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
-              <Route path="/dental/patients"
+              <Route path="/dental/records"
                 element={
                   <ProtectedRoute roles={['dentist', 'admin']}>
                     <DentalPatientRecordsPage />
@@ -298,42 +303,44 @@ export default function App() {
                 }
               />
 
-              {/* Inventory Management — admin, clinic_staff, dentist */}
-              <Route path="/admin/inventory"
+              {/* Inventory Management — shared by admin, clinic_staff (nurse) and dentist, so it lives under /clinic like the other shared staff pages */}
+              <Route path="/clinic/inventory"
                 element={
                   <ProtectedRoute roles={['admin', 'clinic_staff', 'dentist']}>
                     <InventoryDashboardPage />
                   </ProtectedRoute>
                 }
               />
-              <Route path="/admin/inventory/items"
+              <Route path="/clinic/inventory/items"
                 element={
                   <ProtectedRoute roles={['admin', 'clinic_staff', 'dentist']}>
                     <InventoryItemsPage />
                   </ProtectedRoute>
                 }
               />
-              <Route path="/admin/inventory/stock-in"
+              <Route path="/clinic/inventory/stock-in"
                 element={
                   <ProtectedRoute roles={['admin', 'clinic_staff', 'dentist']}>
                     <StockInPage />
                   </ProtectedRoute>
                 }
               />
-              <Route path="/admin/inventory/stock-out"
+              <Route path="/clinic/inventory/stock-out"
                 element={
                   <ProtectedRoute roles={['admin', 'clinic_staff', 'dentist']}>
                     <StockOutPage />
                   </ProtectedRoute>
                 }
               />
-              <Route path="/admin/inventory/transactions"
+              <Route path="/clinic/inventory/transactions"
                 element={
                   <ProtectedRoute roles={['admin', 'clinic_staff', 'dentist']}>
                     <InventoryTransactionsPage />
                   </ProtectedRoute>
                 }
               />
+              {/* Old URLs (bookmarks, saved notification links) keep working */}
+              <Route path="/admin/inventory/*" element={<LegacyInventoryRedirect />} />
 
               {/* Profile & Settings — all roles */}
               <Route path="/profile"

@@ -9,7 +9,10 @@ export const inventoryApi = {
     api.get('/inventory/consultation-items', { params: { consultation_type: type, consultation_id: id } }),
 
   // Items
-  listItems:   (params)           => api.get('/inventory/items', { params }),
+  // Complete, never-paginated item list for dropdowns (includes zero-stock items)
+  itemOptions: (params)           => api.get('/inventory/item-options', { params }),
+  // `config` is optional (e.g. { signal } so a superseded request can be aborted)
+  listItems:   (params, config)   => api.get('/inventory/items', { params, ...config }),
   createItem:  (payload)          => api.post('/inventory/items', payload),
   updateItem:  (id, payload)      => api.put(`/inventory/items/${id}`, payload),
   toggleItem:  (id)               => api.patch(`/inventory/items/${id}/toggle`),

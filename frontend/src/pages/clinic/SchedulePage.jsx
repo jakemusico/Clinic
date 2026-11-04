@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'react-hot-toast'
 import DashboardLayout from '../../components/DashboardLayout'
 import ConfirmModal from '../../components/ConfirmModal'
+import Dropdown from '../../components/Dropdown'
 import { schedulesApi } from '../../api/schedules'
 import { useAuth } from '../../context/AuthContext'
 
@@ -106,19 +107,19 @@ function ScheduleModal({ entry, staffList, currentUser, isAdmin, onClose, onSave
           <div className="form-group">
             <label>Staff Member</label>
             {isAdmin ? (
-              <select
-                value={form.user_id}
-                onChange={e => set('user_id', e.target.value)}
-                className={errors.user_id ? 'input-error' : ''}
+              <Dropdown
+                value={String(form.user_id ?? '')}
+                onChange={v => set('user_id', v)}
+                options={staffList.map(s => ({
+                  value: String(s.id),
+                  label: `${s.name} — ${s.role === 'dentist' ? 'Dentist' : 'Nurse'}`,
+                  badge: s.email,
+                }))}
+                placeholder="Select staff member"
+                noOptionsMessage="No staff available"
+                invalid={Boolean(errors.user_id)}
                 required
-              >
-                <option value="" disabled>Select staff member</option>
-                {staffList.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} — {s.role === 'dentist' ? 'Dentist' : 'Nurse'} ({s.email})
-                  </option>
-                ))}
-              </select>
+              />
             ) : (
               <input
                 type="text"
@@ -133,9 +134,12 @@ function ScheduleModal({ entry, staffList, currentUser, isAdmin, onClose, onSave
           {/* ── 2. Day of Week ── */}
           <div className="form-group">
             <label>Day of Week</label>
-            <select value={form.day_of_week} onChange={e => set('day_of_week', e.target.value)}>
-              {DAYS.map(d => <option key={d} value={d}>{DAY_FULL[d]}</option>)}
-            </select>
+            <Dropdown
+              value={form.day_of_week}
+              onChange={v => set('day_of_week', v)}
+              options={DAYS.map(d => ({ value: d, label: DAY_FULL[d] }))}
+              placeholder="Select day"
+            />
           </div>
 
           {/* ── 3. Start & End Time ── */}
@@ -259,17 +263,17 @@ function UnavailabilityModal({ staffList, currentUser, isAdmin, onClose, onAdded
           {isAdmin && (
             <div className="form-group">
               <label>Staff Member</label>
-              <select
-                value={userId}
-                onChange={e => setUserId(e.target.value)}
+              <Dropdown
+                value={String(userId ?? '')}
+                onChange={v => setUserId(v)}
+                options={staffList.map(s => ({
+                  value: String(s.id),
+                  label: `${s.name} — ${s.role === 'dentist' ? 'Dentist' : 'Nurse'}`,
+                }))}
+                placeholder="Select staff member"
+                noOptionsMessage="No staff available"
                 required
-              >
-                {staffList.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} — {s.role === 'dentist' ? 'Dentist' : 'Nurse'}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
           )}
 
@@ -339,18 +343,18 @@ function SlotPreview({ staffList, currentUser, isAdmin }) {
           {isAdmin && staffList.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-sub)' }}>Staff:</label>
-              <select
-                value={selectedStaffId}
-                onChange={e => setSelectedStaffId(parseInt(e.target.value))}
-                className="filter-popover-select"
+              <Dropdown
+                variant="filter"
+                value={String(selectedStaffId ?? '')}
+                onChange={v => setSelectedStaffId(parseInt(v, 10))}
+                options={staffList.map(s => ({
+                  value: String(s.id),
+                  label: `${s.name} (${s.role === 'dentist' ? 'Dentist' : 'Nurse'})`,
+                }))}
+                placeholder="Select staff member"
+                noOptionsMessage="No staff available"
                 style={{ minWidth: '180px' }}
-              >
-                {staffList.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.role === 'dentist' ? 'Dentist' : 'Nurse'})
-                  </option>
-                ))}
-              </select>
+              />
             </div>
           )}
 

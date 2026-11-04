@@ -10,6 +10,7 @@ import { chatApi } from '../api/chat'
 import ChatbotWidget from './ChatbotWidget'
 import fsuuLogo from '../assets/fsuu_logo.png'
 import PatientSearchBar from './PatientSearchBar'
+import DentalIcon from './DentalIcon'
 import Avatar from './Avatar'
 import EventDetailsModal from './EventDetailsModal'
 import { formatNotificationTime, isAnnouncementItem, isAppointmentItem, getAppointmentTargetUrl } from '../utils/notificationHelpers'
@@ -38,6 +39,17 @@ const Icon = ({ d, size = 18 }) => (
   </svg>
 )
 
+// Inventory list pages with a frozen filter bar + table header (only the rows scroll)
+const FROZEN_INVENTORY_PAGES = [
+  '/clinic/inventory/items',
+  '/clinic/inventory/stock-in',
+  '/clinic/inventory/stock-out',
+  '/clinic/inventory/transactions',
+]
+
+// Icon keys that render the shared tooth icon instead of a path from ICONS
+const DENTAL_ICON_KEYS = new Set(['tooth', 'dentalChart'])
+
 const ICONS = {
   dashboard: 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9zM9 22V12h6v10',
   appointments: 'M8 2v4M16 2v4M3 10h18M3 6a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6z',
@@ -53,7 +65,7 @@ const ICONS = {
   audit: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2',
   myRecords: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2',
   consultations: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
-  dentalChart: 'M12 2a4 4 0 00-4 4v2a2 2 0 002 2h4a2 2 0 002-2V6a4 4 0 00-4-4zM6 14a2 2 0 012-2h8a2 2 0 012 2v4a4 4 0 01-4 4h-4a4 4 0 01-4-4v-4z',
+  calendar: 'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z',
   profile: 'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8',
   settings: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z',
   logout: 'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9',
@@ -70,6 +82,12 @@ const ICONS = {
   stockOut: 'M12 17V4m0 0l-4 4m4-4l4 4M4 20h16',
   transactions: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4',
 }
+
+/* Sidebar / bottom-nav / stat-card icon: shared tooth for dental keys, path icon for the rest */
+const NavIcon = ({ name, size, fallback }) =>
+  DENTAL_ICON_KEYS.has(name)
+    ? <DentalIcon size={size} />
+    : <Icon d={ICONS[name] || (fallback ? ICONS[fallback] : undefined)} size={size} />
 
 /* Nav sections per role */
 const NAV_SECTIONS = {
@@ -112,31 +130,42 @@ const NAV_SECTIONS = {
   ],
   clinic_staff: [
     {
-      label: 'Patient Care',
+      label: 'Overview',
       items: [
         { to: '/dashboard/clinic-staff', label: 'Dashboard', icon: 'dashboard' },
-        { to: '/clinic/appointments', label: 'Appointments', icon: 'appointments' },
-        { to: '/clinic/consultations', label: 'Consultations', icon: 'consultations' },
-        { to: '/clinic/messages', label: 'Messages', icon: 'messages' },
-        { to: '/clinic/people', label: 'People', icon: 'users' },
         { to: '/notifications', label: 'Notifications', icon: 'notifications' },
+      ],
+    },
+    {
+      label: 'Medical Care',
+      items: [
+        { to: '/clinic/records', label: 'Medical Records', icon: 'records' },
+        { to: '/clinic/appointments', label: 'Medical Appointments', icon: 'appointments' },
+        { to: '/clinic/consultations', label: 'Medical Consultations', icon: 'consultations' },
+      ],
+    },
+    {
+      label: 'Directory',
+      items: [
+        { to: '/clinic/people', label: 'People', icon: 'users' },
+        { to: '/clinic/messages', label: 'Messages', icon: 'messages' },
       ],
     },
     {
       label: 'Management',
       items: [
-        { to: '/clinic/schedule', label: 'My Schedule', icon: 'schedule' },
+        { to: '/clinic/schedule', label: 'My Schedule', icon: 'calendar' },
         { to: '/clinic/reports', label: 'Reports', icon: 'reports' },
       ],
     },
     {
       label: 'Inventory',
       items: [
-        { to: '/admin/inventory', label: 'Inventory Dashboard', icon: 'inventory', end: true },
-        { to: '/admin/inventory/items', label: 'Items', icon: 'items', end: true },
-        { to: '/admin/inventory/stock-in', label: 'Stock In', icon: 'stockIn', end: true },
-        { to: '/admin/inventory/stock-out', label: 'Stock Out', icon: 'stockOut', end: true },
-        { to: '/admin/inventory/transactions', label: 'Transactions', icon: 'transactions', end: true },
+        { to: '/clinic/inventory', label: 'Inventory Dashboard', icon: 'inventory', end: true },
+        { to: '/clinic/inventory/items', label: 'Items', icon: 'items', end: true },
+        { to: '/clinic/inventory/stock-in', label: 'Stock In', icon: 'stockIn', end: true },
+        { to: '/clinic/inventory/stock-out', label: 'Stock Out', icon: 'stockOut', end: true },
+        { to: '/clinic/inventory/transactions', label: 'Transactions', icon: 'transactions', end: true },
       ],
     },
     {
@@ -149,32 +178,43 @@ const NAV_SECTIONS = {
   ],
   dentist: [
     {
-      label: 'Patient Care',
+      label: 'Overview',
       items: [
         { to: '/dashboard/dentist', label: 'Dashboard', icon: 'dashboard' },
-        { to: '/dental/appointments', label: 'Dental Appointments', icon: 'appointments' },
-        { to: '/dental/consultations', label: 'Dental Consultations', icon: 'consultations' },
-        { to: '/dental/chart', label: 'Dental Charting', icon: 'dentalChart' },
-        { to: '/clinic/messages', label: 'Messages', icon: 'messages' },
-        { to: '/clinic/people', label: 'People', icon: 'users' },
         { to: '/notifications', label: 'Notifications', icon: 'notifications' },
+      ],
+    },
+    {
+      label: 'Dental Care',
+      items: [
+        { to: '/dental/records', label: 'Dental Records', icon: 'tooth' },
+        { to: '/dental/appointments', label: 'Dental Appointments', icon: 'tooth' },
+        { to: '/dental/consultations', label: 'Dental Consultations', icon: 'tooth' },
+        { to: '/dental/chart', label: 'Dental Charting', icon: 'tooth' },
+      ],
+    },
+    {
+      label: 'Directory',
+      items: [
+        { to: '/clinic/people', label: 'People', icon: 'users' },
+        { to: '/clinic/messages', label: 'Messages', icon: 'messages' },
       ],
     },
     {
       label: 'Management',
       items: [
-        { to: '/clinic/schedule', label: 'My Schedule', icon: 'schedule' },
+        { to: '/clinic/schedule', label: 'My Schedule', icon: 'calendar' },
         { to: '/clinic/reports', label: 'Reports', icon: 'reports' },
       ],
     },
     {
       label: 'Inventory',
       items: [
-        { to: '/admin/inventory', label: 'Inventory Dashboard', icon: 'inventory', end: true },
-        { to: '/admin/inventory/items', label: 'Items', icon: 'items', end: true },
-        { to: '/admin/inventory/stock-in', label: 'Stock In', icon: 'stockIn', end: true },
-        { to: '/admin/inventory/stock-out', label: 'Stock Out', icon: 'stockOut', end: true },
-        { to: '/admin/inventory/transactions', label: 'Transactions', icon: 'transactions', end: true },
+        { to: '/clinic/inventory', label: 'Inventory Dashboard', icon: 'inventory', end: true },
+        { to: '/clinic/inventory/items', label: 'Items', icon: 'items', end: true },
+        { to: '/clinic/inventory/stock-in', label: 'Stock In', icon: 'stockIn', end: true },
+        { to: '/clinic/inventory/stock-out', label: 'Stock Out', icon: 'stockOut', end: true },
+        { to: '/clinic/inventory/transactions', label: 'Transactions', icon: 'transactions', end: true },
       ],
     },
     {
@@ -197,25 +237,31 @@ const NAV_SECTIONS = {
       label: 'Medical Care',
       items: [
         { to: '/clinic/records', label: 'Medical Records', icon: 'records' },
-        { to: '/clinic/appointments', label: 'Appointments', icon: 'appointments' },
-        { to: '/clinic/consultations', label: 'Consultations', icon: 'consultations' },
-        { to: '/clinic/people', label: 'People', icon: 'users' },
+        { to: '/clinic/appointments', label: 'Medical Appointments', icon: 'appointments' },
+        { to: '/clinic/consultations', label: 'Medical Consultations', icon: 'consultations' },
       ],
     },
     {
       label: 'Dental Care',
       items: [
-        { to: '/dental/appointments', label: 'Dental Appointments', icon: 'appointments' },
-        { to: '/dental/consultations', label: 'Dental Consultations', icon: 'consultations' },
-        { to: '/dental/chart', label: 'Dental Charting', icon: 'dentalChart' },
+        { to: '/dental/records', label: 'Dental Records', icon: 'tooth' },
+        { to: '/dental/appointments', label: 'Dental Appointments', icon: 'tooth' },
+        { to: '/dental/consultations', label: 'Dental Consultations', icon: 'tooth' },
+        { to: '/dental/chart', label: 'Dental Charting', icon: 'tooth' },
+      ],
+    },
+    {
+      label: 'Directory',
+      items: [
+        { to: '/clinic/people', label: 'People', icon: 'users' },
       ],
     },
     {
       label: 'Management',
       items: [
         { to: '/clinic/services', label: 'Clinic Services', icon: 'services' },
-        { to: '/clinic/schedule', label: 'Staff Schedules', icon: 'schedule' },
-        { to: '/admin/calendar', label: 'Calendar', icon: 'schedule' },
+        { to: '/clinic/schedule', label: 'Staff Schedules', icon: 'calendar' },
+        { to: '/admin/calendar', label: 'Calendar', icon: 'appointments' },
         { to: '/admin/announcements', label: 'Announcements', icon: 'announcements' },
         { to: '/admin/users', label: 'User Management', icon: 'users' },
         { to: '/admin/sections', label: 'Sections', icon: 'sections' },
@@ -225,11 +271,11 @@ const NAV_SECTIONS = {
     {
       label: 'Inventory',
       items: [
-        { to: '/admin/inventory', label: 'Inventory Dashboard', icon: 'inventory', end: true },
-        { to: '/admin/inventory/items', label: 'Items', icon: 'items', end: true },
-        { to: '/admin/inventory/stock-in', label: 'Stock In', icon: 'stockIn', end: true },
-        { to: '/admin/inventory/stock-out', label: 'Stock Out', icon: 'stockOut', end: true },
-        { to: '/admin/inventory/transactions', label: 'Transactions', icon: 'transactions', end: true },
+        { to: '/clinic/inventory', label: 'Inventory Dashboard', icon: 'inventory', end: true },
+        { to: '/clinic/inventory/items', label: 'Items', icon: 'items', end: true },
+        { to: '/clinic/inventory/stock-in', label: 'Stock In', icon: 'stockIn', end: true },
+        { to: '/clinic/inventory/stock-out', label: 'Stock Out', icon: 'stockOut', end: true },
+        { to: '/clinic/inventory/transactions', label: 'Transactions', icon: 'transactions', end: true },
       ],
     },
     {
@@ -416,6 +462,22 @@ export default function DashboardShell() {
   }, [location.pathname])
 
   const sidebarNavRef = useRef(null)
+  const headerRef = useRef(null)
+
+  // On phones the fixed header wraps onto two rows, so it is taller than the 56px the page
+  // body reserves for it and the first row of every page ends up underneath it.
+  // Publish the header's real height; index.css uses it as the body's top padding on small screens.
+  useEffect(() => {
+    const el = headerRef.current
+    if (!el) return undefined
+    const root = document.documentElement
+    const publish = () => root.style.setProperty('--dashboard-header-h', `${Math.ceil(el.getBoundingClientRect().height)}px`)
+    publish()
+    if (typeof ResizeObserver === 'undefined') return undefined
+    const ro = new ResizeObserver(publish)
+    ro.observe(el)
+    return () => { ro.disconnect(); root.style.removeProperty('--dashboard-header-h') }
+  }, [])
   
   // Keep active item in view on mount/change, but preserve scroll otherwise
   useEffect(() => {
@@ -455,7 +517,7 @@ export default function DashboardShell() {
         }
 
         if (data.type === 'inventory_item' || data.type === 'inventory_dashboard') {
-          navigate(data.action_url || '/admin/inventory')
+          navigate(data.action_url || '/clinic/inventory')
           return
         }
 
@@ -502,7 +564,7 @@ export default function DashboardShell() {
 
     // Live Chat notifications (Student or Staff)
     if (notif.target_type === 'conversation' || notif.action_url?.includes('chat=')) {
-      if (user?.role === 'student') {
+      if (user?.role === 'student' || user?.role === 'faculty_staff') {
         const match = notif.action_url?.match(/chat=(nurse|dentist)/)
         const role = match ? match[1] : 'nurse'
         openLiveChat(role)
@@ -597,7 +659,7 @@ export default function DashboardShell() {
               {section.items.map((item) => {
                 const isNotif = item.to === '/notifications'
                 const isMessages = item.to === '/clinic/messages'
-                const isExact = Boolean(item.end || item.to === '/admin/inventory')
+                const isExact = Boolean(item.end || item.to === '/clinic/inventory')
 
                 let apptBadge = 0
                 if (user && ['clinic_staff', 'dentist', 'admin'].includes(user.role)) {
@@ -616,7 +678,7 @@ export default function DashboardShell() {
                     className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
                   >
                     <span className="nav-icon">
-                      <Icon d={ICONS[item.icon]} />
+                      <NavIcon name={item.icon} />
                     </span>
                     {item.label}
                     {isNotif && unreadCount > 0 && (
@@ -658,7 +720,7 @@ export default function DashboardShell() {
 
       {/* ── Main ────────────────────────────────────────────────── */}
       <main className="dashboard-main">
-        <header className="dashboard-header">
+        <header className="dashboard-header" ref={headerRef}>
           <div className="header-left">
             {/* Hamburger — only visible on mobile/tablet */}
             <button
@@ -817,7 +879,7 @@ export default function DashboardShell() {
           </div>
         </header>
 
-        <div className={`dashboard-page-body ${location.pathname === '/admin/inventory/items' ? 'dashboard-page-body--no-scroll' : ''}`}>
+        <div className={`dashboard-page-body ${FROZEN_INVENTORY_PAGES.includes(location.pathname) ? 'dashboard-page-body--no-scroll' : ''}`}>
           {stats.length > 0 && (
             <div className="stats-grid" style={{ padding: '1rem 0.75rem 0' }}>
               {stats.map((s) => {
@@ -831,7 +893,7 @@ export default function DashboardShell() {
                   >
                     {s.icon && (
                       <div className="stat-icon-badge">
-                        <Icon d={ICONS[s.icon] || ICONS.dashboard} size={20} />
+                        <NavIcon name={s.icon} fallback="dashboard" size={20} />
                       </div>
                     )}
                     <div className="stat-info">
@@ -844,7 +906,7 @@ export default function DashboardShell() {
             </div>
           )}
 
-          <div className={`dashboard-content-card ${location.pathname === '/admin/inventory/items' ? 'dashboard-content-card--no-scroll' : ''}`}>
+          <div className={`dashboard-content-card ${FROZEN_INVENTORY_PAGES.includes(location.pathname) ? 'dashboard-content-card--no-scroll' : ''}`}>
             <Outlet context={{ setPageInfo }} />
           </div>
         </div>
@@ -856,7 +918,7 @@ export default function DashboardShell() {
       {/* ── Mobile Bottom Navigation ─────────────────────────────── */}
       <nav className="mobile-bottom-nav">
         {navSections[0]?.items.slice(0, 3).map(item => {
-          const isExact = Boolean(item.end || item.to === '/admin/inventory');
+          const isExact = Boolean(item.end || item.to === '/clinic/inventory');
           // Shorten labels
           let label = item.label;
           if (label === 'My Health Records' || label === 'Medical Records') label = 'Records';
@@ -870,7 +932,7 @@ export default function DashboardShell() {
               end={isExact}
               className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}
             >
-              <Icon d={ICONS[item.icon]} size={22} />
+              <NavIcon name={item.icon} size={22} />
               <span>{label}</span>
             </NavLink>
           );

@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import DashboardLayout from '../components/DashboardLayout'
 import EventDetailsModal from '../components/EventDetailsModal'
 import Pagination from '../components/Pagination'
+import Dropdown from '../components/Dropdown'
 import { notificationsApi } from '../api/notifications'
 import { useAuth } from '../context/AuthContext'
 import { useChatbot } from '../context/ChatbotContext'
@@ -76,12 +77,17 @@ function AnnouncementModal({ onClose, onBroadcast }) {
           </div>
           <div className="form-group">
             <label>Announcement Alert Level</label>
-            <select value={form.type} onChange={e => set('type', e.target.value)}>
-              <option value="info">Info (Blue)</option>
-              <option value="success">Success (Green)</option>
-              <option value="warning">Warning (Yellow)</option>
-              <option value="error">Alert / Urgent (Red)</option>
-            </select>
+            <Dropdown
+              ariaLabel="Announcement alert level"
+              value={form.type}
+              onChange={v => set('type', v)}
+              options={[
+                { value: 'info', label: 'Info (Blue)' },
+                { value: 'success', label: 'Success (Green)' },
+                { value: 'warning', label: 'Warning (Yellow)' },
+                { value: 'error', label: 'Alert / Urgent (Red)' },
+              ]}
+            />
           </div>
           <div className="modal-footer">
             <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
@@ -293,7 +299,7 @@ export default function NotificationsPage() {
 
     // 3. Live chat conversation
     if (notif.target_type === 'conversation' || notif.action_url?.includes('chat=')) {
-      if (user?.role === 'student') {
+      if (user?.role === 'student' || user?.role === 'faculty_staff') {
         const match = notif.action_url?.match(/chat=(nurse|dentist)/)
         const role = match ? match[1] : 'nurse'
         openLiveChat(role)

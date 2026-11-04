@@ -19,7 +19,9 @@ import { formatAppointmentDate, formatAppointmentTime } from '../../utils/dateUt
 import { exportReportToPDF, exportReportToCSV } from '../../utils/reportExport'
 import Pagination from '../../components/Pagination'
 import { usePagination } from '../../hooks/usePagination'
-import StyledSelect, { DateInput } from '../../components/StyledSelect'
+import DateInput from '../../components/DateInput'
+import Dropdown from '../../components/Dropdown'
+import DentalIcon from '../../components/DentalIcon'
 
 // (Icon components removed — export buttons use text-only outline style)
 
@@ -423,14 +425,17 @@ export default function ReportsPage() {
                   <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
                     Type
                   </label>
-                  <StyledSelect
+                  <Dropdown
+                    variant="filter"
+                    ariaLabel="Type"
                     value={type}
-                    onChange={e => setType(e.target.value)}
-                  >
-                    <option value="all">All Types</option>
-                    <option value="medical">Medical</option>
-                    <option value="dental">Dental</option>
-                  </StyledSelect>
+                    onChange={setType}
+                    options={[
+                      { value: 'all', label: 'All Types' },
+                      { value: 'medical', label: 'Medical' },
+                      { value: 'dental', label: 'Dental' },
+                    ]}
+                  />
                 </div>
               )}
 
@@ -440,16 +445,19 @@ export default function ReportsPage() {
                   <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
                     Status
                   </label>
-                  <StyledSelect
+                  <Dropdown
+                    variant="filter"
+                    ariaLabel="Status"
                     value={status}
-                    onChange={e => setStatus(e.target.value)}
-                  >
-                    <option value="all">All Statuses</option>
-                    <option value="completed">Completed</option>
-                    <option value="confirmed">Confirmed</option>
-                    <option value="pending">Pending</option>
-                    <option value="cancelled">Cancelled</option>
-                  </StyledSelect>
+                    onChange={setStatus}
+                    options={[
+                      { value: 'all', label: 'All Statuses' },
+                      { value: 'completed', label: 'Completed' },
+                      { value: 'confirmed', label: 'Confirmed' },
+                      { value: 'pending', label: 'Pending' },
+                      { value: 'cancelled', label: 'Cancelled' },
+                    ]}
+                  />
                 </div>
               )}
 
@@ -459,13 +467,12 @@ export default function ReportsPage() {
                   <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
                     Service
                   </label>
-                  <StyledSelect
-                    value={serviceId}
-                    onChange={e => setServiceId(e.target.value)}
-                  >
-                    <option value="all">All Services</option>
-                    {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </StyledSelect>
+                  <Dropdown
+                    variant="filter"
+                    value={String(serviceId)}
+                    onChange={setServiceId}
+                    options={[{ value: 'all', label: 'All Services' }, ...services.map(s => ({ value: String(s.id), label: s.name }))]}
+                  />
                 </div>
               )}
 
@@ -475,13 +482,12 @@ export default function ReportsPage() {
                   <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
                     Attending Staff
                   </label>
-                  <StyledSelect
-                    value={staffId}
-                    onChange={e => setStaffId(e.target.value)}
-                  >
-                    <option value="all">All Staff</option>
-                    {staffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </StyledSelect>
+                  <Dropdown
+                    variant="filter"
+                    value={String(staffId)}
+                    onChange={setStaffId}
+                    options={[{ value: 'all', label: 'All Staff' }, ...staffList.map(s => ({ value: String(s.id), label: s.name }))]}
+                  />
                 </div>
               )}
 
@@ -771,9 +777,7 @@ export default function ReportsPage() {
 
               <div className="stat-card">
                 <div className="stat-icon-badge" style={{ color: 'var(--green)', background: 'rgba(34, 197, 94, 0.12)' }}>
-                  <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 2a4 4 0 00-4 4v2a2 2 0 002 2h4a2 2 0 002-2V6a4 4 0 00-4-4z" />
-                  </svg>
+                  <DentalIcon size={20} />
                 </div>
                 <div className="stat-info">
                   <span className="stat-value">{loading ? '—' : (consSummary.dental_count ?? 0)}</span>

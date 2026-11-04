@@ -1,4 +1,5 @@
 import React from 'react'
+import Dropdown from '../Dropdown'
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -53,33 +54,23 @@ export default function PeriodFilter({
       {/* Date / Month / Year selectors */}
       <div className="dash-period-selectors">
         {period === 'daily' && (
-          <select
-            className="dash-period-select"
-            value={month}
-            onChange={(e) => setMonth(parseInt(e.target.value, 10))}
-            aria-label="Select Month"
-          >
-            {MONTH_NAMES.map((name, idx) => (
-              <option key={idx + 1} value={idx + 1}>
-                {name}
-              </option>
-            ))}
-          </select>
+          <Dropdown
+            variant="compact"
+            value={String(month)}
+            onChange={(v) => setMonth(parseInt(v, 10))}
+            options={MONTH_NAMES.map((name, idx) => ({ value: String(idx + 1), label: name }))}
+            ariaLabel="Select Month"
+          />
         )}
 
         {(period === 'daily' || period === 'monthly') && (
-          <select
-            className="dash-period-select"
-            value={year}
-            onChange={(e) => setYear(parseInt(e.target.value, 10))}
-            aria-label="Select Year"
-          >
-            {yearsList.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
+          <Dropdown
+            variant="compact"
+            value={String(year)}
+            onChange={(v) => setYear(parseInt(v, 10))}
+            options={yearsList.map((y) => ({ value: String(y), label: String(y) }))}
+            ariaLabel="Select Year"
+          />
         )}
 
         {period === 'yearly' && (

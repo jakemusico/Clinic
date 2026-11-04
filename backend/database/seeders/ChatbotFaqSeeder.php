@@ -225,7 +225,14 @@ class ChatbotFaqSeeder extends Seeder
             ],
         ];
 
+        // Answers that depend on Clinic Info / Staff Schedules use {placeholders}
+        // (see database/seeders/data/chatbot_faq_answers.php) instead of typed values.
+        $templates = require database_path('seeders/data/chatbot_faq_answers.php');
+
         foreach ($faqs as $data) {
+            if (isset($templates[$data['question']])) {
+                $data['answer'] = $templates[$data['question']];
+            }
             ChatbotFaq::create($data);
         }
 

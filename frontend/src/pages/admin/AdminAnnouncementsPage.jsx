@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'react-hot-toast'
 import DashboardLayout from '../../components/DashboardLayout'
 import Pagination from '../../components/Pagination'
+import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/ConfirmModal'
 import { announcementsApi } from '../../api/announcements'
 
@@ -259,14 +260,16 @@ export default function AdminAnnouncementsPage() {
 
               <div className="form-group">
                 <label>Audience</label>
-                <select
+                <Dropdown
+                  ariaLabel="Audience"
                   value={form.audience}
-                  onChange={e => setForm(f => ({ ...f, audience: e.target.value }))}
-                >
-                  <option value="All">All (Campus-wide)</option>
-                  <option value="Students">Students Only</option>
-                  <option value="Staff">Staff (Nurse &amp; Dentist)</option>
-                </select>
+                  onChange={v => setForm(f => ({ ...f, audience: v }))}
+                  options={[
+                    { value: 'All', label: 'All (Campus-wide)' },
+                    { value: 'Students', label: 'Students Only' },
+                    { value: 'Staff', label: 'Staff (Nurse & Dentist)' },
+                  ]}
+                />
               </div>
 
               <div className="modal-footer">

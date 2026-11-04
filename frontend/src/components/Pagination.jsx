@@ -1,4 +1,5 @@
 import React from 'react'
+import Dropdown from './Dropdown'
 
 /**
  * Collapsed page numbers generator:
@@ -60,18 +61,14 @@ export default function Pagination({
         {/* Rows per page dropdown */}
         {onPageSizeChange && (
           <div className="pagination-size-wrap">
-            <select
-              className="pagination-select"
+            <Dropdown
+              variant="compact"
+              ariaLabel="Rows per page"
               value={pageSize}
-              onChange={(e) => onPageSizeChange(Number(e.target.value))}
-              aria-label="Rows per page"
-            >
-              {pageSizeOptions.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt} / page
-                </option>
-              ))}
-            </select>
+              onChange={(v) => onPageSizeChange(Number(v))}
+              options={pageSizeOptions.map((opt) => ({ value: opt, label: `${opt} / page` }))}
+              style={{ width: '112px', minWidth: 0 }}
+            />
           </div>
         )}
 

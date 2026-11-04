@@ -32,7 +32,7 @@ class ChatController extends Controller
 
     /**
      * Check if the user is authorized to view or send in this conversation.
-     * Enforce Rule 6: Admin has no access. Only student and the staff role.
+     * Enforce Rule 6: Admin has no access. Only student/faculty and the staff role.
      */
     protected function authorizeConversation(User $user, Conversation $conversation): bool
     {
@@ -40,7 +40,7 @@ class ChatController extends Controller
             return false;
         }
 
-        if ($user->isStudent()) {
+        if ($user->isStudent() || $user->role === 'faculty_staff') {
             return (int) $conversation->student_id === (int) $user->id;
         }
 
@@ -202,13 +202,13 @@ class ChatController extends Controller
 
     /**
      * GET /api/chat/student/conversation
-     * Find or create conversation for the logged-in student with the given staff_role.
+     * Find or create conversation for the logged-in student/faculty with the given staff_role.
      */
     public function getStudentConversation(Request $request): JsonResponse
     {
         $user = $request->user();
-        if (!$user->isStudent()) {
-            return response()->json(['message' => 'Only students can access this endpoint.'], 403);
+        if (!$user->isStudent() && $user->role !== 'faculty_staff') {
+            return response()->json(['message' => 'Only students and faculty/staff can access this endpoint.'], 403);
         }
 
         $staffRole = strtolower($request->query('staff_role', 'nurse'));
@@ -246,12 +246,12 @@ class ChatController extends Controller
 
     /**
      * GET /api/chat/student/unread-count
-     * Unread staff replies for the student's Help Assistant bubble badge.
+     * Unread staff replies for the student/faculty's Help Assistant bubble badge.
      */
     public function getStudentUnreadCount(Request $request): JsonResponse
     {
         $user = $request->user();
-        if (!$user->isStudent()) {
+        if (!$user->isStudent() && $user->role !== 'faculty_staff') {
             return response()->json(['unread_count' => 0]);
         }
 
@@ -268,12 +268,12 @@ class ChatController extends Controller
 
     /**
      * POST /api/chat/student/read-all
-     * Mark all unread staff replies to the student as read when chat is opened.
+     * Mark all unread staff replies to the student/faculty as read when chat is opened.
      */
     public function markStudentAllRead(Request $request): JsonResponse
     {
         $user = $request->user();
-        if ($user->isStudent()) {
+        if ($user->isStudent() || $user->role === 'faculty_staff') {
             Message::whereHas('conversation', function ($q) use ($user) {
                 $q->where('student_id', $user->id);
             })
@@ -309,7 +309,7 @@ class ChatController extends Controller
 
         $query = Conversation::where('staff_role', $staffRole)
             ->with([
-                'student:id,name,first_name,last_name,grade_level,section,avatar',
+                'student:id,name,title,first_name,middle_name,last_name,suffix,role,role_id,department,grade_level,section,avatar',
                 'latestMessage',
             ])
             ->withCount([
@@ -380,7 +380,7 @@ class ChatController extends Controller
             ->update(['read_at' => now()]);
 
         $conversation->load([
-            'student:id,name,first_name,last_name,grade_level,section,avatar',
+            'student:id,name,title,first_name,middle_name,last_name,suffix,role,role_id,department,grade_level,section,avatar',
             'messages' => function ($q) {
                 $q->withTrashed()->orderBy('created_at');
             },
@@ -423,7 +423,7 @@ class ChatController extends Controller
                 return response()->json([
                     'message'      => $existing,
                     'conversation' => $conversation->fresh([
-                        'student:id,name,first_name,last_name,grade_level,section,avatar',
+                        'student:id,name,title,first_name,middle_name,last_name,suffix,role,role_id,department,grade_level,section,avatar',
                     ]),
                 ], 200);
             }
@@ -447,23 +447,23 @@ class ChatController extends Controller
             'edited_at'       => null,
         ]);
 
-        // If student sends a message to a resolved conversation, reopen it
-        if ($user->isStudent() && $conversation->status === 'resolved') {
+        // If student/faculty sends a message to a resolved conversation, reopen it
+        if (($user->isStudent() || $user->role === 'faculty_staff') && $conversation->status === 'resolved') {
             $conversation->status = 'open';
         }
         $conversation->last_message_at = now();
         $conversation->save();
 
         // Notification Dispatch (Rule 5)
-        // A new message notifies the staff role; a reply notifies the student.
+        // A new message notifies the staff role; a reply notifies the student/faculty.
         // Clicking the notification opens the conversation.
         try {
-            if ($user->isStudent()) {
+            if ($user->isStudent() || $user->role === 'faculty_staff') {
                 // NURSE and DENTIST side:
-                // Stop creating "New message from [student]" notifications.
+                // Stop creating "New message from [student/faculty]" notifications.
                 // Nurse and Dentist rely on the Messages sidebar item badge and conversation unread indicator.
             } else {
-                // Reply sent by staff -> Notify student
+                // Reply sent by staff -> Notify student/faculty
                 $roleLabel = $conversation->staff_role === 'dentist' ? 'Dentist' : 'Nurse';
                 $snippet = Str::limit($body, 90);
 
@@ -487,7 +487,7 @@ class ChatController extends Controller
         return response()->json([
             'message'      => $message,
             'conversation' => $conversation->fresh([
-                'student:id,name,first_name,last_name,grade_level,section,avatar',
+                'student:id,name,title,first_name,middle_name,last_name,suffix,role,role_id,department,grade_level,section,avatar',
             ]),
         ], 201);
     }
@@ -556,7 +556,7 @@ class ChatController extends Controller
     public function updateStatus(Request $request, Conversation $conversation): JsonResponse
     {
         $user = $request->user();
-        if ($user->isAdmin() || $user->isStudent()) {
+        if ($user->isAdmin() || $user->isStudent() || $user->role === 'faculty_staff') {
             return response()->json(['message' => 'Only clinic staff can update conversation status.'], 403);
         }
 
@@ -582,7 +582,7 @@ class ChatController extends Controller
     public function getUnreadCount(Request $request): JsonResponse
     {
         $user = $request->user();
-        if ($user->isAdmin() || $user->isStudent()) {
+        if ($user->isAdmin() || $user->isStudent() || $user->role === 'faculty_staff') {
             return response()->json(['unread_count' => 0]);
         }
 

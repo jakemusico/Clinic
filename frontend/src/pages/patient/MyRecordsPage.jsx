@@ -7,6 +7,7 @@ import Pagination from '../../components/Pagination'
 import { recordsApi } from '../../api/records'
 import { dentalApi } from '../../api/dental'
 import Avatar from '../../components/Avatar'
+import DentalIcon from '../../components/DentalIcon'
 
 const Icon = ({ d, size = 16 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
@@ -17,7 +18,6 @@ const Icon = ({ d, size = 16 }) => (
 
 const ICONS = {
   records:     'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8',
-  dentalChart: 'M12 2a4 4 0 00-4 4v2a2 2 0 002 2h4a2 2 0 002-2V6a4 4 0 00-4-4zM6 14a2 2 0 012-2h8a2 2 0 012 2v4a4 4 0 01-4 4h-4a4 4 0 01-4-4v-4z',
 }
 
 const formatDate = (dateStr) => {
@@ -375,7 +375,7 @@ export default function MyRecordsPage() {
               className={`tab-btn ${activeTab === 'dental' ? 'active' : ''}`}
               onClick={() => setActiveTab('dental')}
             >
-              <Icon d={ICONS.dentalChart} size={16} />
+              <DentalIcon size={16} />
               Dental Records ({dentalRecords.length})
             </button>
           </div>

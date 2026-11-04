@@ -1,9 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { toast } from 'react-hot-toast'
 import DashboardLayout from '../../components/DashboardLayout'
-import StyledSelect from '../../components/StyledSelect'
-import Pagination from '../../components/Pagination'
+import Dropdown from '../../components/Dropdown'
+import InventoryFilterBar from '../../components/InventoryFilterBar'
+import InventoryTableShell, { InventoryEmptyState } from '../../components/InventoryTableShell'
+import SortableTh from '../../components/SortableTh'
+import useServerTable from '../../hooks/useServerTable'
 import { inventoryApi } from '../../api/inventory'
+import { inventoryItemOption, ACTION_BUTTON_STYLE } from '../../utils/inventoryOptions'
 import { formatDate, isDateExpired, isDateExpiringSoon } from '../../utils/dateUtils'
 
 const BLANK_BATCH = {
@@ -16,59 +20,51 @@ const BLANK_BATCH = {
   notes: '',
 }
 
+const FILTER_DEFAULTS = { category: 'all', date_from: '', date_to: '' }
+
+// Search, filters, sorting and paging all run in the API (GET /inventory/batches)
+const fetchBatches = async ({ search, category, date_from, date_to, sort_by, sort_dir, page, per_page }) => {
+  const { data } = await inventoryApi.listBatches({
+    search:        search || undefined,
+    category:      category !== 'all' ? category : undefined,
+    received_from: date_from || undefined,
+    received_to:   date_to || undefined,
+    sort_by,
+    sort_dir,
+    page,
+    per_page,
+  })
+  const rows = data.batches || data.data || []
+  return { rows, total: data.total ?? rows.length, lastPage: data.last_page || 1 }
+}
+
 export default function StockInPage() {
-  const [batches,           setBatches]           = useState([])
-  const [items,             setItems]             = useState([])
-  const [loading,           setLoading]           = useState(true)
+  const table = useServerTable({
+    fetchRows: fetchBatches,
+    defaultSort: { by: 'received', dir: 'desc' },       // newest received first
+    filterDefaults: FILTER_DEFAULTS,
+    errorMessage: 'Failed to load batches.',
+  })
+  const { filters, sortBy, sortDir, handleSort } = table
+
+  const [items,             setItems]             = useState([])   // active stockable items for the modal
   const [modal,             setModal]             = useState(false)
   const [form,              setForm]              = useState(BLANK_BATCH)
   const [saving,            setSaving]            = useState(false)
-  const [filterItem,        setFilterItem]        = useState('')
-  const [modalItems,        setModalItems]        = useState([])
   const [loadingModalItems, setLoadingModalItems] = useState(false)
-  const [page,              setPage]              = useState(1)
-  const [pageSize,          setPageSize]          = useState(10)
-  const [lastPage,          setLastPage]          = useState(1)
-  const [total,             setTotal]             = useState(0)
 
-  const load = async () => {
-    setLoading(true)
-    try {
-      const [bRes, iRes] = await Promise.all([
-        inventoryApi.listBatches({ item_id: filterItem, page, per_page: pageSize }),
-        inventoryApi.listItems({ status: 'active', all: true }),
-      ])
-      setBatches(bRes.data.batches || bRes.data.data || [])
-      setLastPage(bRes.data.last_page || 1)
-      setTotal(bRes.data.total ?? (bRes.data.batches || []).length)
-      setItems((iRes.data.items || []).filter(i => i.category !== 'Equipment' && Boolean(i.is_active)))
-    } catch {
-      toast.error('Failed to load batches.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => { load() }, [filterItem, page, pageSize])
-  useEffect(() => { setPage(1) }, [filterItem])
-
-  // Fetch active items from database API every time modal opens
+  // Complete list (NOT paginated, includes zero-stock items). Reloaded every time the modal opens,
+  // so an item created in the Items module is there immediately, with its current stock.
   const openModal = async () => {
     setModal(true)
     setLoadingModalItems(true)
+    setForm(BLANK_BATCH)
     try {
-      const { data } = await inventoryApi.listItems({ status: 'active' })
-      const activeItems = (data.items || []).filter(
-        i => i.category !== 'Equipment' && Boolean(i.is_active)
-      )
-      setModalItems(activeItems)
-      setForm({
-        ...BLANK_BATCH,
-        item_id: activeItems[0]?.id ? String(activeItems[0].id) : '',
-      })
+      const { data } = await inventoryApi.itemOptions({ status: 'active' })
+      setItems(data.items || [])
     } catch {
       toast.error('Failed to load active items.')
-      setModalItems([])
+      setItems([])
     } finally {
       setLoadingModalItems(false)
     }
@@ -79,12 +75,11 @@ export default function StockInPage() {
     setForm(BLANK_BATCH)
   }
 
-  const selectedItem = modalItems.find(i => String(i.id) === String(form.item_id))
-    || items.find(i => String(i.id) === String(form.item_id))
+  const selectedItem = items.find(i => String(i.id) === String(form.item_id))
   const isMedicine = selectedItem?.category === 'Medicine'
 
   const handleSave = async () => {
-    if (modalItems.length === 0) {
+    if (items.length === 0) {
       toast.error('No active items available. Add or activate an item in Items first.')
       return
     }
@@ -108,128 +103,121 @@ export default function StockInPage() {
         quantity_in: parseInt(form.quantity_in),
         item_id: parseInt(form.item_id),
       })
-      setBatches(p => [data.batch, ...p])
       toast.success(data.message || 'Stock received successfully.')
       closeModal()
-      load()
+      table.refreshFromStart()
     } catch (e) {
-      toast.error(e.response?.data?.message || 'Failed to save batch.')
+      const errors = e.response?.data?.errors
+      toast.error((errors && Object.values(errors)[0]?.[0]) || e.response?.data?.message || 'Failed to save batch.')
     } finally {
       setSaving(false)
     }
   }
 
-  const filtered = batches.filter(b => {
-    if (!filterItem) return true
-    return String(b.item_id) === String(filterItem)
-  }).filter(b => {
-    if (!filterItem) return true
-    return String(b.item_id) === String(filterItem)
-  })
+  // Name, category and available stock are shown in the list
+  const itemOptions = items.map(i => inventoryItemOption(i))
 
-  const itemOptions = modalItems.map(i => ({
-    value: String(i.id),
-    label: i.name,
-    badge: i.category,
-    sublabel: `${i.current_stock ?? 0} ${i.unit}`,
-  }))
-
-  const filterOptions = [
-    { value: '', label: 'All Items' },
-    ...items.map(i => ({ value: String(i.id), label: i.name, badge: i.category })),
-  ]
+  const sortProps = { activeKey: sortBy, dir: sortDir, onSort: handleSort }
 
   return (
     <DashboardLayout title="Stock In" subtitle="Receive and record incoming inventory batches.">
-      {/* Top Filter Bar */}
-      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem', alignItems: 'center' }}>
-        <div style={{ width: '240px' }}>
-          <StyledSelect
-            value={filterItem}
-            onChange={e => setFilterItem(e.target.value)}
-            options={filterOptions}
-            placeholder="All Items"
-          />
-        </div>
-        <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={openModal}>
-          + Receive Stock
-        </button>
-      </div>
+      <div className="inventory-items-container">
+        <InventoryFilterBar
+          searchValue={table.searchInput}
+          onSearchChange={table.setSearchInput}
+          searchPlaceholder="Search item or batch no..."
+          category={filters.category}
+          onCategoryChange={v => table.setFilter('category', v)}
+          dateFrom={filters.date_from}
+          dateTo={filters.date_to}
+          onDateChange={({ from, to }) => table.setFilters({ date_from: from, date_to: to })}
+          actions={
+            <button type="button" className="btn-primary" onClick={openModal} style={ACTION_BUTTON_STYLE}>
+              + Receive Stock
+            </button>
+          }
+        />
 
-      {loading ? (
-        <div className="table-loading"><span className="loader-ring" /></div>
-      ) : filtered.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-          No batches found. <button className="btn-primary" style={{ marginTop: '0.5rem' }} onClick={openModal}>Receive First Batch</button>
-        </div>
-      ) : (
-        <>
-          <div className="data-table-wrap" style={{ overflowX: 'auto', marginBottom: '1rem' }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th>Batch No.</th>
-                  <th>Supplier</th>
-                  <th style={{ textAlign: 'center' }}>Qty In</th>
-                  <th style={{ textAlign: 'center' }}>Remaining</th>
-                  <th>Expiry</th>
-                  <th>Received</th>
-                  <th>Received By</th>
+        <InventoryTableShell
+          loading={table.loading}
+          loaded={table.loaded}
+          isEmpty={table.rows.length === 0}
+          empty={
+            <InventoryEmptyState
+              title="No batches found"
+              message={table.hasActiveFilters
+                ? 'No batches match your active search and filter criteria.'
+                : 'No stock has been received yet.'}
+              hasFilters={table.hasActiveFilters}
+              onClearFilters={table.resetFilters}
+              actionLabel="Receive First Batch"
+              onAction={openModal}
+            />
+          }
+          pagination={{
+            currentPage: table.page,
+            totalPages: table.lastPage,
+            totalItems: table.total,
+            pageSize: table.pageSize,
+            onPageChange: table.setPage,
+            onPageSizeChange: table.setPageSize,
+          }}
+        >
+          <table className="data-table">
+            <thead>
+              <tr>
+                <SortableTh label="Item" sortKey="item" {...sortProps} />
+                <th>Batch No.</th>
+                <th>Supplier</th>
+                <SortableTh label="Qty In" sortKey="quantity_in" align="center" {...sortProps} />
+                <SortableTh label="Remaining" sortKey="remaining" align="center" {...sortProps} />
+                <SortableTh label="Expiry" sortKey="expiry" {...sortProps} />
+                <SortableTh label="Received" sortKey="received" {...sortProps} />
+                <th>Received By</th>
+              </tr>
+            </thead>
+            <tbody>
+              {table.rows.map(b => (
+                <tr key={b.id}>
+                  <td style={{ fontWeight: 600, fontSize: '0.84rem' }}>{b.item?.name || '—'}</td>
+                  <td style={{ fontSize: '0.82rem' }}>{b.batch_no || '—'}</td>
+                  <td style={{ fontSize: '0.82rem' }}>{b.supplier || '—'}</td>
+                  <td style={{ textAlign: 'center', fontSize: '0.83rem' }}>{b.quantity_in}</td>
+                  <td style={{ textAlign: 'center' }}>
+                    <span className={`status-badge ${b.remaining === 0 ? 'cancelled' : 'completed'}`} style={{ fontSize: '0.72rem' }}>
+                      {b.remaining}
+                    </span>
+                  </td>
+                  <td style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+                    {(() => {
+                      const formatted = formatDate(b.expiry_date)
+                      if (formatted === '—') return '—'
+
+                      const expired = Boolean(b.is_expired ?? isDateExpired(b.expiry_date))
+                      const expiringSoon = !expired && Boolean(b.is_expiring_soon ?? isDateExpiringSoon(b.expiry_date))
+
+                      return (
+                        <span
+                          style={{
+                            color: expired ? 'var(--danger, #ef4444)' : expiringSoon ? '#d97706' : 'inherit',
+                            fontWeight: expired || expiringSoon ? 600 : 'normal',
+                          }}
+                        >
+                          {formatted}
+                          {expired && ' (Expired)'}
+                          {expiringSoon && ' (Soon)'}
+                        </span>
+                      )
+                    })()}
+                  </td>
+                  <td style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{formatDate(b.received_date)}</td>
+                  <td style={{ fontSize: '0.82rem' }}>{b.received_by?.name || '—'}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {filtered.map(b => (
-                  <tr key={b.id}>
-                    <td style={{ fontWeight: 600, fontSize: '0.84rem' }}>{b.item?.name || '—'}</td>
-                    <td style={{ fontSize: '0.82rem' }}>{b.batch_no || '—'}</td>
-                    <td style={{ fontSize: '0.82rem' }}>{b.supplier || '—'}</td>
-                    <td style={{ textAlign: 'center', fontSize: '0.83rem' }}>{b.quantity_in}</td>
-                    <td style={{ textAlign: 'center' }}>
-                      <span className={`status-badge ${b.remaining === 0 ? 'cancelled' : 'completed'}`} style={{ fontSize: '0.72rem' }}>
-                        {b.remaining}
-                      </span>
-                    </td>
-                    <td style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-                      {(() => {
-                        const formatted = formatDate(b.expiry_date)
-                        if (formatted === '—') return '—'
-
-                        const expired = Boolean(b.is_expired ?? isDateExpired(b.expiry_date))
-                        const expiringSoon = !expired && Boolean(b.is_expiring_soon ?? isDateExpiringSoon(b.expiry_date))
-
-                        return (
-                          <span
-                            style={{
-                              color: expired ? 'var(--danger, #ef4444)' : expiringSoon ? '#d97706' : 'inherit',
-                              fontWeight: expired || expiringSoon ? 600 : 'normal',
-                            }}
-                          >
-                            {formatted}
-                            {expired && ' (Expired)'}
-                            {expiringSoon && ' (Soon)'}
-                          </span>
-                        )
-                      })()}
-                    </td>
-                    <td style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{formatDate(b.received_date)}</td>
-                    <td style={{ fontSize: '0.82rem' }}>{b.received_by?.name || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <Pagination
-            currentPage={page}
-            totalPages={lastPage}
-            totalItems={total}
-            pageSize={pageSize}
-            onPageChange={setPage}
-            onPageSizeChange={(newSize) => { setPageSize(newSize); setPage(1) }}
-          />
-        </>
-      )}
+              ))}
+            </tbody>
+          </table>
+        </InventoryTableShell>
+      </div>
 
       {/* Receive Stock Modal */}
       {modal && (
@@ -246,18 +234,21 @@ export default function StockInPage() {
                   <div style={{ padding: '0.65rem 0.95rem', background: 'var(--bg-crust, #f8fafc)', border: '1.5px solid var(--border, #cbd5e1)', borderRadius: 'var(--radius-sm, 6px)', fontSize: '0.85rem', color: 'var(--text-muted, #64748b)' }}>
                     Loading active items…
                   </div>
-                ) : modalItems.length === 0 ? (
+                ) : items.length === 0 ? (
                   <div style={{ padding: '0.75rem 1rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 'var(--radius-sm, 6px)', color: '#92400e', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <span>No active items. Add or activate an item in Items first.</span>
                   </div>
                 ) : (
-                  <StyledSelect
+                  <Dropdown
                     value={form.item_id}
-                    onChange={e => setForm(p => ({ ...p, item_id: e.target.value }))}
+                    onChange={v => setForm(p => ({ ...p, item_id: v }))}
                     options={itemOptions}
                     placeholder="— Select Item —"
-                    emptyMessage="No active items. Add or activate an item in Items first."
+                    noOptionsMessage="No active items. Add or activate an item in Items first."
                   />
+                )}
+                {!loadingModalItems && items.length > 0 && (
+                  <div className="form-hint">{items.length} active item{items.length !== 1 ? 's' : ''} · type to search by name or category</div>
                 )}
               </div>
 
@@ -334,7 +325,7 @@ export default function StockInPage() {
               <button
                 className="btn-primary"
                 onClick={handleSave}
-                disabled={saving || modalItems.length === 0}
+                disabled={saving || items.length === 0}
               >
                 {saving ? 'Saving…' : 'Receive Stock'}
               </button>

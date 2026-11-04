@@ -4,7 +4,7 @@ import { calendarApi } from '../../api/calendar'
 import { toast } from 'react-hot-toast'
 import Pagination from '../../components/Pagination'
 import { usePagination } from '../../hooks/usePagination'
-import StyledSelect from '../../components/StyledSelect'
+import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/ConfirmModal'
 
 const EVENT_TYPES = ['Clinic Closure', 'Health Activity', 'Holiday', 'Announcement']
@@ -196,13 +196,13 @@ export default function AdminCalendarPage() {
 
         {/* Type filter */}
         <div style={{ minWidth: '150px' }}>
-          <StyledSelect
+          <Dropdown
+            variant="filter"
+            ariaLabel="Event type"
             value={typeFilter}
-            onChange={e => { setTypeFilter(e.target.value); pagination.setPage(1) }}
-          >
-            <option value="All">All Types</option>
-            {EVENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-          </StyledSelect>
+            onChange={v => { setTypeFilter(v); pagination.setPage(1) }}
+            options={[{ value: 'All', label: 'All Types' }, ...EVENT_TYPES.map(t => ({ value: t, label: t }))]}
+          />
         </div>
 
         {/* Add Event — pushed to far right */}
@@ -311,21 +311,21 @@ export default function AdminCalendarPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div className="form-group">
                     <label>Type</label>
-                    <select
+                    <Dropdown
+                      ariaLabel="Type"
                       value={formData.type}
-                      onChange={e => setFormData({ ...formData, type: e.target.value })}
-                    >
-                      {EVENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
+                      onChange={v => setFormData({ ...formData, type: v })}
+                      options={EVENT_TYPES}
+                    />
                   </div>
                   <div className="form-group">
                     <label>Audience</label>
-                    <select
+                    <Dropdown
+                      ariaLabel="Audience"
                       value={formData.audience}
-                      onChange={e => setFormData({ ...formData, audience: e.target.value })}
-                    >
-                      {AUDIENCES.map(a => <option key={a} value={a}>{a}</option>)}
-                    </select>
+                      onChange={v => setFormData({ ...formData, audience: v })}
+                      options={AUDIENCES}
+                    />
                   </div>
                 </div>
 

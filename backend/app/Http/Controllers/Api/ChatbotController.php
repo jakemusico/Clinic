@@ -7,6 +7,7 @@ use App\Models\ChatbotFaq;
 use App\Models\ChatbotQuestionLog;
 use App\Models\Conversation;
 use App\Models\Message;
+use App\Services\FaqPlaceholders;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,11 +26,28 @@ use Illuminate\Support\Facades\DB;
  */
 class ChatbotController extends Controller
 {
-    /** Contact-staff fallback response */
-    private const FALLBACK = [
-        'type'    => 'fallback',
-        'message' => "I'm sorry, I couldn't find an answer to your question.\n\nPlease contact the clinic staff directly:\nClinic hotline: (02) 8888-0000\nEmail: clinic@university.edu\nHours: Mon–Fri, 8:00 AM – 5:00 PM",
-    ];
+    public function __construct(private FaqPlaceholders $placeholders)
+    {
+    }
+
+    /**
+     * Contact-staff fallback response.
+     * Contact details come from Admin > Clinic Info, never from typed text.
+     */
+    private function fallbackResponse(): array
+    {
+        return [
+            'type'    => 'fallback',
+            'message' => $this->placeholders->render(
+                "I'm sorry, I couldn't find an answer to your question.\n\n"
+                . "Please contact the clinic staff directly:\n"
+                . "Hotline: {clinic_hotline}\n"
+                . "Email: {clinic_email}\n"
+                . "Clinic days: {clinic_days}\n"
+                . "Hours: {clinic_hours}"
+            ),
+        ];
+    }
 
     /**
      * POST /api/chatbot/message
@@ -110,7 +128,7 @@ class ChatbotController extends Controller
             return response()->json([
                 'type'     => 'answer',
                 'question' => $best->question,
-                'answer'   => $best->answer,
+                'answer'   => $this->placeholders->render($best->answer),
                 'category' => $best->category,
                 'faq_id'   => $best->id,
                 'hint'     => 'Type "menu" to see all topics.',
@@ -125,7 +143,7 @@ class ChatbotController extends Controller
             'user_id'  => auth()->id(),
         ]);
 
-        return response()->json(self::FALLBACK);
+        return response()->json($this->fallbackResponse());
     }
 
     /**
@@ -234,7 +252,7 @@ class ChatbotController extends Controller
             ->get(['id', 'question', 'category']);
 
         if ($faqs->isEmpty()) {
-            return self::FALLBACK;
+            return $this->fallbackResponse();
         }
 
         $label = $subtopicNames[$category] ?? ucfirst($category);

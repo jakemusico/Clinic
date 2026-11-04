@@ -4,7 +4,8 @@ import DashboardLayout from '../../components/DashboardLayout'
 import PrintableRecord from '../../components/PrintableRecord'
 import { ViewDentalConsultationModal } from '../../components/ViewDentalConsultationModal'
 import Pagination from '../../components/Pagination'
-import StyledSelect, { DateInput } from '../../components/StyledSelect'
+import DateInput from '../../components/DateInput'
+import Dropdown from '../../components/Dropdown'
 import { dentalApi } from '../../api/dental'
 import { recordsApi } from '../../api/records'
 import { servicesApi } from '../../api/services'
@@ -399,18 +400,17 @@ export default function DentalConsultationsPage() {
               <div className="form-row">
                 <div className="form-group">
                   <label>Select Patient *</label>
-                  <select
-                    value={formData.patient_id}
-                    onChange={(e) => setFormData({ ...formData, patient_id: e.target.value })}
+                  <Dropdown
+                    value={String(formData.patient_id ?? '')}
+                    onChange={(v) => setFormData({ ...formData, patient_id: v })}
+                    options={patients.map(p => ({
+                      value: String(p.id),
+                      label: `${p.name} (${p.student_id || p.email})`,
+                    }))}
+                    placeholder="Select patient"
+                    noOptionsMessage="No patients available"
                     required
-                  >
-                    <option value="">Select patient</option>
-                    {patients.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({p.student_id || p.email})
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
                 <div className="form-group">
                   <label>Consultation Date *</label>
@@ -425,21 +425,18 @@ export default function DentalConsultationsPage() {
 
               <div className="form-group">
                 <label>Dental Service</label>
-                <select
-                  value={formData.service_name}
-                  onChange={(e) => handleServiceChange(e.target.value)}
-                >
-                  <option value="">Select dental service</option>
-                  {services.map(s => (
-                    <option key={s.id} value={s.name}>
-                      {s.name} ({s.duration_minutes}m)
-                    </option>
-                  ))}
-                  {/* Preserve pre-filled value if not yet in services list */}
-                  {formData.service_name && !services.some(s => s.name === formData.service_name) && (
-                    <option value={formData.service_name}>{formData.service_name}</option>
-                  )}
-                </select>
+                <Dropdown
+                  value={formData.service_name || ''}
+                  onChange={(v) => handleServiceChange(v)}
+                  options={[
+                    ...services.map(s => ({ value: s.name, label: `${s.name} (${s.duration_minutes}m)` })),
+                    // Preserve pre-filled value if not yet in services list
+                    ...(formData.service_name && !services.some(s => s.name === formData.service_name)
+                      ? [{ value: formData.service_name, label: formData.service_name }]
+                      : []),
+                  ]}
+                  placeholder="Select dental service"
+                />
               </div>
 
               <div className="form-group">
@@ -454,21 +451,15 @@ export default function DentalConsultationsPage() {
 
               <div className="form-group">
                 <label>Complaint Category</label>
-                <select
+                <Dropdown
                   value={formData.complaint_category || ''}
-                  onChange={(e) => setFormData({ ...formData, complaint_category: e.target.value })}
-                >
-                  <option value="">-- Select Category --</option>
-                  <option value="Toothache">Toothache</option>
-                  <option value="Dental Cleaning">Dental Cleaning</option>
-                  <option value="Extraction">Extraction</option>
-                  <option value="Tooth Filling">Tooth Filling</option>
-                  <option value="Cavity/Decay">Cavity/Decay</option>
-                  <option value="Gum Problem">Gum Problem</option>
-                  <option value="Fever/Flu">Fever/Flu</option>
-                  <option value="Headache">Headache</option>
-                  <option value="Other">Other</option>
-                </select>
+                  onChange={(v) => setFormData({ ...formData, complaint_category: v })}
+                  options={[
+                    'Toothache', 'Dental Cleaning', 'Extraction', 'Tooth Filling', 'Cavity/Decay',
+                    'Gum Problem', 'Fever/Flu', 'Headache', 'Other',
+                  ]}
+                  placeholder="-- Select Category --"
+                />
               </div>
             </div>
           </div>
@@ -584,18 +575,21 @@ export default function DentalConsultationsPage() {
                         <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)' }}>
                           Tooth #{num}
                         </span>
-                        <select
+                        <Dropdown
+                          variant="compact"
+                          ariaLabel={`Condition of tooth ${num}`}
                           value={toothConditions[num] || deriveDefaultCondition(formData.service_name)}
-                          onChange={(e) => setToothConditions(prev => ({ ...prev, [num]: e.target.value }))}
-                          style={{ fontSize: '0.8rem', padding: '0.3rem 0.5rem', width: 'auto', flex: 1 }}
-                        >
-                          <option value="extracted">Extracted</option>
-                          <option value="filled">Filled / Restoration</option>
-                          <option value="treated">Crown / Root Canal</option>
-                          <option value="cavity">Cavity / Caries</option>
-                          <option value="healthy">Healthy</option>
-                          <option value="missing">Missing</option>
-                        </select>
+                          onChange={v => setToothConditions(prev => ({ ...prev, [num]: v }))}
+                          options={[
+                            { value: 'extracted', label: 'Extracted' },
+                            { value: 'filled', label: 'Filled / Restoration' },
+                            { value: 'treated', label: 'Crown / Root Canal' },
+                            { value: 'cavity', label: 'Cavity / Caries' },
+                            { value: 'healthy', label: 'Healthy' },
+                            { value: 'missing', label: 'Missing' },
+                          ]}
+                          style={{ flex: 1, minWidth: 0 }}
+                        />
                       </div>
                     ))}
                   </div>
@@ -757,15 +751,12 @@ export default function DentalConsultationsPage() {
                     <div className="filter-popover-title" style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-sub)', marginBottom: '0.35rem' }}>
                       Dental Service
                     </div>
-                    <StyledSelect
+                    <Dropdown
+                      variant="filter"
                       value={filterService}
-                      onChange={e => setFilterService(e.target.value)}
-                    >
-                      <option value="all">All Dental Services</option>
-                      {distinctServices.map(s => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </StyledSelect>
+                      onChange={setFilterService}
+                      options={[{ value: 'all', label: 'All Dental Services' }, ...distinctServices.map(s => ({ value: s, label: s }))]}
+                    />
                   </div>
 
                   {distinctDentists.length > 1 && (
@@ -773,15 +764,12 @@ export default function DentalConsultationsPage() {
                       <div className="filter-popover-title" style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-sub)', marginBottom: '0.35rem' }}>
                         Attending Dentist
                       </div>
-                      <StyledSelect
+                      <Dropdown
+                        variant="filter"
                         value={filterDentist}
-                        onChange={e => setFilterDentist(e.target.value)}
-                      >
-                        <option value="all">All Dentists</option>
-                        {distinctDentists.map(d => (
-                          <option key={d} value={d}>{d}</option>
-                        ))}
-                      </StyledSelect>
+                        onChange={setFilterDentist}
+                        options={[{ value: 'all', label: 'All Dentists' }, ...distinctDentists.map(d => ({ value: d, label: d }))]}
+                      />
                     </div>
                   )}
 

@@ -824,7 +824,11 @@ export default function StaffMessagesPage() {
                 const isSelected = c.id === selectedId
                 const student = c.student || {}
                 const name = student.name || 'Student'
-                const academic = [student.grade_level, student.section].filter(Boolean).join(' · ') || 'Student'
+                // Show department for faculty/staff, grade/section for students
+                const isFaculty = student.role === 'faculty_staff'
+                const academic = isFaculty
+                  ? (student.department || 'Faculty/Staff')
+                  : ([student.grade_level, student.section].filter(Boolean).join(' · ') || 'Student')
                 const lastSnippet = c.latest_message?.body || 'No messages'
                 const timeText = formatMessageTime(c.last_message_at || c.updated_at)
                 const hasUnread = !isSelected && (c.unread_count || 0) > 0
@@ -1024,7 +1028,9 @@ export default function StaffMessagesPage() {
                       </span>
                     </div>
                     <div style={{ fontSize: '0.76rem', color: 'var(--text-sub)', marginTop: '1px' }}>
-                      {[conversation.student?.grade_level, conversation.student?.section].filter(Boolean).join(' · ') || 'Student'}
+                      {conversation.student?.role === 'faculty_staff'
+                        ? (conversation.student?.department || 'Faculty/Staff')
+                        : ([conversation.student?.grade_level, conversation.student?.section].filter(Boolean).join(' · ') || 'Student')}
                     </div>
                   </div>
                 </div>

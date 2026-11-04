@@ -5,7 +5,7 @@ import EmptyState from './EmptyState'
 export default function DispensedMedicinesTable({
   title = "Recently Dispensed Medicines",
   items = [],
-  viewAllLink = "/admin/inventory/transactions",
+  viewAllLink = "/clinic/inventory/transactions",
   loading = false,
 }) {
   return (

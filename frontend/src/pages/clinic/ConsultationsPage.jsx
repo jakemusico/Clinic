@@ -10,7 +10,8 @@ import { appointmentsApi } from '../../api/appointments'
 import { servicesApi } from '../../api/services'
 import { useAuth } from '../../context/AuthContext'
 import Pagination from '../../components/Pagination'
-import StyledSelect, { DateInput } from '../../components/StyledSelect'
+import DateInput from '../../components/DateInput'
+import Dropdown from '../../components/Dropdown'
 import Avatar from '../../components/Avatar'
 
 export default function ConsultationsPage() {
@@ -271,15 +272,12 @@ export default function ConsultationsPage() {
                     <div className="filter-popover-title" style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-sub)', marginBottom: '0.35rem' }}>
                       Clinic Service
                     </div>
-                    <StyledSelect
+                    <Dropdown
+                      variant="filter"
                       value={filterService}
-                      onChange={e => setFilterService(e.target.value)}
-                    >
-                      <option value="all">All Services</option>
-                      {distinctServices.map(s => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </StyledSelect>
+                      onChange={setFilterService}
+                      options={[{ value: 'all', label: 'All Services' }, ...distinctServices.map(s => ({ value: s, label: s }))]}
+                    />
                   </div>
 
                   {distinctStaff.length > 1 && (
@@ -287,15 +285,12 @@ export default function ConsultationsPage() {
                       <div className="filter-popover-title" style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-sub)', marginBottom: '0.35rem' }}>
                         Attending Nurse / Staff
                       </div>
-                      <StyledSelect
+                      <Dropdown
+                        variant="filter"
                         value={filterStaff}
-                        onChange={e => setFilterStaff(e.target.value)}
-                      >
-                        <option value="all">All Staff</option>
-                        {distinctStaff.map(d => (
-                          <option key={d} value={d}>{d}</option>
-                        ))}
-                      </StyledSelect>
+                        onChange={setFilterStaff}
+                        options={[{ value: 'all', label: 'All Staff' }, ...distinctStaff.map(d => ({ value: d, label: d }))]}
+                      />
                     </div>
                   )}
 

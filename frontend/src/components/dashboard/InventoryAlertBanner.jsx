@@ -35,7 +35,7 @@ export default function InventoryAlertBanner({ alert }) {
           )}
         </span>
       </div>
-      <Link to="/admin/inventory" className="dash-alert-banner-link">
+      <Link to="/clinic/inventory" className="dash-alert-banner-link">
         View Inventory
       </Link>
     </div>

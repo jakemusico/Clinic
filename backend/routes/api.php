@@ -152,6 +152,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::put('faqs/{chatbotFaq}',          [ChatbotFaqController::class, 'update']);
             Route::delete('faqs/{chatbotFaq}',       [ChatbotFaqController::class, 'destroy']);
             Route::patch('faqs/{chatbotFaq}/toggle', [ChatbotFaqController::class, 'toggle']);
+            Route::patch('faqs/{chatbotFaq}/help',   [ChatbotFaqController::class, 'toggleHelp']);
         });
 
         // Chatbot Support Admin Statistics — admin only
@@ -195,6 +196,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('consultation-items', [InventoryController::class, 'consultationItems']);
 
         // Items
+        Route::get('item-options',                       [InventoryController::class, 'itemOptions']);
         Route::get('items',                              [InventoryController::class, 'itemIndex']);
         Route::post('items',                             [InventoryController::class, 'itemStore']);
         Route::put('items/{inventoryItem}',              [InventoryController::class, 'itemUpdate']);

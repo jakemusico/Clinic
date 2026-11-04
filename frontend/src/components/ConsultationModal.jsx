@@ -4,7 +4,8 @@ import { toast } from 'react-hot-toast'
 import { recordsApi } from '../api/records'
 import { appointmentsApi } from '../api/appointments'
 import { servicesApi } from '../api/services'
-import { inventoryApi } from '../api/inventory'
+import { MedicineSupplyPicker } from './MedicineSupplyPicker'
+import Dropdown from './Dropdown'
 import PrintableRecord from './PrintableRecord'
 
 const calcBMI = (weight, height) => {
@@ -84,9 +85,8 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
   const [loadingAppointments, setLoadingAppointments] = useState(false)
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
-  // Inventory
-  const [dispensableItems, setDispensableItems] = useState([])
-  const [invRows, setInvRows] = useState([{ item_id: '', quantity: 1 }])
+  // Inventory - using new MedicineSupplyPicker component
+  const [invRows, setInvRows] = useState([])
 
   // Load patients and services
   useEffect(() => {
@@ -107,23 +107,6 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
       }
     }).finally(() => setLoadingPatients(false))
   }, [isEdit])
-
-  // Load dispensable inventory items
-  useEffect(() => {
-    inventoryApi.dispensable()
-      .then(({ data }) => setDispensableItems(data.items || []))
-      .catch(() => {})
-
-    // For edits, load existing dispensed items
-    if (isEdit && initialData?.id) {
-      inventoryApi.consultationItems('medical', initialData.id)
-        .then(({ data }) => {
-          const rows = (data.items || []).map(i => ({ item_id: String(i.item_id), quantity: i.quantity }))
-          if (rows.length > 0) setInvRows(rows)
-        })
-        .catch(() => {})
-    }
-  }, [isEdit, initialData?.id])
 
   // Update selected patient info
   useEffect(() => {
@@ -213,7 +196,11 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
       vitals: vitalsPayload,
       inventory_items: invRows
         .filter(r => r.item_id && parseInt(r.quantity) > 0)
-        .map(r => ({ item_id: parseInt(r.item_id), quantity: parseInt(r.quantity) })),
+        .map(r => ({
+          item_id: parseInt(r.item_id),
+          quantity: parseInt(r.quantity),
+          dosage_note: r.dosage_note || null,
+        })),
     }
 
     try {
@@ -258,13 +245,17 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
                 {loadingPatients ? (
                   <input disabled value="Loading patients..." />
                 ) : (
-                  <select value={form.patient_id} onChange={e => setField('patient_id', e.target.value)}>
-                    {patients.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({p.student_id || 'No ID'}) — {p.email}
-                      </option>
-                    ))}
-                  </select>
+                  <Dropdown
+                    value={String(form.patient_id ?? '')}
+                    onChange={v => setField('patient_id', v)}
+                    options={patients.map(p => ({
+                      value: String(p.id),
+                      label: `${p.name} (${p.student_id || 'No ID'})`,
+                      badge: p.email,
+                    }))}
+                    placeholder="Select patient"
+                    noOptionsMessage="No patients available"
+                  />
                 )}
               </div>
             ) : (
@@ -290,14 +281,18 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
                 {loadingAppointments ? (
                   <input disabled value="Checking active appointments..." />
                 ) : (
-                  <select value={form.appointment_id} onChange={e => handleAppointmentSelect(e.target.value)}>
-                    <option value="">Direct consultation (no appointment link)</option>
-                    {appointments.map(a => (
-                      <option key={a.id} value={a.id}>
-                        #{a.id} - {a.service?.name || 'General Visit'} ({new Date(a.scheduled_at).toLocaleDateString()})
-                      </option>
-                    ))}
-                  </select>
+                  <Dropdown
+                    value={String(form.appointment_id ?? '')}
+                    onChange={v => handleAppointmentSelect(v)}
+                    options={[
+                      { value: '', label: 'Direct consultation (no appointment link)' },
+                      ...appointments.map(a => ({
+                        value: String(a.id),
+                        label: `#${a.id} - ${a.service?.name || 'General Visit'} (${new Date(a.scheduled_at).toLocaleDateString()})`,
+                      })),
+                    ]}
+                    placeholder="Direct consultation (no appointment link)"
+                  />
                 )}
                 <span className="form-hint">Completing this consultation automatically sets appointment status to Completed.</span>
               </div>
@@ -306,20 +301,17 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
             <div className="form-row">
               <div className="form-group">
                 <label>Clinic Service</label>
-                <select
-                  value={form.service_name}
-                  onChange={e => setField('service_name', e.target.value)}
-                >
-                  <option value="">Select clinic service</option>
-                  {services.map(s => (
-                    <option key={s.id} value={s.name}>
-                      {s.name} ({s.duration_minutes}m)
-                    </option>
-                  ))}
-                  {form.service_name && !services.some(s => s.name === form.service_name) && (
-                    <option value={form.service_name}>{form.service_name}</option>
-                  )}
-                </select>
+                <Dropdown
+                  value={form.service_name || ''}
+                  onChange={v => setField('service_name', v)}
+                  options={[
+                    ...services.map(s => ({ value: s.name, label: `${s.name} (${s.duration_minutes}m)` })),
+                    ...(form.service_name && !services.some(s => s.name === form.service_name)
+                      ? [{ value: form.service_name, label: form.service_name }]
+                      : []),
+                  ]}
+                  placeholder="Select clinic service"
+                />
               </div>
               <div className="form-group">
                 <label>Consultation Date</label>
@@ -427,23 +419,15 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
 
             <div className="form-group">
               <label>Complaint Category</label>
-              <select
+              <Dropdown
                 value={form.complaint_category || ''}
-                onChange={e => setField('complaint_category', e.target.value)}
-              >
-                <option value="">-- Select Category --</option>
-                <option value="Fever/Flu">Fever/Flu</option>
-                <option value="Headache">Headache</option>
-                <option value="Cough/Colds">Cough/Colds</option>
-                <option value="Stomach Pain">Stomach Pain</option>
-                <option value="Injury/Wound">Injury/Wound</option>
-                <option value="Allergy">Allergy</option>
-                <option value="Dizziness/BP">Dizziness/BP</option>
-                <option value="Toothache">Toothache</option>
-                <option value="Dental Cleaning">Dental Cleaning</option>
-                <option value="Extraction">Extraction</option>
-                <option value="Other">Other</option>
-              </select>
+                onChange={v => setField('complaint_category', v)}
+                options={[
+                  'Fever/Flu', 'Headache', 'Cough/Colds', 'Stomach Pain', 'Injury/Wound', 'Allergy',
+                  'Dizziness/BP', 'Toothache', 'Dental Cleaning', 'Extraction', 'Other',
+                ]}
+                placeholder="-- Select Category --"
+              />
             </div>
 
             <div className="form-group">
@@ -512,53 +496,18 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
           </div>
 
           {/* Section: Medicines / Supplies Used */}
-          <div className="detail-section">
-            <h3 style={{ color: 'var(--accent)', fontWeight: 700 }}>4. Medicines / Supplies Used</h3>
+          <div className="detail-section" style={{ marginTop: '1.25rem' }}>
+            <h3 style={{ color: 'var(--accent)', fontWeight: 700, marginBottom: '0.5rem' }}>4. Medicines / Supplies Used</h3>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
               Select items dispensed during this consultation. Stock will be automatically deducted.
             </div>
-            {invRows.map((row, idx) => {
-              const selectedInv = dispensableItems.find(i => String(i.id) === String(row.item_id))
-              return (
-                <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
-                  <select
-                    value={row.item_id}
-                    onChange={e => setInvRows(p => p.map((r, i) => i === idx ? { ...r, item_id: e.target.value } : r))}
-                    style={{ flex: '1 1 200px', padding: '0.45rem 0.6rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem' }}
-                  >
-                    <option value="">— Select item —</option>
-                    {dispensableItems.map(i => (
-                      <option key={i.id} value={i.id} disabled={!i.has_stock}>
-                        {i.name} ({i.category}) — {i.current_stock} {i.unit} available
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="number" min="1"
-                    value={row.quantity}
-                    onChange={e => setInvRows(p => p.map((r, i) => i === idx ? { ...r, quantity: e.target.value } : r))}
-                    style={{ width: '80px', padding: '0.45rem 0.6rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem' }}
-                    placeholder="Qty"
-                  />
-                  {selectedInv && (
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                      {selectedInv.unit}
-                    </span>
-                  )}
-                  {invRows.length > 1 && (
-                    <button type="button" onClick={() => setInvRows(p => p.filter((_, i) => i !== idx))}
-                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem', padding: '0 4px' }}>
-                      ✕
-                    </button>
-                  )}
-                </div>
-              )
-            })}
-            <button type="button" className="btn-secondary"
-              style={{ fontSize: '0.8rem', padding: '0.3rem 0.75rem', marginTop: '0.25rem' }}
-              onClick={() => setInvRows(p => [...p, { item_id: '', quantity: 1 }])}>
-              + Add Item
-            </button>
+            <MedicineSupplyPicker
+              value={invRows}
+              onChange={setInvRows}
+              isEdit={isEdit}
+              consultationType="medical"
+              consultationId={initialData?.id}
+            />
           </div>
 
           <div className="modal-footer" style={inline ? { marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' } : {}}>

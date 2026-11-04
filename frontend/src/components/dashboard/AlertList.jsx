@@ -6,7 +6,7 @@ export default function AlertList({
   title = "Inventory Alerts",
   lowStockItems = [],
   expiringBatches = [],
-  viewInventoryLink = "/admin/inventory",
+  viewInventoryLink = "/clinic/inventory",
   loading = false,
   emptyMessage = "All items and supplies are well-stocked.",
 }) {

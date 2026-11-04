@@ -115,12 +115,7 @@
    5. FILTER BARS — wrap on small screens
    ────────────────────────────────────────────────────────────────────────────*/
 @media (max-width: 767px) {
-  /* Styled select wrappers from the shared component */
-  .styled-select-wrap {
-    flex: 1 1 140px !important;
-    min-width: 0 !important;
-  }
-
+  /* Filter dropdowns (components/Dropdown.jsx, variant "filter") wrap and share the row: see index.css */
   /* Date-input labels wrapper (if used) */
   .filter-date-wrap {
     flex: 1 1 140px !important;
@@ -159,6 +154,9 @@
     width: 100vw !important;
     height: 100vh !important;
     max-height: 100vh !important;
+    /* dvh excludes the mobile browser's address bar so the input stays visible */
+    height: 100dvh !important;
+    max-height: 100dvh !important;
     bottom: 0 !important;
     right: 0 !important;
     top: 0 !important;

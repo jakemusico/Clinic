@@ -3,12 +3,13 @@ import { useLocation } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import DashboardLayout from '../../components/DashboardLayout'
 import Pagination from '../../components/Pagination'
-import StyledSelect from '../../components/StyledSelect'
+import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/ConfirmModal'
 import { appointmentsApi } from '../../api/appointments'
 import { servicesApi } from '../../api/services'
 import { formatAppointmentDate, formatAppointmentTime } from '../../utils/dateUtils'
 import Avatar from '../../components/Avatar'
+import DentalIcon from '../../components/DentalIcon'
 
 const STATUS_BADGES = {
   pending:   'status-badge pending',
@@ -35,13 +36,8 @@ function StethoscopeIcon({ size = 20 }) {
   )
 }
 
-function ToothIcon({ size = 20 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2a4 4 0 0 0-4 4v2a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6a4 4 0 0 0-4-4zM6 14a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4v-4z" />
-    </svg>
-  )
-}
+// Dental icon: shared <DentalIcon /> (same 2px stroke as StethoscopeIcon beside it)
+const ToothIcon = ({ size = 20 }) => <DentalIcon size={size} strokeWidth={2} />
 
 function CheckCircleIcon({ size = 18 }) {
   return (
@@ -890,25 +886,31 @@ export default function AppointmentsPage() {
                     <div className="filter-popover-card">
                       <div className="filter-popover-group">
                         <div className="filter-popover-title">Care Category</div>
-                        <StyledSelect
+                        <Dropdown
+                          variant="filter"
+                          ariaLabel="Care category"
                           value={typeFilter}
-                          onChange={e => setTypeFilter(e.target.value)}
-                        >
-                          <option value="all">All Care Types</option>
-                          <option value="medical">Medical Care Only</option>
-                          <option value="dental">Dental Care Only</option>
-                        </StyledSelect>
+                          onChange={setTypeFilter}
+                          options={[
+                            { value: 'all', label: 'All Care Types' },
+                            { value: 'medical', label: 'Medical Care Only' },
+                            { value: 'dental', label: 'Dental Care Only' },
+                          ]}
+                        />
                       </div>
 
                       <div className="filter-popover-group">
                         <div className="filter-popover-title">Sort By Date</div>
-                        <StyledSelect
+                        <Dropdown
+                          variant="filter"
+                          ariaLabel="Sort by date"
                           value={sortOrder}
-                          onChange={e => setSortOrder(e.target.value)}
-                        >
-                          <option value="newest">Newest to Oldest</option>
-                          <option value="oldest">Oldest to Newest</option>
-                        </StyledSelect>
+                          onChange={setSortOrder}
+                          options={[
+                            { value: 'newest', label: 'Newest to Oldest' },
+                            { value: 'oldest', label: 'Oldest to Newest' },
+                          ]}
+                        />
                       </div>
 
                       {(typeFilter !== 'all' || sortOrder !== 'newest') && (

@@ -13,10 +13,28 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 class InventoryController extends Controller
 {
     // ── Shared helpers ────────────────────────────────────────────────────
+
+
+    /**
+     * Current stock for EVERY item in one query (IN minus OUT), keyed by item id.
+     * Avoids running two SUM queries per item when listing many items.
+     *
+     * @return array<int,int>
+     */
+    private function stockByItem(): array
+    {
+        return InventoryTransaction::query()
+            ->selectRaw("item_id, SUM(CASE WHEN type = 'IN' THEN quantity ELSE -quantity END) AS stock")
+            ->groupBy('item_id')
+            ->pluck('stock', 'item_id')
+            ->map(fn ($v) => max(0, (int) $v))
+            ->all();
+    }
 
     /**
      * Calculate current stock for a non-equipment item.
@@ -332,10 +350,57 @@ class InventoryController extends Controller
         ]);
     }
 
+    /**
+     * GET /api/inventory/item-options
+     *
+     * Complete, NEVER paginated list of items for dropdowns (Stock In, Stock Out, filters).
+     * Includes items with zero stock so they can be restocked. Reads live from the database,
+     * so an item created in the Items module is available immediately.
+     *
+     * Query: status=active|all (default active), stockable=1|0 (default 1 = Medicine + Supply;
+     * Equipment is not tracked by quantity so it cannot be stocked in/out).
+     */
+    public function itemOptions(Request $request): JsonResponse
+    {
+        $q = InventoryItem::query();
+
+        if ($request->input('status', 'active') !== 'all') {
+            $q->where('is_active', true);
+        }
+        if ($request->boolean('stockable', true)) {
+            $q->where('category', '!=', 'Equipment');
+        }
+
+        $stock = $this->stockByItem();
+
+        $items = $q->orderBy('name')
+            ->get(['id', 'name', 'category', 'unit', 'reorder_level', 'is_active'])
+            ->map(function (InventoryItem $item) use ($stock) {
+                $isEquipment = $item->category === 'Equipment';
+                $current     = $isEquipment ? null : ($stock[$item->id] ?? 0);
+
+                return [
+                    'id'              => $item->id,
+                    'name'            => $item->name,
+                    'category'        => $item->category,
+                    'unit'            => $item->unit,
+                    'reorder_level'   => $item->reorder_level,
+                    'is_active'       => $item->is_active,
+                    'current_stock'   => $current,
+                    'is_low_stock'    => !$isEquipment && $current > 0 && $current <= $item->reorder_level,
+                    'is_out_of_stock' => !$isEquipment && $current === 0,
+                ];
+            })
+            ->values();
+
+        return response()->json(['items' => $items, 'total' => $items->count()]);
+    }
+
     public function itemStore(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'name'             => ['required', 'string', 'max:255'],
+            // One record per item: restock an existing item with Stock In instead of adding it twice.
+            'name'             => ['required', 'string', 'max:255', Rule::unique('inventory_items', 'name')],
             'category'         => ['required', 'in:Medicine,Supply,Equipment'],
             'unit'             => ['required', 'string', 'max:50'],
             'reorder_level'    => ['required', 'integer', 'min:0'],
@@ -343,6 +408,8 @@ class InventoryController extends Controller
             'equipment_status' => ['nullable', 'in:Available,In Use,Under Repair,Retired'],
             'location'         => ['nullable', 'string', 'max:255'],
             'description'      => ['nullable', 'string'],
+        ], [
+            'name.unique' => 'An item with this name already exists. Use Stock In to restock it instead of adding it again.',
         ]);
 
         if (!isset($validated['is_active'])) {
@@ -359,7 +426,7 @@ class InventoryController extends Controller
     public function itemUpdate(Request $request, InventoryItem $inventoryItem): JsonResponse
     {
         $validated = $request->validate([
-            'name'             => ['required', 'string', 'max:255'],
+            'name'             => ['required', 'string', 'max:255', Rule::unique('inventory_items', 'name')->ignore($inventoryItem->id)],
             'category'         => ['required', 'in:Medicine,Supply,Equipment'],
             'unit'             => ['required', 'string', 'max:50'],
             'reorder_level'    => ['required', 'integer', 'min:0'],
@@ -367,6 +434,8 @@ class InventoryController extends Controller
             'equipment_status' => ['nullable', 'in:Available,In Use,Under Repair,Retired'],
             'location'         => ['nullable', 'string', 'max:255'],
             'description'      => ['nullable', 'string'],
+        ], [
+            'name.unique' => 'Another item already uses this name.',
         ]);
 
         $old = $inventoryItem->toArray();
@@ -386,40 +455,96 @@ class InventoryController extends Controller
 
     // ── Batches (Stock In) ────────────────────────────────────────────────
 
+    /**
+     * GET /api/inventory/batches — Stock In history.
+     *
+     * Filtering, searching and sorting run in the database BEFORE pagination, so page
+     * numbers and totals always match what the user sees.
+     *
+     * Query: item_id, search (item name / batch no. / supplier), category (Medicine|Supply),
+     *        received_from, received_to (received date, inclusive),
+     *        sort_by = item | quantity_in | remaining | expiry | received (default), sort_dir = asc | desc (default desc),
+     *        page, per_page (max 100)   — or all=true for an unpaginated list.
+     */
     public function batchIndex(Request $request): JsonResponse
     {
+        $request->validate([
+            'received_from' => ['nullable', 'date'],
+            'received_to'   => ['nullable', 'date'],
+            'category'      => ['nullable', 'in:Medicine,Supply,Equipment,all'],
+            'sort_by'       => ['nullable', 'in:item,quantity_in,remaining,expiry,received'],
+            'sort_dir'      => ['nullable', 'in:asc,desc'],
+        ]);
+
         $q = InventoryBatch::with(['item', 'receivedBy']);
 
-        if ($request->has('item_id') && $request->item_id) {
+        if ($request->filled('item_id')) {
             $q->where('item_id', $request->item_id);
         }
 
+        if ($request->filled('category') && $request->category !== 'all') {
+            $category = $request->category;
+            $q->whereHas('item', fn ($iq) => $iq->where('category', $category));
+        }
+
         if ($request->filled('search')) {
-            $search = '%' . $request->input('search') . '%';
+            $search = '%' . trim($request->input('search')) . '%';
             $q->where(function ($sub) use ($search) {
                 $sub->where('batch_no', 'like', $search)
                     ->orWhere('supplier', 'like', $search)
-                    ->orWhereHas('item', function ($iq) use ($search) {
-                        $iq->where('name', 'like', $search);
-                    });
+                    ->orWhereHas('item', fn ($iq) => $iq->where('name', 'like', $search));
             });
         }
+
+        if ($request->filled('received_from')) {
+            $q->whereDate('received_date', '>=', $request->received_from);
+        }
+        if ($request->filled('received_to')) {
+            $q->whereDate('received_date', '<=', $request->received_to);
+        }
+
+        // Sorting (clickable column headers). Default: newest received first.
+        // The id is always the final key, in the same direction, so pages never repeat or skip rows.
+        $dir = $request->input('sort_dir') === 'asc' ? 'asc' : 'desc';
+        switch ($request->input('sort_by', 'received')) {
+            case 'item':
+                $q->orderBy(
+                    InventoryItem::select('name')->whereColumn('inventory_items.id', 'inventory_batches.item_id'),
+                    $dir
+                )->orderByDesc('received_date');
+                break;
+            case 'quantity_in':
+                $q->orderBy('quantity_in', $dir);
+                break;
+            case 'remaining':
+                $q->orderByRaw('(quantity_in - quantity_used) ' . $dir);
+                break;
+            case 'expiry':       // batches without an expiry date always go last
+                $q->orderByRaw('expiry_date IS NULL')->orderBy('expiry_date', $dir)->orderByDesc('received_date');
+                break;
+            case 'received':
+            default:
+                $q->orderBy('received_date', $dir)->orderBy('created_at', $dir);
+        }
+        $q->orderBy('id', $dir);
 
         $today    = now()->toDateString();
         $in30Days = now()->addDays(30)->toDateString();
 
+        $format = function (InventoryBatch $b) use ($today, $in30Days) {
+            $data                     = $b->toArray();
+            $data['expiry_date']      = $b->expiry_date ? $b->expiry_date->toDateString() : null;
+            $data['received_date']    = $b->received_date ? $b->received_date->toDateString() : null;
+            $data['remaining']        = max(0, $b->quantity_in - $b->quantity_used);
+            $data['is_expired']       = $b->expiry_date && $b->expiry_date->toDateString() <= $today;
+            $data['is_expiring_soon'] = $b->expiry_date
+                && $b->expiry_date->toDateString() > $today
+                && $b->expiry_date->toDateString() <= $in30Days;
+            return $data;
+        };
+
         if ($request->boolean('all') || $request->input('paginate') === 'false') {
-            $batches = $q->orderByDesc('created_at')->get()->map(function ($b) use ($today, $in30Days) {
-                $data                  = $b->toArray();
-                $data['expiry_date']   = $b->expiry_date ? $b->expiry_date->toDateString() : null;
-                $data['received_date'] = $b->received_date ? $b->received_date->toDateString() : null;
-                $data['remaining']     = max(0, $b->quantity_in - $b->quantity_used);
-                $data['is_expired']    = $b->expiry_date && $b->expiry_date->toDateString() <= $today;
-                $data['is_expiring_soon'] = $b->expiry_date
-                    && $b->expiry_date->toDateString() > $today
-                    && $b->expiry_date->toDateString() <= $in30Days;
-                return $data;
-            });
+            $batches = $q->get()->map($format);
 
             return response()->json([
                 'batches' => $batches,
@@ -428,20 +553,9 @@ class InventoryController extends Controller
             ]);
         }
 
-        $perPage = (int) $request->input('per_page', 10);
-        $paginated = $q->orderByDesc('created_at')->paginate($perPage);
-
-        $items = collect($paginated->items())->map(function ($b) use ($today, $in30Days) {
-            $data                  = $b->toArray();
-            $data['expiry_date']   = $b->expiry_date ? $b->expiry_date->toDateString() : null;
-            $data['received_date'] = $b->received_date ? $b->received_date->toDateString() : null;
-            $data['remaining']     = max(0, $b->quantity_in - $b->quantity_used);
-            $data['is_expired']    = $b->expiry_date && $b->expiry_date->toDateString() <= $today;
-            $data['is_expiring_soon'] = $b->expiry_date
-                && $b->expiry_date->toDateString() > $today
-                && $b->expiry_date->toDateString() <= $in30Days;
-            return $data;
-        });
+        $perPage   = max(1, min(100, (int) $request->input('per_page', 10)));
+        $paginated = $q->paginate($perPage);
+        $items     = collect($paginated->items())->map($format);
 
         return response()->json([
             'batches'      => $items,
@@ -455,6 +569,13 @@ class InventoryController extends Controller
         ]);
     }
 
+    /**
+     * POST /api/inventory/batches — receive stock for an EXISTING item.
+     *
+     * Never creates an item: it adds a batch + an IN transaction to the item's own record,
+     * and current stock (IN minus OUT) is recalculated from those transactions.
+     * Both rows are written in one DB transaction so they cannot get out of sync.
+     */
     public function batchStore(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -467,45 +588,76 @@ class InventoryController extends Controller
             'notes'         => ['nullable', 'string'],
         ]);
 
-        $user  = $request->user();
-        $item  = InventoryItem::findOrFail($validated['item_id']);
+        $user = $request->user();
+        $item = InventoryItem::findOrFail($validated['item_id']);
+
+        if (!$item->is_active) {
+            return response()->json(['message' => "\"{$item->name}\" is inactive. Activate it in Items before receiving stock."], 422);
+        }
+        if ($item->category === 'Equipment') {
+            return response()->json(['message' => 'Equipment is not tracked by quantity, so stock cannot be received for it.'], 422);
+        }
 
         // Medicine requires expiry date
         if ($item->category === 'Medicine' && empty($validated['expiry_date'])) {
             return response()->json(['message' => 'Expiry date is required for medicine items.'], 422);
         }
 
-        $batch = InventoryBatch::create([
-            ...$validated,
-            'quantity_used' => 0,
-            'received_by'   => $user->id,
-            'received_date' => $validated['received_date'] ?? now()->toDateString(),
-        ]);
+        $receivedDate = $validated['received_date'] ?? now()->toDateString();
 
-        // Auto-create IN transaction
-        InventoryTransaction::create([
-            'item_id'          => $item->id,
-            'batch_id'         => $batch->id,
-            'type'             => 'IN',
-            'quantity'         => $validated['quantity_in'],
-            'reason'           => 'Stock In',
-            'recorded_by'      => $user->id,
-            'transaction_date' => $validated['received_date'] ?? now()->toDateString(),
-            'notes'            => $validated['notes'] ?? null,
-        ]);
+        $batch = DB::transaction(function () use ($validated, $item, $user, $receivedDate) {
+            $batch = InventoryBatch::create([
+                ...$validated,
+                'quantity_used' => 0,
+                'received_by'   => $user->id,
+                'received_date' => $receivedDate,
+            ]);
+
+            // Auto-create IN transaction
+            InventoryTransaction::create([
+                'item_id'          => $item->id,
+                'batch_id'         => $batch->id,
+                'type'             => 'IN',
+                'quantity'         => $validated['quantity_in'],
+                'reason'           => 'Stock In',
+                'recorded_by'      => $user->id,
+                'transaction_date' => $receivedDate,
+                'notes'            => $validated['notes'] ?? null,
+            ]);
+
+            return $batch;
+        });
 
         AuditLogger::log('inventory_stock_in', InventoryBatch::class, $batch->id, null, $batch->toArray());
 
         return response()->json([
-            'batch'   => $batch->load(['item', 'receivedBy']),
-            'message' => 'Stock received and recorded successfully.',
+            'batch'      => $batch->load(['item', 'receivedBy']),
+            'item_stock' => $this->getStock($item->id),
+            'message'    => 'Stock received and recorded successfully.',
         ], 201);
     }
 
     // ── Transactions ──────────────────────────────────────────────────────
 
+    /**
+     * GET /api/inventory/transactions — stock movement history (Stock Out + Transactions pages).
+     *
+     * Query: item_id, type (IN|OUT), category (Medicine|Supply|Equipment),
+     *        search (item name / reason / notes / batch no.),
+     *        date_from, date_to (transaction date, inclusive),
+     *        sort_by = date (default) | item | type | quantity | reason, sort_dir = asc | desc (default desc),
+     *        page, per_page (max 100) — or all=true for an unpaginated list (CSV export).
+     */
     public function transactionIndex(Request $request): JsonResponse
     {
+        $request->validate([
+            'date_from' => ['nullable', 'date'],
+            'date_to'   => ['nullable', 'date'],
+            'category'  => ['nullable', 'in:Medicine,Supply,Equipment,all'],
+            'sort_by'   => ['nullable', 'in:date,item,type,quantity,reason'],
+            'sort_dir'  => ['nullable', 'in:asc,desc'],
+        ]);
+
         $q = InventoryTransaction::with(['item', 'batch', 'recordedBy', 'patientUser']);
 
         if ($request->has('item_id') && $request->item_id) {
@@ -514,6 +666,11 @@ class InventoryController extends Controller
 
         if ($request->has('type') && in_array($request->type, ['IN', 'OUT'])) {
             $q->where('type', $request->type);
+        }
+
+        if ($request->filled('category') && $request->category !== 'all') {
+            $category = $request->category;
+            $q->whereHas('item', fn ($iq) => $iq->where('category', $category));
         }
 
         if ($request->has('date_from') && $request->date_from) {
@@ -525,18 +682,49 @@ class InventoryController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = '%' . $request->input('search') . '%';
+            $search = '%' . trim($request->input('search')) . '%';
             $q->where(function ($sub) use ($search) {
                 $sub->where('reason', 'like', $search)
                     ->orWhere('notes', 'like', $search)
-                    ->orWhereHas('item', function ($iq) use ($search) {
-                        $iq->where('name', 'like', $search);
-                    });
+                    ->orWhereHas('item', fn ($iq) => $iq->where('name', 'like', $search))
+                    ->orWhereHas('batch', fn ($bq) => $bq->where('batch_no', 'like', $search));
             });
         }
 
-        $perPage = (int) $request->input('per_page', 10);
-        $transactions = $q->orderByDesc('created_at')->paginate($perPage);
+        // Sorting (clickable column headers). Default: newest first.
+        // The id is the final key, in the same direction, so pages never repeat or skip rows.
+        $dir = $request->input('sort_dir') === 'asc' ? 'asc' : 'desc';
+        switch ($request->input('sort_by', 'date')) {
+            case 'item':
+                $q->orderBy(
+                    InventoryItem::select('name')->whereColumn('inventory_items.id', 'inventory_transactions.item_id'),
+                    $dir
+                )->orderByDesc('transaction_date');
+                break;
+            // `type` and `reason` are MySQL ENUMs, which sort by definition order, not alphabetically.
+            // CAST to text so the ▲/▼ arrow really means A→Z / Z→A.
+            case 'type':
+                $q->orderByRaw('CAST(type AS CHAR) ' . $dir)->orderByDesc('transaction_date');
+                break;
+            case 'quantity':
+                $q->orderBy('quantity', $dir);
+                break;
+            case 'reason':
+                $q->orderByRaw('CAST(reason AS CHAR) ' . $dir)->orderByDesc('transaction_date');
+                break;
+            case 'date':
+            default:
+                $q->orderBy('transaction_date', $dir)->orderBy('created_at', $dir);
+        }
+        $q->orderBy('id', $dir);
+
+        if ($request->boolean('all')) {
+            $rows = $q->get();
+            return response()->json(['data' => $rows, 'total' => $rows->count()]);
+        }
+
+        $perPage      = max(1, min(100, (int) $request->input('per_page', 10)));
+        $transactions = $q->paginate($perPage);
 
         return response()->json($transactions);
     }
@@ -640,6 +828,7 @@ class InventoryController extends Controller
         foreach ($items as $row) {
             $item  = InventoryItem::find($row['item_id'] ?? null);
             $qty   = (int) ($row['quantity'] ?? 0);
+            $dosageNote = $row['dosage_note'] ?? null;
 
             if (!$item || $qty <= 0) {
                 continue;
@@ -652,7 +841,7 @@ class InventoryController extends Controller
                 continue;
             }
 
-            // Deduct earliest-expiry-first
+            // Deduct earliest-expiry-first (FEFO)
             $remaining = $qty;
             $batches = InventoryBatch::where('item_id', $item->id)
                 ->where('quantity_in', '>', DB::raw('quantity_used'))
@@ -671,6 +860,7 @@ class InventoryController extends Controller
                 $usedBatchId = $batch->id;
             }
 
+            // Create transaction record with dosage note
             $tx = InventoryTransaction::create([
                 'item_id'           => $item->id,
                 'batch_id'          => $usedBatchId,
@@ -682,6 +872,7 @@ class InventoryController extends Controller
                 'patient_user_id'   => $patientUserId,
                 'recorded_by'       => $recordedByUserId,
                 'transaction_date'  => $txDate,
+                'notes'             => $dosageNote,
             ]);
 
             AuditLogger::log('inventory_dispensed', InventoryTransaction::class, $tx->id, null, [
@@ -690,6 +881,7 @@ class InventoryController extends Controller
                 'quantity'          => $qty,
                 'consultation_type' => $consultationType,
                 'consultation_id'   => $consultationId,
+                'dosage_note'       => $dosageNote,
             ]);
         }
 
@@ -733,10 +925,11 @@ class InventoryController extends Controller
             ->where('reason', 'Dispensed')
             ->get()
             ->map(fn($tx) => [
-                'item_id'   => $tx->item_id,
-                'item_name' => $tx->item->name ?? '',
-                'unit'      => $tx->item->unit ?? '',
-                'quantity'  => $tx->quantity,
+                'item_id'     => $tx->item_id,
+                'item_name'   => $tx->item->name ?? '',
+                'unit'        => $tx->item->unit ?? '',
+                'quantity'    => $tx->quantity,
+                'dosage_note' => $tx->notes,
             ]);
 
         return response()->json(['items' => $txns]);
@@ -745,13 +938,23 @@ class InventoryController extends Controller
     /**
      * Return list of active, in-stock (non-expired) Medicine + Supply items for the dispense picker.
      */
-    public function dispensableItems(): JsonResponse
+    public function dispensableItems(Request $request): JsonResponse
     {
         $today = now()->toDateString();
 
-        $items = InventoryItem::where('is_active', true)
-            ->whereIn('category', ['Medicine', 'Supply'])
-            ->orderBy('category')
+        $q = InventoryItem::where('is_active', true)
+            ->whereIn('category', ['Medicine', 'Supply']);
+
+        // Search by name or category
+        if ($request->has('search') && $request->search !== '') {
+            $search = $request->search;
+            $q->where(function ($query) use ($search) {
+                $query->where('name', 'like', "%{$search}%")
+                      ->orWhere('category', 'like', "%{$search}%");
+            });
+        }
+
+        $items = $q->orderBy('category')
             ->orderBy('name')
             ->get()
             ->map(function ($item) use ($today) {
@@ -815,7 +1018,7 @@ class InventoryController extends Controller
                                 'type'        => 'warning',
                                 'target_type' => 'inventory_item',
                                 'target_id'   => $item->id,
-                                'action_url'  => "/admin/inventory/items?search=" . urlencode($item->name),
+                                'action_url'  => "/clinic/inventory/items?search=" . urlencode($item->name),
                                 'is_read'     => false,
                             ]);
                         }
@@ -859,7 +1062,7 @@ class InventoryController extends Controller
                                 'type'        => $alertType,
                                 'target_type' => 'inventory_item',
                                 'target_id'   => $batch->item_id,
-                                'action_url'  => "/admin/inventory/items?search=" . urlencode($batch->item->name),
+                                'action_url'  => "/clinic/inventory/items?search=" . urlencode($batch->item->name),
                                 'is_read'     => false,
                             ]);
                         }

@@ -4,7 +4,8 @@ import { dentalApi } from '../api/dental'
 import { recordsApi } from '../api/records'
 import { servicesApi } from '../api/services'
 import { appointmentsApi } from '../api/appointments'
-import { inventoryApi } from '../api/inventory'
+import { MedicineSupplyPicker } from './MedicineSupplyPicker'
+import Dropdown from './Dropdown'
 import { formatAppointmentDate } from '../utils/dateUtils'
 
 // FDI Notation Quadrants
@@ -70,9 +71,8 @@ export function DentalConsultationModal({ initialData, onClose, onSaved }) {
   const [toothConditions, setToothConditions] = useState({})
   const [saving,        setSaving]        = useState(false)
   const [loadingInit,   setLoadingInit]   = useState(true)
-  // Inventory
-  const [dispensableItems, setDispensableItems] = useState([])
-  const [invRows, setInvRows] = useState([{ item_id: '', quantity: 1 }])
+  // Inventory - using new MedicineSupplyPicker component
+  const [invRows, setInvRows] = useState([])
 
   // Load patients & services on mount
   useEffect(() => {
@@ -89,21 +89,6 @@ export function DentalConsultationModal({ initialData, onClose, onSaved }) {
       }
     }).finally(() => setLoadingInit(false))
   }, [])
-
-  // Load dispensable inventory items
-  useEffect(() => {
-    inventoryApi.dispensable()
-      .then(({ data }) => setDispensableItems(data.items || []))
-      .catch(() => {})
-    if (initialData?.id) {
-      inventoryApi.consultationItems('dental', initialData.id)
-        .then(({ data }) => {
-          const rows = (data.items || []).map(i => ({ item_id: String(i.item_id), quantity: i.quantity }))
-          if (rows.length > 0) setInvRows(rows)
-        })
-        .catch(() => {})
-    }
-  }, [initialData?.id])
 
   // Load appointments for selected patient (optional link)
   useEffect(() => {
@@ -168,7 +153,11 @@ export function DentalConsultationModal({ initialData, onClose, onSaved }) {
         tooth_conditions: toothConditions,
         inventory_items: invRows
           .filter(r => r.item_id && parseInt(r.quantity) > 0)
-          .map(r => ({ item_id: parseInt(r.item_id), quantity: parseInt(r.quantity) })),
+          .map(r => ({
+            item_id: parseInt(r.item_id),
+            quantity: parseInt(r.quantity),
+            dosage_note: r.dosage_note || null,
+          })),
       })
       toast.success('Dental consultation saved & chart updated!')
       onSaved(res.data.consultation || res.data)
@@ -257,18 +246,17 @@ export function DentalConsultationModal({ initialData, onClose, onSaved }) {
                     {patientLabel ? (
                       <input disabled value={patientLabel} />
                     ) : (
-                      <select
-                        value={form.patient_id}
-                        onChange={e => setField('patient_id', e.target.value)}
+                      <Dropdown
+                        value={String(form.patient_id ?? '')}
+                        onChange={v => setField('patient_id', v)}
+                        options={patients.map(p => ({
+                          value: String(p.id),
+                          label: `${p.name} (${p.student_id || p.email})`,
+                        }))}
+                        placeholder="Select patient"
+                        noOptionsMessage="No patients available"
                         required
-                      >
-                        <option value="">Select patient</option>
-                        {patients.map(p => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} ({p.student_id || p.email})
-                          </option>
-                        ))}
-                      </select>
+                      />
                     )}
                   </div>
                   <div className="form-group">
@@ -285,23 +273,27 @@ export function DentalConsultationModal({ initialData, onClose, onSaved }) {
                 <div className="form-row">
                   <div className="form-group">
                     <label>Dental Service</label>
-                    <select value={form.service_name} onChange={e => handleServiceChange(e.target.value)}>
-                      <option value="">Select service</option>
-                      {services.map(s => (
-                        <option key={s.id} value={s.name}>{s.name} ({s.duration_minutes}m)</option>
-                      ))}
-                    </select>
+                    <Dropdown
+                      value={form.service_name || ''}
+                      onChange={v => handleServiceChange(v)}
+                      options={services.map(s => ({ value: s.name, label: `${s.name} (${s.duration_minutes}m)` }))}
+                      placeholder="Select service"
+                    />
                   </div>
                   <div className="form-group">
                     <label>Link to Appointment <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(Optional)</span></label>
-                    <select value={form.appointment_id} onChange={e => setField('appointment_id', e.target.value)}>
-                      <option value="">None (Walk-in)</option>
-                      {appointments.map(a => (
-                        <option key={a.id} value={a.id}>
-                          {a.service?.name || 'Appointment'} — {formatAppointmentDate(a)}
-                        </option>
-                      ))}
-                    </select>
+                    <Dropdown
+                      value={String(form.appointment_id ?? '')}
+                      onChange={v => setField('appointment_id', v)}
+                      options={[
+                        { value: '', label: 'None (Walk-in)' },
+                        ...appointments.map(a => ({
+                          value: String(a.id),
+                          label: `${a.service?.name || 'Appointment'} — ${formatAppointmentDate(a)}`,
+                        })),
+                      ]}
+                      placeholder="None (Walk-in)"
+                    />
                   </div>
                 </div>
 
@@ -369,13 +361,14 @@ export function DentalConsultationModal({ initialData, onClose, onSaved }) {
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem',
                       }}>
                         <span style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--accent)' }}>Tooth #{num}</span>
-                        <select
+                        <Dropdown
+                          variant="compact"
+                          ariaLabel={`Condition of tooth ${num}`}
                           value={toothConditions[num] || deriveDefaultCondition(form.service_name)}
-                          onChange={e => setToothConditions(prev => ({ ...prev, [num]: e.target.value }))}
-                          style={{ fontSize: '0.78rem', padding: '0.2rem 0.4rem', flex: 1 }}
-                        >
-                          {CONDITIONS.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
-                        </select>
+                          onChange={v => setToothConditions(prev => ({ ...prev, [num]: v }))}
+                          options={CONDITIONS.map(c => ({ value: c.key, label: c.label }))}
+                          style={{ flex: 1, minWidth: 0 }}
+                        />
                       </div>
                     ))}
                   </div>
@@ -448,40 +441,20 @@ export function DentalConsultationModal({ initialData, onClose, onSaved }) {
               </div>
 
               {/* Medicines / Supplies Used */}
-              <div className="detail-section" style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', marginTop: '0.5rem' }}>
-                <h3 style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>Medicines / Supplies Used</h3>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.6rem' }}>
-                  Select items dispensed during this consultation.
+              <div className="detail-section" style={{ marginTop: '1.25rem' }}>
+                <h3 style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+                  4. Medicines / Supplies Used
+                </h3>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                  Select items dispensed during this consultation. Stock will be automatically deducted.
                 </div>
-                {invRows.map((row, idx) => {
-                  const selInv = dispensableItems.find(i => String(i.id) === String(row.item_id))
-                  return (
-                    <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.45rem', flexWrap: 'wrap' }}>
-                      <select value={row.item_id}
-                        onChange={e => setInvRows(p => p.map((r, i) => i === idx ? { ...r, item_id: e.target.value } : r))}
-                        style={{ flex: '1 1 180px', padding: '0.42rem 0.55rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.81rem' }}>
-                        <option value="">— Select item —</option>
-                        {dispensableItems.map(i => (
-                          <option key={i.id} value={i.id} disabled={!i.has_stock}>
-                            {i.name} — {i.current_stock} {i.unit} available
-                          </option>
-                        ))}
-                      </select>
-                      <input type="number" min="1" value={row.quantity}
-                        onChange={e => setInvRows(p => p.map((r, i) => i === idx ? { ...r, quantity: e.target.value } : r))}
-                        style={{ width: '70px', padding: '0.42rem 0.55rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.81rem' }}
-                        placeholder="Qty" />
-                      {selInv && <span style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>{selInv.unit}</span>}
-                      {invRows.length > 1 && (
-                        <button type="button" onClick={() => setInvRows(p => p.filter((_, i) => i !== idx))}
-                          style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
-                      )}
-                    </div>
-                  )
-                })}
-                <button type="button" className="btn-secondary"
-                  style={{ fontSize: '0.78rem', padding: '0.28rem 0.65rem', marginTop: '0.2rem' }}
-                  onClick={() => setInvRows(p => [...p, { item_id: '', quantity: 1 }])}>+ Add Item</button>
+                <MedicineSupplyPicker
+                  value={invRows}
+                  onChange={setInvRows}
+                  isEdit={false}
+                  consultationType="dental"
+                  consultationId={initialData?.id}
+                />
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border)' }}>

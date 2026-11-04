@@ -5,10 +5,9 @@ import DashboardLayout from '../../components/DashboardLayout'
 import { chatbotApi } from '../../api/chatbot'
 import { adminApi } from '../../api/admin'
 import { chatApi } from '../../api/chat'
-import { getFaqs, saveFaqs } from '../../utils/clinicStorage'
 import Pagination from '../../components/Pagination'
 import { usePagination } from '../../hooks/usePagination'
-import StyledSelect from '../../components/StyledSelect'
+import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/ConfirmModal'
 import {
   BarChart,
@@ -122,6 +121,7 @@ export default function ChatbotSupportPage() {
 
 function FaqsTab() {
   const [faqs,       setFaqs]       = useState([])
+  const [placeholders, setPlaceholders] = useState([])
   const [categories, setCategories] = useState([])
   const [loading,    setLoading]    = useState(true)
   const [modal,      setModal]      = useState(null)   // 'add' | 'edit' | 'preview'
@@ -132,23 +132,16 @@ function FaqsTab() {
   const [filterQ,    setFilterQ]    = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, faq: null, loading: false })
 
+  // raw=1 -> `answer` keeps the editable {placeholders}; `answer_preview` has the real values
   const load = async () => {
     setLoading(true)
     try {
-      const localFaqs = getFaqs()
-      const { data } = await chatbotApi.list()
-      const serverFaqs = data?.faqs || []
-      const merged = serverFaqs.length > 0
-        ? serverFaqs.map(sf => {
-          const match = localFaqs.find(lf => lf.id === sf.id || lf.question === sf.question)
-          return { ...sf, show_on_help: match ? match.show_on_help !== false : true }
-        })
-        : localFaqs
-      setFaqs(merged)
-      saveFaqs(merged)
+      const { data } = await chatbotApi.list({ raw: 1 })
+      setFaqs(data?.faqs || [])
+      setPlaceholders(data?.placeholders || [])
       setCategories(data?.categories || [])
     } catch {
-      setFaqs(getFaqs())
+      toast.error('Failed to load FAQs from the server.')
     } finally {
       setLoading(false)
     }
@@ -182,12 +175,15 @@ function FaqsTab() {
   }
   const openPreview = (faq) => { setSelected(faq); setModal('preview') }
 
-  const handleToggleHelp = (faq) => {
-    const nextVal = faq.show_on_help === false
-    const updated = faqs.map(f => f.id === faq.id ? { ...f, show_on_help: nextVal } : f)
-    setFaqs(updated)
-    saveFaqs(updated)
-    toast.success(`FAQ ${nextVal ? 'will now show' : 'hidden from'} Student Help page.`)
+  const handleToggleHelp = async (faq) => {
+    try {
+      const { data } = await chatbotApi.toggleHelp(faq.id)
+      const nextVal = data?.faq?.show_on_help !== false
+      setFaqs(prev => prev.map(f => f.id === faq.id ? { ...f, show_on_help: nextVal } : f))
+      toast.success(`FAQ ${nextVal ? 'will now show' : 'hidden from'} Student Help page.`)
+    } catch {
+      toast.error('Failed to update Help page visibility.')
+    }
   }
 
   const handleSave = async () => {
@@ -198,28 +194,28 @@ function FaqsTab() {
     setSaving(true)
     try {
       if (modal === 'add') {
-        try { await chatbotApi.create(form) } catch {}
-        const newFaq = { id: Date.now(), ...form }
-        const updated = [...faqs, newFaq]
-        setFaqs(updated); saveFaqs(updated)
+        await chatbotApi.create(form)
         toast.success('FAQ added successfully.')
       } else {
-        try { await chatbotApi.update(selected.id, form) } catch {}
-        const updated = faqs.map(f => f.id === selected.id ? { ...f, ...form } : f)
-        setFaqs(updated); saveFaqs(updated)
+        await chatbotApi.update(selected.id, form)
         toast.success('FAQ updated successfully.')
       }
       setModal(null)
+      await load()   // re-read from the server so ids and previews are the real ones
     } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to save FAQ.')
+      const data = err?.response?.data
+      toast.error(data?.errors?.answer?.[0] || data?.message || 'Failed to save FAQ.')
     } finally { setSaving(false) }
   }
 
   const handleToggle = async (faq) => {
-    try { await chatbotApi.toggle(faq.id) } catch {}
-    const updated = faqs.map(f => f.id === faq.id ? { ...f, is_active: !f.is_active } : f)
-    setFaqs(updated); saveFaqs(updated)
-    toast.success(`FAQ ${faq.is_active ? 'deactivated' : 'activated'}.`)
+    try {
+      await chatbotApi.toggle(faq.id)
+      setFaqs(prev => prev.map(f => f.id === faq.id ? { ...f, is_active: !f.is_active } : f))
+      toast.success(`FAQ ${faq.is_active ? 'deactivated' : 'activated'}.`)
+    } catch {
+      toast.error('Failed to update FAQ status.')
+    }
   }
 
   const handleDelete = (faq) => {
@@ -232,9 +228,7 @@ function FaqsTab() {
     setDeleteConfirm(prev => ({ ...prev, loading: true }))
     try {
       await chatbotApi.delete(faq.id)
-      const updated = faqs.filter(f => f.id !== faq.id)
-      setFaqs(updated)
-      saveFaqs(updated)
+      setFaqs(prev => prev.filter(f => f.id !== faq.id))
       toast.success('FAQ deleted successfully.')
       setDeleteConfirm({ open: false, faq: null, loading: false })
     } catch {
@@ -266,19 +260,17 @@ function FaqsTab() {
         <div style={{ display: 'flex', gap: '0.75rem', flex: 1, flexWrap: 'wrap' }}>
           <input
             className="search-input"
+            placeholder="Search FAQs..."
             value={filterQ}
             onChange={e => { setFilterQ(e.target.value); pagination.setPage(1) }}
           />
           <div style={{ minWidth: '175px' }}>
-            <StyledSelect
+            <Dropdown
+              variant="filter"
               value={filterCat}
-              onChange={e => { setFilterCat(e.target.value); pagination.setPage(1) }}
-            >
-              <option value="all">All Categories</option>
-              {allCategories.map(c => (
-                <option key={c} value={c}>{CATEGORY_LABELS[c] || c}</option>
-              ))}
-            </StyledSelect>
+              onChange={v => { setFilterCat(v); pagination.setPage(1) }}
+              options={[{ value: 'all', label: 'All Categories' }, ...allCategories.map(c => ({ value: c, label: CATEGORY_LABELS[c] || c }))]}
+            />
           </div>
         </div>
         <button type="button" className="btn-primary" onClick={openAdd}>Add FAQ</button>
@@ -387,19 +379,33 @@ function FaqsTab() {
                     onChange={e => setForm(f => ({ ...f, answer: e.target.value }))}
                     style={{ resize: 'vertical' }}
                   />
+                  {placeholders.length > 0 && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <p className="form-hint" style={{ marginBottom: '0.35rem' }}>
+                        Placeholders you can type in the answer (replaced with the current Clinic Info / Staff Schedules when the chatbot replies):
+                      </p>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.25rem 1rem' }}>
+                        {placeholders.map(p => (
+                          <div key={p.token} style={{ fontSize: '0.78rem', color: 'var(--text-sub)', lineHeight: 1.45 }}>
+                            <code style={{ fontWeight: 600, color: 'var(--accent)' }}>{p.token}</code>
+                            {' — '}{p.description}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="form-group">
                   <label className="form-label">Category</label>
-                  <select
-                    className="form-input"
-                    value={form.category}
-                    onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-                  >
-                    {allCategories.map(c => (
-                      <option key={c} value={c}>{CATEGORY_LABELS[c] || c}</option>
-                    ))}
-                    <option value="custom">Custom</option>
-                  </select>
+                  <Dropdown
+                    value={form.category || ''}
+                    onChange={v => setForm(f => ({ ...f, category: v }))}
+                    options={[
+                      ...allCategories.map(c => ({ value: c, label: CATEGORY_LABELS[c] || c })),
+                      { value: 'custom', label: 'Custom' },
+                    ]}
+                    placeholder="Select category"
+                  />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Sort Order</label>
@@ -479,7 +485,7 @@ function FaqsTab() {
               <div style={{ background: 'rgba(137,180,250,0.06)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '1rem' }}>
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginBottom: '0.5rem' }}>BOT RESPONSE</p>
                 <p style={{ color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
-                  <strong>{selected.question}</strong>{'\n\n'}{selected.answer}
+                  <strong>{selected.question}</strong>{'\n\n'}{selected.answer_preview ?? selected.answer}
                 </p>
               </div>
               <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>

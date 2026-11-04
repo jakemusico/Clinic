@@ -4,7 +4,7 @@ import { toast } from 'react-hot-toast'
 import { useAuth } from '../../context/AuthContext'
 import DashboardLayout from '../../components/DashboardLayout'
 import Pagination from '../../components/Pagination'
-import StyledSelect from '../../components/StyledSelect'
+import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/ConfirmModal'
 import { adminApi } from '../../api/admin'
 import axios from 'axios'
@@ -489,21 +489,34 @@ export default function UsersPage() {
 
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ minWidth: '150px' }}>
-            <StyledSelect id="user-filter-role" value={filterRole} onChange={e => { setFilterRole(e.target.value); setPage(1) }}>
-              <option value="all">All Roles</option>
-              <option value="student">Students</option>
-              <option value="faculty_staff">Faculty / Staff</option>
-              <option value="clinic_staff">Nurse</option>
-              <option value="dentist">Dentist</option>
-              <option value="admin">Administrators</option>
-            </StyledSelect>
+            <Dropdown
+              id="user-filter-role"
+              variant="filter"
+              value={filterRole}
+              onChange={v => { setFilterRole(v); setPage(1) }}
+              options={[
+                { value: 'all', label: 'All Roles' },
+                { value: 'student', label: 'Students' },
+                { value: 'faculty_staff', label: 'Faculty / Staff' },
+                { value: 'clinic_staff', label: 'Nurse' },
+                { value: 'dentist', label: 'Dentist' },
+                { value: 'admin', label: 'Administrators' },
+              ]}
+            />
           </div>
           <div style={{ minWidth: '130px' }}>
-            <StyledSelect id="user-filter-status" value={filterStat} onChange={e => { setFilterStat(e.target.value); setPage(1) }}>
-              <option value="all">All Status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </StyledSelect>
+            <Dropdown
+              id="user-filter-status"
+              variant="filter"
+              ariaLabel="Status"
+              value={filterStat}
+              onChange={v => { setFilterStat(v); setPage(1) }}
+              options={[
+                { value: 'all', label: 'All Status' },
+                { value: 'active', label: 'Active' },
+                { value: 'inactive', label: 'Inactive' },
+              ]}
+            />
           </div>
           <button id="btn-create-user" className="btn-primary" onClick={openAdd}>
             + Create Account
@@ -619,18 +632,19 @@ export default function UsersPage() {
                   {/* ---- Account Role (always first, drives everything) ---- */}
                   <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                     <label className="form-label">Account Role *</label>
-                    <select
+                    <Dropdown
                       id="form-role"
-                      className="form-input"
+                      ariaLabel="Account role"
                       value={form.role}
-                      onChange={e => handleChange('role', e.target.value)}
-                    >
-                      <option value="student">Student</option>
-                      <option value="faculty_staff">Faculty / Staff</option>
-                      <option value="clinic_staff">Nurse (Clinic Staff)</option>
-                      <option value="dentist">Dentist</option>
-                      <option value="admin">Administrator</option>
-                    </select>
+                      onChange={v => handleChange('role', v)}
+                      options={[
+                        { value: 'student', label: 'Student' },
+                        { value: 'faculty_staff', label: 'Faculty / Staff' },
+                        { value: 'clinic_staff', label: 'Nurse (Clinic Staff)' },
+                        { value: 'dentist', label: 'Dentist' },
+                        { value: 'admin', label: 'Administrator' },
+                      ]}
+                    />
                   </div>
 
                   {/* ---- Name row ---- */}
@@ -731,17 +745,17 @@ export default function UsersPage() {
                   {isStudent && (
                     <div className="form-group">
                       <label className="form-label">Grade Level *</label>
-                      <select
+                      <Dropdown
                         id="form-grade-level"
-                        className={`form-input${errors.grade_level ? ' input-error' : ''}`}
-                        value={form.grade_level}
-                        onChange={e => handleChange('grade_level', e.target.value)}
-                      >
-                        <option value="">— Select —</option>
-                        {(dbGradeLevels.length > 0 ? dbGradeLevels : GRADE_LEVELS).map(gl => (
-                          <option key={gl.id || gl} value={gl.name || gl}>{gl.name || gl}</option>
-                        ))}
-                      </select>
+                        invalid={Boolean(errors.grade_level)}
+                        value={form.grade_level || ''}
+                        onChange={v => handleChange('grade_level', v)}
+                        options={[
+                          { value: '', label: '— Select —' },
+                          ...(dbGradeLevels.length > 0 ? dbGradeLevels : GRADE_LEVELS).map(gl => ({ value: gl.name || gl, label: gl.name || gl })),
+                        ]}
+                        placeholder="— Select —"
+                      />
                       {errors.grade_level && <span className="field-error">{errors.grade_level}</span>}
                     </div>
                   )}
@@ -750,18 +764,18 @@ export default function UsersPage() {
                   {isStudent && (
                     <div className="form-group">
                       <label className="form-label">Section *</label>
-                      <select
+                      <Dropdown
                         id="form-section"
-                        className={`form-input${errors.section ? ' input-error' : ''}`}
-                        value={form.section}
-                        onChange={e => handleChange('section', e.target.value)}
+                        invalid={Boolean(errors.section)}
+                        value={form.section || ''}
+                        onChange={v => handleChange('section', v)}
+                        options={[
+                          { value: '', label: '— Select —' },
+                          ...sectionsForLevel.map(s => ({ value: s.name || s, label: s.name || s })),
+                        ]}
+                        placeholder="— Select —"
                         disabled={!form.grade_level}
-                      >
-                        <option value="">— Select —</option>
-                        {sectionsForLevel.map(s => (
-                          <option key={s.id || s} value={s.name || s}>{s.name || s}</option>
-                        ))}
-                      </select>
+                      />
                       {errors.section && <span className="field-error">{errors.section}</span>}
                     </div>
                   )}
@@ -770,17 +784,13 @@ export default function UsersPage() {
                   {showDept && (
                     <div className="form-group">
                       <label className="form-label">Department / Office</label>
-                      <select
+                      <Dropdown
                         id="form-department"
-                        className="form-input"
-                        value={form.department}
-                        onChange={e => handleChange('department', e.target.value)}
-                      >
-                        <option value="">— Select —</option>
-                        {DEPARTMENTS.map(d => (
-                          <option key={d} value={d}>{d}</option>
-                        ))}
-                      </select>
+                        value={form.department || ''}
+                        onChange={v => handleChange('department', v)}
+                        options={[{ value: '', label: '— Select —' }, ...DEPARTMENTS]}
+                        placeholder="— Select —"
+                      />
                     </div>
                   )}
 

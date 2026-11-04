@@ -5,7 +5,7 @@ import { chatbotApi } from '../../api/chatbot'
 import { getFaqs, saveFaqs } from '../../utils/clinicStorage'
 import Pagination from '../../components/Pagination'
 import { usePagination } from '../../hooks/usePagination'
-import StyledSelect from '../../components/StyledSelect'
+import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/ConfirmModal'
 
 const CATEGORY_LABELS = {
@@ -181,15 +181,12 @@ export default function ChatbotFaqsPage() {
             onChange={e => { setFilterQ(e.target.value); pagination.setPage(1) }}
           />
           <div style={{ minWidth: '175px' }}>
-            <StyledSelect
+            <Dropdown
+              variant="filter"
               value={filterCat}
-              onChange={e => { setFilterCat(e.target.value); pagination.setPage(1) }}
-            >
-              <option value="all">All Categories</option>
-              {allCategories.map(c => (
-                <option key={c} value={c}>{CATEGORY_LABELS[c] || c}</option>
-              ))}
-            </StyledSelect>
+              onChange={v => { setFilterCat(v); pagination.setPage(1) }}
+              options={[{ value: 'all', label: 'All Categories' }, ...allCategories.map(c => ({ value: c, label: CATEGORY_LABELS[c] || c }))]}
+            />
           </div>
         </div>
         <button className="btn-primary" onClick={openAdd}>
@@ -311,16 +308,15 @@ export default function ChatbotFaqsPage() {
 
                 <div className="form-group">
                   <label className="form-label">Category *</label>
-                  <select
-                    className="form-input"
-                    value={form.category}
-                    onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-                  >
-                    {allCategories.map(c => (
-                      <option key={c} value={c}>{CATEGORY_LABELS[c] || c}</option>
-                    ))}
-                    <option value="custom">Custom…</option>
-                  </select>
+                  <Dropdown
+                    value={form.category || ''}
+                    onChange={v => setForm(f => ({ ...f, category: v }))}
+                    options={[
+                      ...allCategories.map(c => ({ value: c, label: CATEGORY_LABELS[c] || c })),
+                      { value: 'custom', label: 'Custom…' },
+                    ]}
+                    placeholder="Select category"
+                  />
                 </div>
 
                 <div className="form-group">

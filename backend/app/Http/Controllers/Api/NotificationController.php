@@ -233,13 +233,13 @@ class NotificationController extends Controller
                 return response()->json([
                     'exists'     => true,
                     'type'       => 'inventory_item',
-                    'action_url' => '/admin/inventory/items?search=' . urlencode($item->name),
+                    'action_url' => '/clinic/inventory/items?search=' . urlencode($item->name),
                 ]);
             }
             return response()->json([
                 'exists'     => true,
                 'type'       => 'inventory_dashboard',
-                'action_url' => '/admin/inventory',
+                'action_url' => '/clinic/inventory',
             ]);
         }
 

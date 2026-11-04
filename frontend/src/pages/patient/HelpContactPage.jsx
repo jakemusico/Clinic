@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import DashboardLayout from '../../components/DashboardLayout'
 import api from '../../api/axios'
-import { getFaqs, groupScheduleDays } from '../../utils/clinicStorage'
+import { chatbotApi } from '../../api/chatbot'
+import { groupScheduleDays } from '../../utils/clinicStorage'
 
 export default function HelpContactPage() {
   const [clinicInfo, setClinicInfo] = useState(null)
@@ -27,9 +28,11 @@ export default function HelpContactPage() {
   useEffect(() => {
     fetchClinicInfo()
 
-    const allFaqs = getFaqs()
-    const helpFaqs = allFaqs.filter(f => f.is_active !== false && f.show_on_help !== false)
-    setFaqs(helpFaqs)
+    // FAQs come from the server so the answers use today's Clinic Info and
+    // Staff Schedules (placeholders are replaced server-side).
+    chatbotApi.list({ help: 1 })
+      .then(({ data }) => setFaqs(data?.faqs || []))
+      .catch(() => setFaqs([]))
   }, [])
 
   const groupedSchedule = clinicInfo?.schedule ? groupScheduleDays(clinicInfo.schedule) : []

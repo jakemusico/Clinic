@@ -38,6 +38,10 @@ export const chatbotApi = {
   toggle: (id) =>
     api.patch(`/chatbot/faqs/${id}/toggle`),
 
+  /** Show/hide an FAQ on the Student & Faculty Help page */
+  toggleHelp: (id) =>
+    api.patch(`/chatbot/faqs/${id}/help`),
+
   /** Admin Chatbot Support Statistics */
   getStatistics: (params) =>
     api.get('/chatbot/admin/statistics', { params }),

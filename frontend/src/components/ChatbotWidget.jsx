@@ -13,6 +13,7 @@ import { adminApi } from '../api/admin'
 import { useChatbot } from '../context/ChatbotContext'
 import { useAuth } from '../context/AuthContext'
 import Avatar from './Avatar'
+import DentalIcon from './DentalIcon'
 
 /* ─────────────────────────────────────────────────────────────────────────
    CATEGORY → NAVIGATION ACTIONS
@@ -168,7 +169,6 @@ function SvgIcon({ name, size = 15 }) {
     emergency:        'M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z M12 9v4 M12 17h.01',
     general:          'M12 2a10 10 0 100 20 10 10 0 000-20zm0 8h.01M12 12h.01M12 14h.01',
     services:         'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5',
-    dental:           'M12 2a4 4 0 00-4 4v2a2 2 0 002 2h4a2 2 0 002-2V6a4 4 0 00-4-4zM6 14a2 2 0 012-2h8a2 2 0 012 2v4a4 4 0 01-4 4h-4a4 4 0 01-4-4v-4z',
     nurse:            'M12 2v20M2 12h20',
     appointments:     'M8 2v4M16 2v4M3 10h18M3 6a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6z',
     hours:            'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z',
@@ -181,6 +181,16 @@ function SvgIcon({ name, size = 15 }) {
     bell:             'M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0',
     send:             'M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z',
     trash:            'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6',
+  }
+  // All dental / dentist icons use the one shared tooth icon
+  if (name === 'dental' || name === 'tooth') {
+    return (
+      <DentalIcon
+        size={size}
+        strokeWidth={2.1}
+        style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0 }}
+      />
+    )
   }
   const d = paths[name] || paths.general
   return (
@@ -252,7 +262,7 @@ function Bubble({ msg, onCategoryChip, onStartChat }) {
 
         {/* Category / subtopic buttons */}
         {msg.buttons?.length > 0 && (
-          <div className="chat-btn-group" style={{ marginTop: '0.75rem' }}>
+          <div className="chat-btn-group chat-btn-grid" style={{ marginTop: '0.75rem' }}>
             {msg.buttons.map(btn => (
               <button
                 key={btn.value}
@@ -268,19 +278,19 @@ function Bubble({ msg, onCategoryChip, onStartChat }) {
 
         {/* Fallback Live Chat Options */}
         {msg.chatButtons && (
-          <div className="chat-btn-group" style={{ marginTop: '0.75rem' }}>
+          <div className="chat-btn-group chat-btn-row" style={{ marginTop: '0.75rem' }}>
             <button
-              className="chat-menu-btn"
+              className="chat-menu-btn chat-btn-outline"
               onClick={() => onStartChat?.('nurse')}
             >
-              <SvgIcon name="nurse" size={14} />
+              <SvgIcon name="nurse" size={13} />
               <span>Chat with Nurse</span>
             </button>
             <button
-              className="chat-menu-btn"
+              className="chat-menu-btn chat-btn-outline"
               onClick={() => onStartChat?.('dentist')}
             >
-              <SvgIcon name="dental" size={14} />
+              <SvgIcon name="tooth" size={13} />
               <span>Chat with Dentist</span>
             </button>
           </div>
@@ -635,12 +645,24 @@ export default function ChatbotWidget() {
   }
 
   const isStudent = user?.role === 'student'
-  const firstName = user?.name?.split(' ')[0] || 'there'
+  const isFaculty = user?.role === 'faculty_staff'
+  const canUseChat = isStudent || isFaculty
+  // Greeting name: "Prof. Pantaleon" when the user has a title, otherwise the first name.
+  // (user.name already has the title prepended, so splitting it would give just "Prof.")
+  const firstName = (() => {
+    const title = user?.title?.trim()
+    const last = user?.last_name?.trim()
+    const first = user?.first_name?.trim()
+    if (title && last) return `${title} ${last}`
+    if (first) return first
+    const parts = (user?.name || '').split(' ').filter(Boolean)
+    return parts.find(p => !/\.$/.test(p)) || 'there'
+  })()
   const [chatEnabled, setChatEnabled] = useState(true)
 
   // Fetch whether live chat is enabled
   useEffect(() => {
-    if (!isStudent) return
+    if (!canUseChat) return
     let active = true
     const checkEnabled = async () => {
       try {
@@ -654,21 +676,21 @@ export default function ChatbotWidget() {
     }
     checkEnabled()
     return () => { active = false }
-  }, [isStudent, open])
+  }, [canUseChat, open])
 
   // Open live chat from URL query parameter e.g. ?chat=nurse
   useEffect(() => {
     const params = new URLSearchParams(location.search)
     const chatParam = params.get('chat')
-    if (chatParam && (chatParam === 'nurse' || chatParam === 'dentist') && isStudent && chatEnabled) {
+    if (chatParam && (chatParam === 'nurse' || chatParam === 'dentist') && canUseChat && chatEnabled) {
       setChatRole(chatParam)
       setOpen(true)
     }
-  }, [location.search, isStudent, chatEnabled, setChatRole, setOpen])
+  }, [location.search, canUseChat, chatEnabled, setChatRole, setOpen])
 
-  // ── Poll student unread count for FAB badge ───────────────────
+  // ── Poll student/faculty unread count for FAB badge ───────────────────
   useEffect(() => {
-    if (!isStudent) return
+    if (!canUseChat) return
     let mounted = true
     const fetchUnread = async () => {
       if (open) return
@@ -691,15 +713,15 @@ export default function ChatbotWidget() {
       clearInterval(interval)
       window.removeEventListener('messages-updated', handleUpdate)
     }
-  }, [isStudent, open])
+  }, [canUseChat, open])
 
   // Clear badge when chat opens & mark replies read on server
   useEffect(() => {
-    if (open && isStudent) {
+    if (open && canUseChat) {
       setUnreadCount(0)
       chatApi.markStudentAllRead().catch(() => {})
     }
-  }, [open, isStudent])
+  }, [open, canUseChat])
 
   // Scroll Q&A bottom
   const scrollToBottom = useCallback((behavior = 'auto') => {
@@ -744,7 +766,7 @@ export default function ChatbotWidget() {
 
   // ── Live Chat Polling (Every 4 seconds, paused when hidden or offline) ──
   useEffect(() => {
-    if (!open || !chatRole || !isStudent) return
+    if (!open || !chatRole || !canUseChat) return
 
     let isMounted = true
 
@@ -807,7 +829,7 @@ export default function ChatbotWidget() {
       clearInterval(interval)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [open, chatRole, isStudent, user?.id, isOnline])
+  }, [open, chatRole, canUseChat, user?.id, isOnline])
 
   // Scroll to bottom each time Q&A opens
   useEffect(() => {
@@ -891,7 +913,7 @@ export default function ChatbotWidget() {
         from: 'bot',
         ts: Date.now(),
         text,
-        chatButtons: isStudent,
+        chatButtons: canUseChat && chatEnabled,
       },
     ])
   }
@@ -1017,7 +1039,7 @@ export default function ChatbotWidget() {
       } else {
         pushBotWithDelay({
           text: data.message || "I couldn't find an answer for that. You can chat directly with our clinic staff:",
-          chatButtons: isStudent && chatEnabled,
+          chatButtons: canUseChat && chatEnabled,
         })
       }
     } catch {
@@ -1672,19 +1694,13 @@ export default function ChatbotWidget() {
                ═════════════════════════════════════════════════════════ */
             <>
               {/* Header */}
-              <div className="chatbot-header">
+              <div className="chatbot-header chatbot-header-minimal">
                 <div className="chatbot-header-info">
-                  <div className="chatbot-avatar-sm">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                      strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-                    </svg>
-                  </div>
                   <div>
-                    <div className="chatbot-name">FSUU Clinic Assistant</div>
+                    <div className="chatbot-name">Clinic Assistant</div>
                     <div className="chatbot-status">
                       <span className="chatbot-dot chatbot-dot-pulse" />
-                      Online · Rule-based FAQ bot
+                      Online
                     </div>
                   </div>
                 </div>
@@ -1713,21 +1729,12 @@ export default function ChatbotWidget() {
                 <div ref={bottomRef} style={{ height: '1px', flexShrink: 0 }} />
               </div>
 
-              {/* Student Entry Points to Live Chat at bottom of Q&A */}
-              {isStudent && chatEnabled && (
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: '0.5rem',
-                    padding: '0.45rem 0.85rem',
-                    borderTop: '1px solid var(--border)',
-                    background: 'var(--bg, #f8fafc)',
-                  }}
-                >
+              {/* Student / Faculty entry points to Live Chat at bottom of Q&A */}
+              {canUseChat && chatEnabled && (
+                <div className="chatbot-live-actions">
                   <button
                     type="button"
-                    className="chat-menu-btn"
-                    style={{ flex: 1, margin: 0, justifyContent: 'center', fontSize: '0.78rem', padding: '0.4rem 0.5rem' }}
+                    className="chat-menu-btn chat-btn-outline"
                     onClick={() => setChatRole('nurse')}
                   >
                     <SvgIcon name="nurse" size={13} />
@@ -1735,11 +1742,10 @@ export default function ChatbotWidget() {
                   </button>
                   <button
                     type="button"
-                    className="chat-menu-btn"
-                    style={{ flex: 1, margin: 0, justifyContent: 'center', fontSize: '0.78rem', padding: '0.4rem 0.5rem' }}
+                    className="chat-menu-btn chat-btn-outline"
                     onClick={() => setChatRole('dentist')}
                   >
-                    <SvgIcon name="dental" size={13} />
+                    <SvgIcon name="tooth" size={13} />
                     <span>Chat with Dentist</span>
                   </button>
                 </div>

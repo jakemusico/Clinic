@@ -13,13 +13,15 @@ class ChatbotFaq extends Model
         'keywords',
         'sort_order',
         'is_active',
+        'show_on_help',
     ];
 
     protected function casts(): array
     {
         return [
-            'is_active'  => 'boolean',
-            'sort_order' => 'integer',
+            'is_active'    => 'boolean',
+            'show_on_help' => 'boolean',
+            'sort_order'   => 'integer',
         ];
     }
 

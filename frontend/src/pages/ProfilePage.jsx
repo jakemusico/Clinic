@@ -12,6 +12,7 @@ import Avatar from '../components/Avatar'
 import useProfilePhoto from '../hooks/useProfilePhoto'
 import { getApiErrorMessage, getFieldErrors } from '../utils/apiError'
 import { SCHOOL_YEARS } from '../constants/schoolData'
+import Dropdown from '../components/Dropdown'
 import './ProfilePage.css'
 
 const BLOOD_TYPES = ['Unknown', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
@@ -469,41 +470,50 @@ function PatientProfilePage() {
 
               <div className="profile-field-group">
                 <label>Sex</label>
-                <select className="profile-select" value={formData.sex}
-                  onChange={e => { handleChange('sex', e.target.value); handleChange('gender', e.target.value) }} disabled={ro}>
-                  <option value="">Select sex</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                </select>
+                <Dropdown variant="plain" className={`profile-input${ro ? ' readonly' : ''}`}
+                  ariaLabel="Sex"
+                  value={formData.sex}
+                  onChange={v => { handleChange('sex', v); handleChange('gender', v) }} disabled={ro}
+                  options={[
+                    { value: '', label: 'Select sex' },
+                    { value: 'male', label: 'Male' },
+                    { value: 'female', label: 'Female' },
+                  ]}
+                  placeholder="Select sex" />
               </div>
 
               <div className="profile-field-group">
                 <label>Grade Level</label>
-                <select className="profile-select" value={formData.grade_level}
-                  onChange={e => handleChange('grade_level', e.target.value)} disabled={ro}>
-                  <option value="">Select grade level</option>
-                  {dbGradeLevels.map(lvl => <option key={lvl} value={lvl}>{lvl}</option>)}
-                </select>
+                <Dropdown variant="plain" className={`profile-input${ro ? ' readonly' : ''}`}
+                  value={formData.grade_level || ''}
+                  onChange={v => handleChange('grade_level', v)} disabled={ro}
+                  options={[{ value: '', label: 'Select grade level' }, ...dbGradeLevels]}
+                  placeholder="Select grade level" />
               </div>
 
               <div className="profile-field-group">
                 <label>Section</label>
-                <select className="profile-select" value={formData.section}
-                  onChange={e => handleChange('section', e.target.value)} disabled={ro}>
-                  <option value="">Select section</option>
-                  {dbSections.filter(s => s.grade_level === formData.grade_level).map(sec => (
-                    <option key={sec.id} value={sec.name}>{sec.name} {sec.strand ? `(${sec.strand})` : ''}</option>
-                  ))}
-                </select>
+                <Dropdown variant="plain" className={`profile-input${ro ? ' readonly' : ''}`}
+                  value={formData.section || ''}
+                  onChange={v => handleChange('section', v)} disabled={ro}
+                  options={[
+                    { value: '', label: 'Select section' },
+                    ...dbSections.filter(s => s.grade_level === formData.grade_level).map(sec => ({
+                      value: sec.name,
+                      label: `${sec.name}${sec.strand ? ` (${sec.strand})` : ''}`,
+                    })),
+                  ]}
+                  placeholder="Select section" />
               </div>
 
               <div className="profile-field-group">
                 <label>School Year</label>
-                <select className="profile-select" value={formData.school_year}
-                  onChange={e => handleChange('school_year', e.target.value)} disabled={ro}>
-                  <option value="">Select school year</option>
-                  {SCHOOL_YEARS.map(sy => <option key={sy} value={sy}>{sy}</option>)}
-                </select>
+                <Dropdown variant="plain" className={`profile-input${ro ? ' readonly' : ''}`}
+                  ariaLabel="School year"
+                  value={formData.school_year}
+                  onChange={v => handleChange('school_year', v)} disabled={ro}
+                  options={[{ value: '', label: 'Select school year' }, ...SCHOOL_YEARS.map(sy => ({ value: sy, label: sy }))]}
+                  placeholder="Select school year" />
               </div>
 
               <div className="profile-field-group">
@@ -551,11 +561,11 @@ function PatientProfilePage() {
               </div>
               <div className="profile-field-group">
                 <label>Relationship to Student</label>
-                <select className="profile-select" value={formData.guardian_relationship}
-                  onChange={e => handleChange('guardian_relationship', e.target.value)} disabled={ro}>
-                  <option value="">Select relationship</option>
-                  {RELATIONSHIPS.map(rel => <option key={rel} value={rel}>{rel}</option>)}
-                </select>
+                <Dropdown variant="plain" className={`profile-input${ro ? ' readonly' : ''}`}
+                  value={formData.guardian_relationship || ''}
+                  onChange={v => handleChange('guardian_relationship', v)} disabled={ro}
+                  options={[{ value: '', label: 'Select relationship' }, ...RELATIONSHIPS]}
+                  placeholder="Select relationship" />
               </div>
               <div className="profile-field-group">
                 <label>Contact Number</label>
@@ -597,11 +607,11 @@ function PatientProfilePage() {
               </div>
               <div className="profile-field-group">
                 <label>Relationship to Student</label>
-                <select className="profile-select" value={formData.emergency_relationship}
-                  onChange={e => handleChange('emergency_relationship', e.target.value)} disabled={ro}>
-                  <option value="">Select relationship</option>
-                  {RELATIONSHIPS.map(rel => <option key={rel} value={rel}>{rel}</option>)}
-                </select>
+                <Dropdown variant="plain" className={`profile-input${ro ? ' readonly' : ''}`}
+                  value={formData.emergency_relationship || ''}
+                  onChange={v => handleChange('emergency_relationship', v)} disabled={ro}
+                  options={[{ value: '', label: 'Select relationship' }, ...RELATIONSHIPS]}
+                  placeholder="Select relationship" />
               </div>
               <div className="profile-field-group">
                 <label>Contact Number</label>
@@ -643,11 +653,11 @@ function PatientProfilePage() {
             <div className="profile-form-grid">
               <div className="profile-field-group">
                 <label>Blood Type</label>
-                <select className="profile-select" value={formData.blood_type}
-                  onChange={e => handleChange('blood_type', e.target.value)} disabled={ro}>
-                  <option value="">Select blood type</option>
-                  {BLOOD_TYPES.map(bt => <option key={bt} value={bt}>{bt}</option>)}
-                </select>
+                <Dropdown variant="plain" className={`profile-input${ro ? ' readonly' : ''}`}
+                  value={formData.blood_type || ''}
+                  onChange={v => handleChange('blood_type', v)} disabled={ro}
+                  options={[{ value: '', label: 'Select blood type' }, ...BLOOD_TYPES]}
+                  placeholder="Select blood type" />
               </div>
               <div className="profile-field-group">
                 <label>Medical Conditions</label>

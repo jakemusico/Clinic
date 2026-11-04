@@ -110,7 +110,7 @@ export default function InventoryDashboardPage() {
             <div className="data-table-wrap">
               <div style={{ padding: '0.9rem 1.1rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontWeight: 700, fontSize: '0.875rem' }}>Low Stock Items</span>
-                <Link to="/admin/inventory/items" style={{ fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 600 }}>View All</Link>
+                <Link to="/clinic/inventory/items" style={{ fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 600 }}>View All</Link>
               </div>
               {data?.low_stock_items?.length === 0 ? (
                 <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
@@ -149,7 +149,7 @@ export default function InventoryDashboardPage() {
             <div className="data-table-wrap">
               <div style={{ padding: '0.9rem 1.1rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontWeight: 700, fontSize: '0.875rem' }}>Expiring / Expired Batches</span>
-                <Link to="/admin/inventory/stock-in" style={{ fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 600 }}>Manage</Link>
+                <Link to="/clinic/inventory/stock-in" style={{ fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 600 }}>Manage</Link>
               </div>
               {data?.expiry_batches?.length === 0 ? (
                 <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
@@ -206,7 +206,7 @@ export default function InventoryDashboardPage() {
           <div className="data-table-wrap" style={{ marginBottom: '2.5rem' }}>
             <div style={{ padding: '0.9rem 1.1rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontWeight: 700, fontSize: '0.875rem' }}>Recent Transactions</span>
-              <Link to="/admin/inventory/transactions" style={{ fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 600 }}>View All</Link>
+              <Link to="/clinic/inventory/transactions" style={{ fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 600 }}>View All</Link>
             </div>
             {data?.recent_transactions?.length === 0 ? (
               <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>

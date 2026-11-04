@@ -6,6 +6,7 @@ import { authApi } from '../api/auth'
 import PasswordStrength, { checkPasswordRules } from '../components/PasswordStrength'
 import NameFields, { formatFullName } from '../components/NameFields'
 import Avatar from '../components/Avatar'
+import Dropdown from '../components/Dropdown'
 import useProfilePhoto from '../hooks/useProfilePhoto'
 import { getApiErrorMessage, getFieldErrors } from '../utils/apiError'
 import './ProfilePage.css'
@@ -277,7 +278,6 @@ export default function StaffProfile() {
 
   const ro = !isEditing
   const inputCls  = 'profile-input'
-  const selectCls = 'profile-select'
 
   const EyeBtn = ({ field }) => (
     <button type="button" onClick={() => setShowPasswords(p => ({ ...p, [field]: !p[field] }))}
@@ -429,11 +429,18 @@ export default function StaffProfile() {
                   {/* Sex */}
                   <div className="profile-field-group">
                     <label>Sex</label>
-                    <select className={selectCls} value={formData.sex}
-                      onChange={e => handleChange('sex', e.target.value)} disabled={ro}>
-                      <option value="male">Male</option>
-                      <option value="female">Female</option>
-                    </select>
+                    <Dropdown
+                      variant="plain"
+                      className={inputCls}
+                      ariaLabel="Sex"
+                      value={formData.sex}
+                      onChange={v => handleChange('sex', v)}
+                      disabled={ro}
+                      options={[
+                        { value: 'male', label: 'Male' },
+                        { value: 'female', label: 'Female' },
+                      ]}
+                    />
                   </div>
 
                   {/* Date of Birth */}

@@ -7,6 +7,7 @@ import PasswordStrength, { checkPasswordRules } from '../components/PasswordStre
 import MobileInput, { isMobileValid } from '../components/MobileInput'
 import NameFields from '../components/NameFields'
 import { DEPARTMENTS, GRADE_LEVELS } from '../constants/schoolData'
+import Dropdown from '../components/Dropdown'
 import axios from 'axios'
 
 import fsuuBuilding from '../assets/fsuu_building.jpg'
@@ -240,12 +241,11 @@ export default function Register() {
           {/* 1. Role — full width */}
           <div className="form-group">
             <label htmlFor="reg-role">I am a…</label>
-            <select id="reg-role" name="role" value={form.role} onChange={handleChange}
-              className={errors.role ? 'input-error' : ''}>
-              {PUBLIC_ROLES.map((r) => (
-                <option key={r.value} value={r.value}>{r.label}</option>
-              ))}
-            </select>
+            <Dropdown id="reg-role" name="role"
+              value={form.role}
+              onChange={(v) => handleChange({ target: { name: 'role', value: v } })}
+              invalid={Boolean(errors.role)}
+              options={PUBLIC_ROLES.map((r) => ({ value: r.value, label: r.label }))} />
             {errors.role && <span className="field-error">{errors.role}</span>}
           </div>
 
@@ -270,12 +270,16 @@ export default function Register() {
             </div>
             <div className="form-group">
               <label htmlFor="reg-sex">Sex *</label>
-              <select id="reg-sex" name="sex" value={form.sex} onChange={handleChange}
-                className={errors.sex ? 'input-error' : ''} required>
-                <option value="">Select sex</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-              </select>
+              <Dropdown id="reg-sex" name="sex"
+                value={form.sex}
+                onChange={(v) => handleChange({ target: { name: 'sex', value: v } })}
+                invalid={Boolean(errors.sex)}
+                options={[
+                  { value: '', label: 'Select sex' },
+                  { value: 'male', label: 'Male' },
+                  { value: 'female', label: 'Female' },
+                ]}
+                placeholder="Select sex" />
               {errors.sex && <span className="field-error">{errors.sex}</span>}
             </div>
           </div>
@@ -322,13 +326,12 @@ export default function Register() {
                 </div>
                 <div className="form-group">
                   <label htmlFor="reg-grade-level">Grade Level *</label>
-                  <select id="reg-grade-level" name="grade_level" value={form.grade_level} onChange={handleChange}
-                    className={errors.grade_level ? 'input-error' : ''}>
-                    <option value="">Select grade level</option>
-                    {(dbGradeLevels.length > 0 ? dbGradeLevels : GRADE_LEVELS).map((g) => (
-                      <option key={g} value={g}>{g}</option>
-                    ))}
-                  </select>
+                  <Dropdown id="reg-grade-level" name="grade_level"
+                    value={form.grade_level || ''}
+                    onChange={(v) => handleChange({ target: { name: 'grade_level', value: v } })}
+                    invalid={Boolean(errors.grade_level)}
+                    options={[{ value: '', label: 'Select grade level' }, ...(dbGradeLevels.length > 0 ? dbGradeLevels : GRADE_LEVELS)]}
+                    placeholder="Select grade level" />
                   {errors.grade_level && <span className="field-error">{errors.grade_level}</span>}
                 </div>
               </div>
@@ -337,16 +340,16 @@ export default function Register() {
               <div className="form-row">
                 <div className="form-group">
                   <label htmlFor="reg-section">Section *</label>
-                  <select id="reg-section" name="section" value={form.section} onChange={handleChange}
-                    className={errors.section ? 'input-error' : ''}
-                    disabled={!form.grade_level}>
-                    <option value="">Select section</option>
-                    {availableSections.map((s) => (
-                      <option key={s.id} value={s.name}>
-                        {s.name} {s.strand ? `(${s.strand})` : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <Dropdown id="reg-section" name="section"
+                    value={form.section || ''}
+                    onChange={(v) => handleChange({ target: { name: 'section', value: v } })}
+                    invalid={Boolean(errors.section)}
+                    disabled={!form.grade_level}
+                    options={[
+                      { value: '', label: 'Select section' },
+                      ...availableSections.map((s) => ({ value: s.name, label: `${s.name}${s.strand ? ` (${s.strand})` : ''}` })),
+                    ]}
+                    placeholder="Select section" />
                   {errors.section && <span className="field-error">{errors.section}</span>}
                 </div>
               </div>
@@ -362,12 +365,12 @@ export default function Register() {
                 </div>
                 <div className="form-group">
                   <label htmlFor="reg-guardian-relationship">Relationship *</label>
-                  <select id="reg-guardian-relationship" name="guardian_relationship"
-                    value={form.guardian_relationship} onChange={handleChange}
-                    className={errors.guardian_relationship ? 'input-error' : ''}>
-                    <option value="">Select relationship</option>
-                    {GUARDIAN_RELATIONSHIPS.map(r => <option key={r} value={r}>{r}</option>)}
-                  </select>
+                  <Dropdown id="reg-guardian-relationship" name="guardian_relationship"
+                    value={form.guardian_relationship}
+                    onChange={(v) => handleChange({ target: { name: 'guardian_relationship', value: v } })}
+                    invalid={Boolean(errors.guardian_relationship)}
+                    options={[{ value: '', label: 'Select relationship' }, ...GUARDIAN_RELATIONSHIPS.map(r => ({ value: r, label: r }))]}
+                    placeholder="Select relationship" />
                   {errors.guardian_relationship && <span className="field-error">{errors.guardian_relationship}</span>}
                 </div>
               </div>
@@ -394,13 +397,12 @@ export default function Register() {
               </div>
               <div className="form-group">
                 <label htmlFor="reg-department">Department</label>
-                <select id="reg-department" name="department" value={form.department} onChange={handleChange}
-                  className={errors.department ? 'input-error' : ''}>
-                  <option value="">Select department</option>
-                  {DEPARTMENTS.map((d) => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
+                <Dropdown id="reg-department" name="department"
+                  value={form.department || ''}
+                  onChange={(v) => handleChange({ target: { name: 'department', value: v } })}
+                  invalid={Boolean(errors.department)}
+                  options={[{ value: '', label: 'Select department' }, ...DEPARTMENTS]}
+                  placeholder="Select department" />
                 {errors.department && <span className="field-error">{errors.department}</span>}
               </div>
             </div>

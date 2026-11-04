@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { toast } from 'react-hot-toast'
 import DashboardLayout from '../../components/DashboardLayout'
 import Pagination from '../../components/Pagination'
-import StyledSelect, { DateInput } from '../../components/StyledSelect'
+import DateInput from '../../components/DateInput'
+import Dropdown from '../../components/Dropdown'
 import { adminApi } from '../../api/admin'
 
 /* ── Human-readable action labels ──────────────────────────────────────── */
@@ -222,28 +223,22 @@ export default function AuditLogsPage() {
 
           {/* Action filter */}
           <div style={{ flex: '1 1 170px' }}>
-            <StyledSelect
+            <Dropdown
+              variant="filter"
               value={filterAct}
-              onChange={e => { setFilterAct(e.target.value); setPage(1) }}
-            >
-              <option value="all">All Actions</option>
-              {actions.map(act => (
-                <option key={act} value={act}>{formatAction(act)}</option>
-              ))}
-            </StyledSelect>
+              onChange={v => { setFilterAct(v); setPage(1) }}
+              options={[{ value: 'all', label: 'All Actions' }, ...actions.map(act => ({ value: act, label: formatAction(act) }))]}
+            />
           </div>
 
           {/* User filter */}
           <div style={{ flex: '1 1 170px' }}>
-            <StyledSelect
+            <Dropdown
+              variant="filter"
               value={filterUser}
-              onChange={e => { setFilterUser(e.target.value); setPage(1) }}
-            >
-              <option value="all">All Users</option>
-              {users.map(u => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </StyledSelect>
+              onChange={v => { setFilterUser(v); setPage(1) }}
+              options={[{ value: 'all', label: 'All Users' }, ...users.map(u => ({ value: String(u.id), label: u.name }))]}
+            />
           </div>
 
           {/* Date from */}

@@ -3042,12 +3042,16 @@ textarea:focus {
   font-size: 0.855rem;
   font-family: inherit;
   outline: none;
+  box-shadow: none;
   transition: border-color var(--transition), background var(--transition);
 }
 
+/* Blue border only while the input is focused */
 .chatbot-input:focus {
   border-color: var(--accent);
   background: #FFFFFF;
+  outline: none;
+  box-shadow: none;
 }
 
 .chatbot-input::placeholder {
@@ -5303,22 +5307,11 @@ img, video { max-width: 100%; }
   margin-right: 0.35rem;
 }
 
-.pagination-select {
+/* rows-per-page uses the shared Dropdown; match the 32px pagination buttons */
+.pagination-size-wrap .dd-trigger {
   height: 32px;
-  padding: 0 0.5rem;
-  font-size: 0.78rem;
-  font-weight: 600;
-  border-radius: var(--radius-sm, 6px);
-  border: 1px solid var(--border);
-  background: #FFFFFF;
-  color: var(--text);
-  cursor: pointer;
-  outline: none;
-  transition: border-color var(--transition);
-}
-
-.pagination-select:focus {
-  border-color: var(--accent);
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .pagination-btn {
@@ -5389,58 +5382,7 @@ img, video { max-width: 100%; }
   }
 }
 
-/* ── Standardized Filter Controls (StyledSelect & DateInput) ───────────────── */
-.styled-select-wrap {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  box-sizing: border-box;
-  width: 100%;
-}
-
-.styled-select-field {
-  width: 100%;
-  height: 40px;
-  padding: 0 2.25rem 0 0.85rem;
-  background: #ffffff;
-  border: 1.5px solid var(--border, #cbd5e1);
-  border-radius: var(--radius-sm, 6px);
-  color: var(--text, #0f172a);
-  font-size: 0.875rem;
-  font-family: inherit;
-  font-weight: 500;
-  cursor: pointer;
-  outline: none;
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  box-sizing: border-box;
-  transition: border-color var(--transition, 0.15s ease), box-shadow var(--transition, 0.15s ease);
-}
-
-.styled-select-field:focus {
-  border-color: var(--accent, #2563eb) !important;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15) !important;
-}
-
-.styled-select-field:disabled {
-  background: #f1f5f9;
-  cursor: not-allowed;
-  color: var(--text-muted, #64748b);
-}
-
-.styled-select-chevron {
-  position: absolute;
-  right: 0.85rem;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-  color: var(--text-muted, #64748b);
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
+/* ── Standardized Filter Controls (DateInput) ───────────────── */
 .styled-date-wrap {
   position: relative;
   display: inline-flex;
@@ -5491,4 +5433,534 @@ img, video { max-width: 100%; }
 
 .styled-date-field::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Help Assistant chatbot — minimal layout (shared by every role)
+   Layout/spacing only; colors reuse the existing chatbot palette.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* Header: "Clinic Assistant" + green dot + "Online", no icon box */
+.chatbot-header-minimal {
+  padding: 0.65rem 0.9rem;
+}
+
+.chatbot-header-minimal .chatbot-header-info {
+  gap: 0;
+}
+
+.chatbot-header-minimal .chatbot-name {
+  font-size: 0.88rem;
+}
+
+.chatbot-header-minimal .chatbot-status {
+  font-size: 0.7rem;
+  gap: 0.3rem;
+  margin-top: 2px;
+}
+
+.chatbot-header-minimal .chatbot-dot {
+  width: 6px;
+  height: 6px;
+}
+
+/* mobile.css forces min-height: 44px on every <button>; keep header buttons small */
+.chatbot-header-minimal .chatbot-icon-btn {
+  min-height: 28px;
+}
+
+/* Quick replies: compact chips in a 2-column grid */
+.chat-btn-group.chat-btn-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.chat-btn-grid .chat-menu-btn {
+  min-height: 0;
+  min-width: 0;
+  padding: 0.3rem 0.6rem;
+  gap: 5px;
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+
+/* Give the chip grid and the Nurse/Dentist row room inside the bot bubble */
+.chat-bubble.bot:has(.chat-btn-grid),
+.chat-bubble.bot:has(.chat-btn-row) {
+  max-width: 92%;
+}
+
+/* "Chat with Nurse" / "Chat with Dentist": one row, compact outline buttons */
+.chat-btn-group.chat-btn-row {
+  flex-direction: row;
+  gap: 0.4rem;
+}
+
+.chat-btn-outline {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  justify-content: center;
+  gap: 5px;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.25;
+  white-space: nowrap;
+  background: transparent;
+  border: 1px solid #BFDBFE;
+  color: var(--accent);
+  margin: 0;
+}
+
+.chat-btn-outline span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Always-visible live chat row under the Q&A */
+.chatbot-live-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 0.4rem;
+  padding: 0.4rem 0.85rem;
+  border-top: 1px solid var(--border);
+  background: var(--bg, #f8fafc);
+  flex-shrink: 0;
+}
+
+/* Mobile: respect notches / home indicator inside the full-screen window */
+@media (max-width: 767px) {
+  .chatbot-header {
+    padding-top: calc(0.65rem + env(safe-area-inset-top, 0px));
+  }
+
+  .chatbot-input-area {
+    padding-bottom: calc(0.65rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Dropdown — the one shared dropdown for the whole app (components/Dropdown.jsx).
+   The trigger is a <button> (nothing to text-select); the panel is rendered in <body>.
+   'form' = .form-group input look, 'filter' = 40px toolbar filter, 'compact' = small
+   (dashboard period filter, rows per page), 'plain' = the caller's class supplies the look.
+   ═════════════════════════════════════════════════════════════════════════ */
+.dd-wrap {
+  position: relative;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.dd-trigger {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  font-family: inherit;
+  line-height: normal;
+  color: var(--text);
+  text-align: left;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+}
+
+.dd-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dd-value.is-placeholder { color: var(--text-muted); }
+
+/* form fields (modals, register …) — matches .form-group input */
+.dd-trigger--form {
+  background: var(--bg-crust);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 2.4rem 0.65rem 0.95rem;
+  font-size: 0.9rem;
+}
+
+.dd-trigger--form:focus-visible,
+.dd-trigger--form.is-open {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-glow);
+  background: #FFFFFF;
+}
+
+/* toolbar filters */
+.dd-trigger--filter {
+  height: 40px;
+  background: #FFFFFF;
+  border: 1.5px solid var(--border, #cbd5e1);
+  border-radius: var(--radius-sm, 6px);
+  padding: 0 2.25rem 0 0.85rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.dd-trigger--filter:focus-visible,
+.dd-trigger--filter.is-open {
+  border-color: var(--accent, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+/* compact (matches .dash-period-select) */
+.dd-trigger--compact {
+  padding: 0.35rem 1.9rem 0.35rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #FFFFFF;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.dd-trigger--compact:focus-visible,
+.dd-trigger--compact.is-open {
+  border-color: var(--accent);
+}
+
+/* 'plain': the caller's class (e.g. profile-input) supplies the look; only leave room for the chevron */
+.dd-wrap .dd-trigger--plain { padding-right: 2.25rem; }
+
+/* error */
+.dd-trigger.input-error {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.10);
+}
+
+/* disabled */
+.dd-trigger:disabled {
+  cursor: not-allowed;
+}
+
+.dd-trigger--form:disabled,
+.dd-trigger--filter:disabled,
+.dd-trigger--compact:disabled {
+  background: #f1f5f9;
+  color: var(--text-muted, #64748b);
+}
+
+.dd-trigger:disabled .dd-chevron { opacity: 0.5; }
+
+.dd-chevron {
+  position: absolute;
+  right: 0.85rem;
+  top: 50%;
+  color: var(--text-muted, #64748b);
+  pointer-events: none;
+  transition: transform 0.15s ease;
+}
+
+.dd-wrap--compact { width: auto; min-width: 130px; }
+.dd-wrap--compact .dd-chevron { right: 0.55rem; }
+
+/* validation proxy for name= / required (the trigger is a button) */
+.dd-wrap .dd-proxy {
+  position: absolute !important;
+  left: 0;
+  bottom: 0;
+  width: 1px !important;
+  height: 1px !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* panel — fixed to the viewport, rendered in <body> */
+.dd-panel {
+  position: fixed;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.dd-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.dd-search {
+  flex-shrink: 0;
+  padding: 0.5rem;
+  background: #FFFFFF;
+  border-bottom: 1px solid var(--border);
+}
+
+.dd-search-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  height: 36px;
+  padding: 0 0.7rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--bg-crust);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.dd-search-input:focus {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-glow);
+  background: #FFFFFF;
+}
+
+.dd-search-input::placeholder { color: var(--text-muted); }
+
+.dd-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0.85rem;
+  min-height: 40px;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.dd-option:last-child { border-bottom: none; }
+.dd-option.is-active { background: var(--bg-crust); }
+.dd-option.is-selected { background: var(--accent-light); }
+.dd-option.is-selected.is-active { background: var(--accent-light); }
+.dd-option.is-disabled { opacity: 0.5; cursor: not-allowed; }
+
+.dd-option-main { flex: 1; min-width: 0; }
+
+.dd-option-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.dd-option.is-selected .dd-option-name { color: var(--accent); }
+
+.dd-option-tag {
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.dd-option-badge {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.1rem;
+}
+
+.dd-option-sub {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-sub);
+  white-space: nowrap;
+}
+
+.dd-option-sub.tone-low { color: var(--amber); }
+.dd-option-sub.tone-out { color: var(--red); }
+
+.dd-empty {
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* Mobile: full-width trigger, 44px trigger / rows / search (16px text so iOS does not zoom) */
+@media (max-width: 767px) {
+  .dd-trigger { min-height: 44px; }
+  .dd-option { min-height: 44px; padding: 0.65rem 0.85rem; }
+  .dd-search-input { height: 44px; font-size: 16px; }
+  .dd-wrap--filter { flex: 1 1 140px; min-width: 0; }
+}
+
+/* Phones: the fixed header wraps to two rows, so reserve its measured height (set by
+   DashboardShell as --dashboard-header-h) instead of a fixed 56px. Falls back to 56px. */
+@media (max-width: 767px) {
+  .dashboard-main { padding-top: var(--dashboard-header-h, 56px); }
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   DateRangePicker — one compact button + small calendar (components/DateRangePicker.jsx)
+   Same look as the other filter inputs; colors come from the existing palette.
+   ═════════════════════════════════════════════════════════════════════════ */
+.drp-wrap { position: relative; display: inline-block; min-width: 235px; max-width: 100%; box-sizing: border-box; }
+.drp-wrap.is-disabled { opacity: 0.6; }
+
+.drp-field {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  box-sizing: border-box;
+  background: #FFFFFF;
+  border: 1.5px solid var(--border, #cbd5e1);
+  border-radius: var(--radius-sm, 6px);
+  transition: border-color var(--transition, 0.15s ease), box-shadow var(--transition, 0.15s ease);
+}
+
+.drp-field:focus-within,
+.drp-wrap.is-open .drp-field {
+  border-color: var(--accent, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.drp-trigger {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.85rem;
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  outline: none;
+}
+
+.drp-trigger svg { color: var(--text-muted); flex-shrink: 0; }
+.drp-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.drp-label.is-placeholder { color: var(--text-muted); }
+
+.drp-clear {
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  margin-right: 6px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.drp-clear:hover { background: var(--bg-crust); color: var(--text); }
+
+.drp-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 60;
+  width: 304px;
+  max-width: calc(100vw - 24px);
+  box-sizing: border-box;
+  padding: 0.75rem;
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+.drp-panel--right { left: auto; right: 0; }
+
+.drp-head { display: flex; align-items: center; gap: 0.1rem; margin-bottom: 0.5rem; }
+.drp-title { flex: 1; text-align: center; font-weight: 700; font-size: 0.85rem; color: var(--text); }
+.drp-nav {
+  width: 30px; height: 30px; min-height: 0;
+  border: none; border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-sub);
+  font-size: 1.05rem; line-height: 1; cursor: pointer;
+}
+.drp-nav:hover { background: var(--bg-crust); }
+
+.drp-weekdays,
+.drp-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.drp-weekdays span {
+  text-align: center; padding: 0.2rem 0;
+  font-size: 0.68rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted);
+}
+.drp-grid { row-gap: 2px; }
+
+.drp-day {
+  height: 36px; min-height: 0;
+  border: none; border-radius: 0;
+  background: transparent; color: var(--text);
+  font-family: inherit; font-size: 0.82rem; cursor: pointer;
+}
+.drp-day:hover { background: var(--bg-crust); }
+.drp-day.is-range { background: var(--accent-light); color: var(--accent); }
+.drp-day.is-edge { background: var(--accent); color: #FFFFFF; font-weight: 700; border-radius: var(--radius-sm); }
+.drp-day.is-today:not(.is-edge) { font-weight: 700; box-shadow: inset 0 0 0 1.5px var(--accent); border-radius: var(--radius-sm); }
+.drp-day:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; position: relative; z-index: 1; }
+
+.drp-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 0.6rem; padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.75rem; color: var(--text-muted);
+}
+.drp-link {
+  min-height: 0; padding: 0.25rem 0.4rem;
+  border: none; background: transparent;
+  color: var(--accent); font-family: inherit; font-size: 0.78rem; font-weight: 600; cursor: pointer;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Inventory filter bar (Stock In / Stock Out / Transactions)
+   Phones: search takes the first row at full width, the rest wraps below it.
+   ═════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+  .inventory-filterbar { gap: 0.6rem !important; }
+  .inventory-filterbar .inventory-filterbar-left { flex: 1 1 100% !important; min-width: 0 !important; gap: 0.6rem !important; }
+  .inventory-filterbar .global-search-container { flex: 1 1 100%; max-width: 100% !important; min-width: 0 !important; }
+  .inventory-filterbar .inventory-filterbar-field { flex: 1 1 140px; width: auto !important; min-width: 0; }
+  .inventory-filterbar .drp-wrap { flex: 1 1 200px; min-width: 0; }
+  .inventory-filterbar .inventory-filterbar-actions { width: 100%; }
+  .inventory-filterbar .inventory-filterbar-actions > * { flex: 1; }
+
+  .drp-panel { width: min(340px, calc(100vw - 24px)); }
+  .drp-day { height: 44px; }
+  .drp-nav { width: 44px; height: 44px; }
+
+  /* The app already makes selects and buttons 44px tall on phones; match that here so the whole
+     filter bar has one height (search and date range were left at 40px). */
+  .inventory-filterbar .global-search-input { height: 44px !important; }   /* the shared search style is !important */
+  .inventory-filterbar .drp-field { height: 44px; }
+}
+
+/* Desktop: let the search box shrink (it still grows up to 240px) so that
+   Search | Category | Type | Date range | action all fit on ONE row, e.g. on Transactions. */
+@media (min-width: 768px) {
+  .inventory-filterbar .global-search-container { flex: 1 1 160px; width: auto; }
 }

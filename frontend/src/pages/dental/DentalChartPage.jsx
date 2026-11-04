@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import DashboardLayout from '../../components/DashboardLayout'
+import Dropdown from '../../components/Dropdown'
 import { dentalApi } from '../../api/dental'
 import { recordsApi } from '../../api/records'
 import { toast } from 'react-hot-toast'
@@ -166,18 +167,18 @@ export default function DentalChartPage() {
               Select Patient:
             </label>
             <div style={{ flex: 1, minWidth: '260px' }}>
-              <select
-                className="search-input"
-                style={{ width: '100%', fontWeight: 600, background: '#FFFFFF' }}
-                value={selectedPatientId}
-                onChange={(e) => handlePatientChange(e.target.value)}
-              >
-                {patients.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} — Student/Staff ID: {p.student_id || 'N/A'} ({p.email})
-                  </option>
-                ))}
-              </select>
+              <Dropdown
+                variant="filter"
+                value={String(selectedPatientId ?? '')}
+                onChange={(v) => handlePatientChange(v)}
+                options={patients.map(p => ({
+                  value: String(p.id),
+                  label: `${p.name} — Student/Staff ID: ${p.student_id || 'N/A'}`,
+                  badge: p.email,
+                }))}
+                placeholder="Select patient"
+                noOptionsMessage="No patients available"
+              />
             </div>
           </div>
         </div>
@@ -286,16 +287,14 @@ export default function DentalChartPage() {
                 <div className="modal-body">
                   <div className="form-group">
                     <label>Tooth Condition *</label>
-                    <select
+                    <Dropdown
                       value={condition}
-                      onChange={(e) => setCondition(e.target.value)}
+                      onChange={(v) => setCondition(v)}
+                      options={CONDITIONS.map(c => ({ value: c.key, label: c.label }))}
+                      placeholder="Select condition"
                       disabled={!isDentist}
                       required
-                    >
-                      {CONDITIONS.map(c => (
-                        <option key={c.key} value={c.key}>{c.label}</option>
-                      ))}
-                    </select>
+                    />
                   </div>
 
                   <div className="form-group">

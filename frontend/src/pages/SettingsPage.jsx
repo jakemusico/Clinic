@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import DashboardLayout from '../components/DashboardLayout'
+import Dropdown from '../components/Dropdown'
 import { authApi } from '../api/auth'
 import { adminApi } from '../api/admin'
 import { useAuth } from '../context/AuthContext'
@@ -599,23 +600,17 @@ export default function SettingsPage() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                     <label style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>Issue Category</label>
-                    <select
-                      style={{
-                        padding: '0.55rem 0.75rem',
-                        fontSize: '0.875rem',
-                        border: '1px solid #CBD5E1',
-                        borderRadius: '8px',
-                        outline: 'none',
-                        background: '#FFFFFF',
-                      }}
+                    <Dropdown
+                      ariaLabel="Issue category"
                       value={reportForm.category}
-                      onChange={e => setReportForm({ ...reportForm, category: e.target.value })}
-                    >
-                      <option value="System Issue">System or Website Issue</option>
-                      <option value="Appointment Concern">Appointment Concern</option>
-                      <option value="Health Record Discrepancy">Health Record Discrepancy</option>
-                      <option value="Other Feedback">Other Feedback</option>
-                    </select>
+                      onChange={v => setReportForm({ ...reportForm, category: v })}
+                      options={[
+                        { value: 'System Issue', label: 'System or Website Issue' },
+                        { value: 'Appointment Concern', label: 'Appointment Concern' },
+                        { value: 'Health Record Discrepancy', label: 'Health Record Discrepancy' },
+                        { value: 'Other Feedback', label: 'Other Feedback' },
+                      ]}
+                    />
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
