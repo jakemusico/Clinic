@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ClinicService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ClinicServiceController extends Controller
 {
@@ -24,6 +25,13 @@ class ClinicServiceController extends Controller
             $query->where('is_active', true);
         }
 
+        // ?care_type=medical|dental  -> only that kind of care (booking, nurse and dentist forms)
+        // ?active=1                  -> only services that can still be used
+        $query->careType($request->query('care_type'));
+        if ($request->boolean('active')) {
+            $query->where('is_active', true);
+        }
+
         return response()->json([
             'services' => $query->get(),
         ]);
@@ -36,6 +44,7 @@ class ClinicServiceController extends Controller
     {
         $validated = $request->validate([
             'name'             => ['required', 'string', 'max:200', 'unique:clinic_services'],
+            'care_type'        => ['required', 'string', Rule::in(ClinicService::CARE_TYPES)],
             'description'      => ['nullable', 'string'],
             'duration_minutes' => ['required', 'integer', 'min:5', 'max:480'],
             'fee'              => ['required', 'numeric', 'min:0'],
@@ -65,6 +74,7 @@ class ClinicServiceController extends Controller
     {
         $validated = $request->validate([
             'name'             => ['required', 'string', 'max:200', 'unique:clinic_services,name,' . $clinicService->id],
+            'care_type'        => ['required', 'string', Rule::in(ClinicService::CARE_TYPES)],
             'description'      => ['nullable', 'string'],
             'duration_minutes' => ['required', 'integer', 'min:5', 'max:480'],
             'fee'              => ['required', 'numeric', 'min:0'],

@@ -4,14 +4,11 @@ import DashboardLayout from '../../components/DashboardLayout'
 import PrintableRecord from '../../components/PrintableRecord'
 import Pagination from '../../components/Pagination'
 import { recordsApi } from '../../api/records'
+import { EMPTY, serviceLabel } from '../../utils/emptyValue'
+import { formatDateLong as formatDate, toDateKey, todayISO } from '../../utils/dateUtils'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 
-const formatDate = (dateStr) => {
-  if (!dateStr) return '—'
-  const cleanStr = typeof dateStr === 'string' && dateStr.includes('T') ? dateStr.split('T')[0] : String(dateStr)
-  const d = new Date(cleanStr + 'T00:00:00')
-  if (isNaN(d.getTime())) return String(dateStr)
-  return d.toLocaleDateString('en-PH', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })
-}
+const byNewestVisit = (a, b) => (toDateKey(b.visit_date) || '').localeCompare(toDateKey(a.visit_date) || '')
 
 const calcBMI = (weight, height) => {
   const w = parseFloat(weight)
@@ -31,11 +28,7 @@ const getBMICategory = (bmi) => {
 
 function ViewPatientProfileModal({ patient, onClose }) {
   const user = patient.user || patient
-  const sortedConsultations = [...(patient.consultations || [])].sort((a, b) => {
-    const da = a.visit_date ? new Date(a.visit_date.includes('T') ? a.visit_date.split('T')[0] : a.visit_date) : 0
-    const db = b.visit_date ? new Date(b.visit_date.includes('T') ? b.visit_date.split('T')[0] : b.visit_date) : 0
-    return db - da
-  })
+  const sortedConsultations = [...(patient.consultations || [])].sort(byNewestVisit)
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -75,7 +68,7 @@ function ViewPatientProfileModal({ patient, onClose }) {
                   const v = c.vitals || {}
                   const bmiVal = v.bmi || calcBMI(v.weight, v.height)
                   const cat = bmiVal ? getBMICategory(bmiVal) : ''
-                  const bmiStr = bmiVal ? `${bmiVal} kg/m² ${cat ? `(${cat})` : ''}` : '—'
+                  const bmiStr = bmiVal ? `${bmiVal} kg/m² ${cat ? `(${cat})` : ''}` : EMPTY
 
                   return (
                     <div
@@ -91,7 +84,7 @@ function ViewPatientProfileModal({ patient, onClose }) {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                         <div>
                           <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--accent)', marginRight: '0.5rem' }}>
-                            {c.appointment?.service?.name || c.service_name || 'Medical Consultation'}
+                            {serviceLabel(c)}
                           </span>
                           <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                             • {formatDate(c.visit_date)}
@@ -106,14 +99,14 @@ function ViewPatientProfileModal({ patient, onClose }) {
 
                       {(v.weight || v.height || v.bp || v.blood_pressure) && (
                         <div style={{ fontSize: '0.78rem', color: 'var(--text-sub)', background: 'var(--bg-crust)', padding: '0.4rem 0.65rem', borderRadius: 'var(--radius-sm)', marginBottom: '0.5rem', border: '1px solid var(--border)' }}>
-                          <strong>Vitals & BMI:</strong> BP: {v.blood_pressure || v.bp || '—'} | Temp: {v.temperature ? `${v.temperature}°C` : '—'} | Weight: {v.weight ? `${v.weight}kg` : '—'} | Height: {v.height ? `${v.height}cm` : '—'} | <strong style={{ color: 'var(--accent)' }}>BMI:</strong> {bmiStr}
+                          <strong>Vitals & BMI:</strong> BP: {v.blood_pressure || v.bp || EMPTY} | Temp: {v.temperature ? `${v.temperature}°C` : EMPTY} | Weight: {v.weight ? `${v.weight}kg` : EMPTY} | Height: {v.height ? `${v.height}cm` : EMPTY} | <strong style={{ color: 'var(--accent)' }}>BMI:</strong> {bmiStr}
                         </div>
                       )}
 
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem 1rem', fontSize: '0.82rem', marginBottom: '0.5rem' }}>
-                        <div><strong>Chief Complaint:</strong> {c.chief_complaint || '—'}</div>
-                        <div><strong>Diagnosis:</strong> <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{c.diagnosis || c.assessment || 'General Check-up'}</span></div>
-                        <div><strong>Treatment:</strong> {c.treatment || c.recommendation || '—'}</div>
+                        <div><strong>Chief Complaint:</strong> {c.chief_complaint || EMPTY}</div>
+                        <div><strong>Diagnosis:</strong> <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{c.diagnosis || c.assessment || EMPTY}</span></div>
+                        <div><strong>Treatment:</strong> {c.treatment || c.recommendation || EMPTY}</div>
                         <div><strong>Attending Staff:</strong> {c.created_by?.name || 'Clinic Staff'}</div>
                       </div>
 
@@ -143,6 +136,7 @@ export default function PatientRecordsPage() {
   const [allRecords, setAllRecords]             = useState([])
   const [loading, setLoading]                   = useState(true)
   const [search, setSearch]                     = useState('')
+  const debouncedSearch = useDebouncedValue(search)
   const [page, setPage]                         = useState(1)
   const [pageSize, setPageSize]                 = useState(10)
   const [selectedPatient, setSelectedPatient]   = useState(null)
@@ -206,22 +200,20 @@ export default function PatientRecordsPage() {
     const idStr = (u.student_id || '').toLowerCase()
     const emailStr = (u.email || '').toLowerCase()
     const deptStr = (u.department || '').toLowerCase()
-    const q = search.toLowerCase()
+    const q = debouncedSearch.toLowerCase()
     return nameStr.includes(q) || idStr.includes(q) || emailStr.includes(q) || deptStr.includes(q)
   })
 
   useEffect(() => {
     setPage(1)
-  }, [search])
+  }, [debouncedSearch])
 
   const totalPages = Math.max(1, Math.ceil(filteredPatients.length / pageSize))
   const paginatedPatients = filteredPatients.slice((page - 1) * pageSize, page * pageSize)
 
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = todayISO()
   const todayConsultationsCount = allRecords.filter(r => {
-    if (!r.visit_date) return false
-    const dStr = r.visit_date.includes('T') ? r.visit_date.split('T')[0] : r.visit_date
-    return dStr === todayStr
+    return toDateKey(r.visit_date) === todayStr
   }).length
 
   const stats = [
@@ -270,13 +262,9 @@ export default function PatientRecordsPage() {
                 const user = p.user || {}
                 const total = p.consultations.length
 
-                let lastVisit = '—'
+                let lastVisit = EMPTY
                 if (p.consultations.length > 0) {
-                  const sorted = [...p.consultations].sort((a, b) => {
-                    const da = a.visit_date ? new Date(a.visit_date.includes('T') ? a.visit_date.split('T')[0] : a.visit_date) : 0
-                    const db = b.visit_date ? new Date(b.visit_date.includes('T') ? b.visit_date.split('T')[0] : b.visit_date) : 0
-                    return db - da
-                  })
+                  const sorted = [...p.consultations].sort(byNewestVisit)
                   lastVisit = formatDate(sorted[0].visit_date)
                 }
 

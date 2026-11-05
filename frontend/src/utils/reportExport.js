@@ -5,26 +5,25 @@
 
 import { toast } from 'react-hot-toast'
 import { reportsApi } from '../api/reports'
+import { EMPTY, NO_SERVICE } from './emptyValue'
+import { toDateKey, toDateTimeKey } from './dateUtils'
 
 // Absolute URL so the logo loads correctly inside the hidden print iframe
 const LOGO_PATH = `${window.location.origin}/fsuu_logo.png`
 
 // Helper for formatting ISO dates
 const toISODate = (val) => {
-  if (!val) return '—'
-  const d = new Date(val)
-  return isNaN(d.getTime()) ? String(val) : d.toISOString().split('T')[0]
+  if (!val) return EMPTY
+  return toDateKey(val) || String(val)
 }
 
 const toISODateTime = (val) => {
-  if (!val) return '—'
-  const d = new Date(val)
-  if (isNaN(d.getTime())) return String(val)
-  return d.toISOString().replace('T', ' ').substring(0, 19)
+  if (!val) return EMPTY
+  return toDateTimeKey(val) || String(val)
 }
 
 const formatDisplayDate = (dStr) => {
-  if (!dStr) return '—'
+  if (!dStr) return EMPTY
   const d = new Date(dStr + (dStr.length === 10 ? 'T00:00:00' : ''))
   if (isNaN(d.getTime())) return dStr
   return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
@@ -251,14 +250,14 @@ export function buildReportHTML(options) {
       tbodyHtml = list.map(app => {
         const u = app.patient?.user
         const consult = app.clinic_record || app.dental_consultation
-        const details = [consult?.diagnosis ? `Dx: ${consult.diagnosis}` : '', (consult?.treatment || consult?.treatment_performed) ? `Tx: ${consult.treatment || consult.treatment_performed}` : ''].filter(Boolean).join(' · ') || '—'
+        const details = [consult?.diagnosis ? `Dx: ${consult.diagnosis}` : '', (consult?.treatment || consult?.treatment_performed) ? `Tx: ${consult.treatment || consult.treatment_performed}` : ''].filter(Boolean).join(' · ') || EMPTY
         return `
           <tr>
             <td>${toISODateTime(app.scheduled_at)}</td>
             <td><strong>${u?.name || 'N/A'}</strong></td>
-            <td>${u?.student_id || u?.employee_id || '—'}</td>
-            <td>${app.service?.name || '—'}</td>
-            <td>${app.staff?.name || '—'}</td>
+            <td>${u?.student_id || u?.employee_id || EMPTY}</td>
+            <td>${app.service?.name || EMPTY}</td>
+            <td>${app.staff?.name || EMPTY}</td>
             <td style="text-transform: capitalize;">${app.appointment_type || 'General'}</td>
             <td><strong>${(app.status || 'pending').toUpperCase()}</strong></td>
             <td>${details}</td>
@@ -284,14 +283,14 @@ export function buildReportHTML(options) {
       tbodyHtml = `<tr><td colspan="8" class="no-records">No records found for the selected reporting period and filters.</td></tr>`
     } else {
       tbodyHtml = list.map(c => {
-        const diagTx = [c.diagnosis !== '—' ? c.diagnosis : '', c.treatment !== '—' ? c.treatment : ''].filter(Boolean).join(' · ') || '—'
+        const diagTx = [c.diagnosis !== EMPTY ? c.diagnosis : '', c.treatment !== EMPTY ? c.treatment : ''].filter(Boolean).join(' · ') || EMPTY
         return `
           <tr>
             <td>${c.raw_date || c.date}</td>
             <td><strong>${c.patient_name}</strong></td>
-            <td>${c.student_id || '—'}</td>
+            <td>${c.student_id || EMPTY}</td>
             <td style="text-transform: capitalize;">${c.type}</td>
-            <td>${c.service}</td>
+            <td>${c.service || NO_SERVICE}</td>
             <td>${c.attending_staff}</td>
             <td>${c.complaint_category || c.complaint_diagnosis}</td>
             <td>${diagTx}</td>
@@ -378,7 +377,7 @@ export function buildReportHTML(options) {
           <tr>
             <td><strong>${item.name}</strong></td>
             <td>${item.category}</td>
-            <td class="text-right"><strong>${item.current_stock ?? '—'}</strong></td>
+            <td class="text-right"><strong>${item.current_stock ?? EMPTY}</strong></td>
             <td>${item.unit || 'pcs'}</td>
             <td class="text-right">${item.reorder_level}</td>
             <td>${item.location}</td>
@@ -871,13 +870,13 @@ export async function exportReportToCSV(options) {
       return [
         toISODateTime(app.scheduled_at),
         u?.name || 'N/A',
-        u?.student_id || u?.employee_id || '—',
-        app.service?.name || '—',
-        app.staff?.name || '—',
+        u?.student_id || u?.employee_id || EMPTY,
+        app.service?.name || EMPTY,
+        app.staff?.name || EMPTY,
         app.appointment_type || 'general',
         app.status || 'pending',
-        c?.diagnosis || '—',
-        c?.treatment || c?.treatment_performed || '—',
+        c?.diagnosis || EMPTY,
+        c?.treatment || c?.treatment_performed || EMPTY,
       ]
     })
     filename = `Appointments_Report_${dateFrom}_to_${dateTo}.csv`
@@ -890,16 +889,16 @@ export async function exportReportToCSV(options) {
     headers = ['Date', 'Patient Name', 'Student ID', 'Role', 'Type', 'Service', 'Attending Staff', 'Complaint Category', 'Chief Complaint', 'Diagnosis', 'Treatment']
     rows = list.map(c => [
       c.raw_date || toISODate(c.date),
-      c.patient_name || '—',
-      c.student_id || '—',
+      c.patient_name || EMPTY,
+      c.student_id || EMPTY,
       c.role || 'student',
       c.type || 'medical',
-      c.service || '—',
-      c.attending_staff || '—',
-      c.complaint_category || '—',
-      c.complaint_diagnosis || '—',
-      c.diagnosis || '—',
-      c.treatment || '—',
+      c.service || NO_SERVICE,
+      c.attending_staff || EMPTY,
+      c.complaint_category || EMPTY,
+      c.complaint_diagnosis || EMPTY,
+      c.diagnosis || EMPTY,
+      c.treatment || EMPTY,
     ])
     filename = `Consultations_Report_${dateFrom}_to_${dateTo}.csv`
   } else if (activeTab === 'inventory') {
@@ -909,13 +908,13 @@ export async function exportReportToCSV(options) {
       headers = ['Date', 'Item Name', 'Category', 'Batch No', 'Type', 'Quantity', 'Reason', 'Recorded By']
       rows = list.map(t => [
         t.raw_date || toISODate(t.transaction_date),
-        t.item_name || '—',
-        t.category || '—',
-        t.batch_no || '—',
+        t.item_name || EMPTY,
+        t.category || EMPTY,
+        t.batch_no || EMPTY,
         t.type || 'OUT',
         t.quantity ?? 0,
-        t.reason || '—',
-        t.recorded_by || '—',
+        t.reason || EMPTY,
+        t.recorded_by || EMPTY,
       ])
       filename = `Inventory_Usage_Report_${dateFrom}_to_${dateTo}.csv`
     } else if (invSubView === 'expiring') {
@@ -923,13 +922,13 @@ export async function exportReportToCSV(options) {
       if (list.length === 0) { toast.error('No expiring batch records to export.'); return }
       headers = ['Item Name', 'Category', 'Batch No', 'Supplier', 'Expiry Date', 'Remaining Quantity', 'Status']
       rows = list.map(b => [
-        b.item_name || '—',
-        b.category || '—',
-        b.batch_no || '—',
-        b.supplier || '—',
-        b.expiry_date || '—',
+        b.item_name || EMPTY,
+        b.category || EMPTY,
+        b.batch_no || EMPTY,
+        b.supplier || EMPTY,
+        b.expiry_date || EMPTY,
         b.remaining ?? 0,
-        b.status || '—',
+        b.status || EMPTY,
       ])
       filename = `Inventory_Expiring_Batches_Report_${dateFrom}_to_${dateTo}.csv`
     } else {
@@ -937,12 +936,12 @@ export async function exportReportToCSV(options) {
       if (list.length === 0) { toast.error('No inventory records to export.'); return }
       headers = ['Item Name', 'Category', 'Current Stock', 'Unit', 'Reorder Level', 'Location', 'Status']
       rows = list.map(i => [
-        i.name || '—',
-        i.category || '—',
+        i.name || EMPTY,
+        i.category || EMPTY,
         i.current_stock ?? 0,
         i.unit || 'pcs',
         i.reorder_level ?? 0,
-        i.location || '—',
+        i.location || EMPTY,
         i.status || 'normal',
       ])
       filename = `Inventory_Stock_Report_${dateFrom}_to_${dateTo}.csv`

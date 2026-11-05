@@ -1,6 +1,7 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
 import EmptyState from './EmptyState'
+import { EMPTY } from '../../utils/emptyValue'
 
 const STATUS_MAP = {
   pending:   { label: 'Pending',   cls: 'pending' },
@@ -70,7 +71,7 @@ export default function QueueTable({
                   return (
                     <tr key={row.id}>
                       <td className="dash-td-time">
-                        <span className="dash-time-badge">{row.time || '—'}</span>
+                        <span className="dash-time-badge">{row.time || EMPTY}</span>
                       </td>
                       <td>
                         <div className="dash-patient-name">{row.patient_name}</div>

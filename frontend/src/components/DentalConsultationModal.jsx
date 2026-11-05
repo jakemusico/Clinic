@@ -1,474 +1,383 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'react-hot-toast'
 import { dentalApi } from '../api/dental'
-import { recordsApi } from '../api/records'
-import { servicesApi } from '../api/services'
-import { appointmentsApi } from '../api/appointments'
 import { MedicineSupplyPicker } from './MedicineSupplyPicker'
 import Dropdown from './Dropdown'
-import { formatAppointmentDate } from '../utils/dateUtils'
-
-// FDI Notation Quadrants
-const QUADRANTS = {
-  upperRight: [18, 17, 16, 15, 14, 13, 12, 11],
-  upperLeft:  [21, 22, 23, 24, 25, 26, 27, 28],
-  lowerRight: [48, 47, 46, 45, 44, 43, 42, 41],
-  lowerLeft:  [31, 32, 33, 34, 35, 36, 37, 38],
-}
-
-const CONDITIONS = [
-  { key: 'healthy',   label: 'Healthy',            bg: 'var(--green-bg)',  color: 'var(--green)',  border: 'var(--green-border)',  dot: '#16A34A' },
-  { key: 'cavity',    label: 'Cavity / Caries',     bg: 'var(--red-bg)',    color: 'var(--red)',    border: 'var(--red-border)',    dot: '#DC2626' },
-  { key: 'filled',    label: 'Filled / Restoration',bg: 'var(--blue-bg)',   color: 'var(--blue)',   border: 'var(--blue-border)',   dot: '#2563EB' },
-  { key: 'extracted', label: 'Extracted',           bg: '#F1F5F9',          color: '#1E293B',       border: '#CBD5E1',              dot: '#1E293B' },
-  { key: 'missing',   label: 'Missing',             bg: '#F8FAFC',          color: '#64748B',       border: '#E2E8F0',              dot: '#64748B' },
-  { key: 'treated',   label: 'Crown / Root Canal',  bg: 'var(--amber-bg)', color: 'var(--amber)', border: 'var(--amber-border)', dot: '#D97706' },
-]
-
-const CONDITION_MAP = CONDITIONS.reduce((acc, c) => { acc[c.key] = c; return acc }, {})
-
-const deriveDefaultCondition = (serviceName) => {
-  const t = (serviceName || '').toLowerCase()
-  if (t.includes('extraction') || t.includes('extract') || t.includes('remove')) return 'extracted'
-  if (t.includes('filling') || t.includes('restoration') || t.includes('composite')) return 'filled'
-  if (t.includes('crown') || t.includes('root canal') || t.includes('treated')) return 'treated'
-  if (t.includes('cavity') || t.includes('caries') || t.includes('decay')) return 'cavity'
-  return 'healthy'
-}
+import ConsultationFormFrame from './consultation/ConsultationFormFrame'
+import CollapsibleSection from './consultation/CollapsibleSection'
+import FieldLabel from './consultation/FieldLabel'
+import PatientPicker from './consultation/PatientPicker'
+import ServiceField from './consultation/ServiceField'
+import LinkedAppointmentField from './consultation/LinkedAppointmentField'
+import VitalSignsFields from './consultation/VitalSignsFields'
+import DentalTeethSection from './consultation/DentalTeethSection'
+import { deriveDefaultCondition } from '../utils/dentalChart'
+import { useConsultationForm } from '../hooks/useConsultationForm'
+import {
+  COMPLAINT_CATEGORIES, buildVitalsPayload, hasVitals, todayISO, validateVitals,
+} from '../utils/consultation'
 
 const EMPTY_FORM = {
-  patient_id:          '',
-  appointment_id:      '',
-  consultation_date:   new Date().toISOString().split('T')[0],
-  service_name:        '',
-  reason_for_visit:    '',
-  affected_teeth:      [],
-  dental_findings:     '',
-  diagnosis:           '',
+  patient_id: '',
+  appointment_id: '',
+  consultation_date: todayISO(),
+  service_name: '',
+  reason_for_visit: '',
+  complaint_category: '',
+  // vital signs (all optional)
+  bp: '',
+  temperature: '',
+  pulse_rate: '',
+  weight: '',
+  height: '',
+  // teeth (optional)
+  affected_teeth: [],
+  tooth_conditions: {},
+  // clinical findings (all optional)
+  dental_findings: '',
+  diagnosis: '',
   treatment_performed: '',
-  recommendations:     '',
-  notes:               '',
-  staff_notes:         '',
-  status:              'completed',
+  recommendations: '',
+  notes: '',
+  staff_notes: '',
 }
 
-export function DentalConsultationModal({ initialData, onClose, onSaved }) {
-  const prePatientId = initialData?.patient_id || ''
-  const prePatientName = initialData?.patient?.name || initialData?.name || ''
+const FINDING_FIELDS = ['dental_findings', 'diagnosis', 'treatment_performed', 'recommendations', 'notes', 'staff_notes']
+const hasFindings = (f) => FINDING_FIELDS.some((k) => String(f?.[k] ?? '').trim() !== '')
+const hasTeeth = (f) => (f?.affected_teeth || []).length > 0
+const orNull = (v) => (String(v ?? '').trim() === '' ? null : String(v).trim())
 
-  const [form, setForm] = useState({
+/** New form from what the caller passes in (a person or an appointment). */
+function buildInitialForm(initialData) {
+  if (!initialData) return { ...EMPTY_FORM }
+  return {
     ...EMPTY_FORM,
-    patient_id:     String(prePatientId),
-    appointment_id: String(initialData?.appointment_id || ''),
-    service_name:   initialData?.appointment?.service?.name || '',
-    reason_for_visit: initialData?.appointment?.notes || '',
-  })
+    patient_id: String(initialData.patient_id || initialData.patient?.id || ''),
+    appointment_id: initialData.appointment_id ? String(initialData.appointment_id) : '',
+    // The service is never pre-selected on a new consultation. It only comes from the
+    // appointment the consultation is linked to.
+    service_name: initialData.appointment_id
+      ? (initialData.service_name || initialData.appointment?.service?.name || '')
+      : '',
+    reason_for_visit: initialData.reason_for_visit || initialData.appointment?.notes || '',
+  }
+}
 
-  const [patients,      setPatients]      = useState([])
-  const [services,      setServices]      = useState([])
-  const [appointments,  setAppointments]  = useState([])
-  const [teethMap,      setTeethMap]      = useState({})
-  const [toothConditions, setToothConditions] = useState({})
-  const [saving,        setSaving]        = useState(false)
-  const [loadingInit,   setLoadingInit]   = useState(true)
-  // Inventory - using new MedicineSupplyPicker component
-  const [invRows, setInvRows] = useState([])
+/**
+ * New Dental Consultation (Dentist). Shares its building blocks with the Nurse form
+ * (components/consultation/*, hooks/useConsultationForm).
+ *
+ * Required: patient, date, service, reason for the visit. Everything else is optional.
+ * Use `inline` to show it as a page card instead of a modal.
+ */
+export function DentalConsultationModal({ initialData, onClose, onSaved, inline = false }) {
+  const [initialForm] = useState(() => buildInitialForm(initialData))
 
-  // Load patients & services on mount
+  const c = useConsultationForm({ careType: 'dental', isEdit: false, initialForm })
+  const { form, setForm, setField, errors, setErrors } = c
+
+  const [saving, setSaving] = useState(false)
+  const [teethMap, setTeethMap] = useState({})
+  const [open, setOpen] = useState(() => ({ vitals: true, teeth: false, findings: false, meds: false }))
+  const toggle = (key) => setOpen((o) => ({ ...o, [key]: !o[key] }))
+
+  // current tooth conditions from the patient's dental chart
   useEffect(() => {
-    Promise.allSettled([
-      recordsApi.patients(),
-      servicesApi.list(),
-    ]).then(([pRes, sRes]) => {
-      if (pRes.status === 'fulfilled') setPatients(pRes.value.data.patients || [])
-      if (sRes.status === 'fulfilled') {
-        const all = sRes.value.data.services || sRes.value.data || []
-        setServices(all.filter(s =>
-          /dental|tooth|teeth|oral|gum|extraction|dentist/i.test(s.name + ' ' + (s.description || ''))
-        ))
-      }
-    }).finally(() => setLoadingInit(false))
-  }, [])
-
-  // Load appointments for selected patient (optional link)
-  useEffect(() => {
-    if (!form.patient_id) { setAppointments([]); return }
-    appointmentsApi.list({ patient_id: form.patient_id, appointment_type: 'dental' })
-      .then(res => {
-        const appts = (res.data.appointments || []).filter(a =>
-          a.status === 'confirmed' || a.status === 'pending'
-        )
-        setAppointments(appts)
-      })
-      .catch(() => setAppointments([]))
-  }, [form.patient_id])
-
-  // Load dental chart for selected patient
-  useEffect(() => {
-    if (!form.patient_id) { setTeethMap({}); return }
+    if (!form.patient_id) { setTeethMap({}); return undefined }
+    let alive = true
     dentalApi.getChart(form.patient_id)
-      .then(res => setTeethMap(res.data.latest_teeth || {}))
-      .catch(() => setTeethMap({}))
+      .then((res) => { if (alive) setTeethMap(res.data.latest_teeth || {}) })
+      .catch(() => { if (alive) setTeethMap({}) })
+    return () => { alive = false }
   }, [form.patient_id])
 
-  const setField = (key, val) => setForm(p => ({ ...p, [key]: val }))
+  useEffect(() => {
+    if (c.invRows.length > 0) setOpen((o) => (o.meds ? o : { ...o, meds: true }))
+  }, [c.invRows.length])
 
+  // choosing a service suggests a chart condition for the teeth already selected
   const handleServiceChange = (name) => {
     setField('service_name', name)
     const def = deriveDefaultCondition(name)
-    setToothConditions(prev => {
-      const updated = { ...prev }
-      form.affected_teeth.forEach(n => { updated[n] = def })
-      return updated
-    })
+    setForm((p) => ({
+      ...p,
+      service_name: name,
+      tooth_conditions: Object.fromEntries((p.affected_teeth || []).map((n) => [n, def])),
+    }))
   }
 
   const toggleTooth = (num) => {
-    setForm(prev => {
-      const exists = prev.affected_teeth.includes(num)
+    setForm((p) => {
+      const selected = p.affected_teeth.includes(num)
+      const conditions = { ...p.tooth_conditions }
+      if (selected) delete conditions[num]
+      else conditions[num] = deriveDefaultCondition(p.service_name)
       return {
-        ...prev,
-        affected_teeth: exists
-          ? prev.affected_teeth.filter(t => t !== num)
-          : [...prev.affected_teeth, num].sort((a, b) => a - b),
+        ...p,
+        affected_teeth: selected ? p.affected_teeth.filter((t) => t !== num) : [...p.affected_teeth, num].sort((a, b) => a - b),
+        tooth_conditions: conditions,
       }
     })
-    setToothConditions(prev => {
-      if (prev[num]) {
-        const copy = { ...prev }; delete copy[num]; return copy
-      }
-      return { ...prev, [num]: deriveDefaultCondition(form.service_name) }
-    })
+  }
+
+  const setToothCondition = (num, condition) =>
+    setForm((p) => ({ ...p, tooth_conditions: { ...p.tooth_conditions, [num]: condition } }))
+
+  const handleRestoreDraft = () => {
+    const data = c.restoreDraft()
+    if (!data) return
+    setOpen({ vitals: true, teeth: hasTeeth(data.form), findings: hasFindings(data.form), meds: (data.invRows || []).length > 0 })
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!form.patient_id) { toast.error('Please select a patient.'); return }
+
+    const found = {}
+    if (!form.patient_id) found.patient_id = 'Please select the patient.'
+    if (!form.service_name) found.service_name = 'Please select the dental service.'
+    if (!form.consultation_date) found.consultation_date = 'Please choose the consultation date.'
+    if (!form.reason_for_visit.trim()) found.reason_for_visit = 'Please enter the reason for the visit.'
+    const vitalErrors = validateVitals(form)
+    Object.assign(found, vitalErrors)
+
+    if (Object.keys(found).length) {
+      setErrors(found)
+      if (Object.keys(vitalErrors).length) setOpen((o) => ({ ...o, vitals: true }))
+      toast.error('Please fix the highlighted fields.')
+      c.scrollToFirstError()
+      return
+    }
+
     setSaving(true)
+    setErrors({})
+
+    const def = deriveDefaultCondition(form.service_name)
+    const payload = {
+      patient_id: parseInt(form.patient_id, 10),
+      appointment_id: form.appointment_id ? parseInt(form.appointment_id, 10) : null,
+      service_name: form.service_name,
+      consultation_date: form.consultation_date,
+      reason_for_visit: form.reason_for_visit.trim(),
+      complaint_category: form.complaint_category || null,
+      vitals: buildVitalsPayload(form),
+      affected_teeth: form.affected_teeth,
+      tooth_conditions: Object.fromEntries(form.affected_teeth.map((n) => [n, form.tooth_conditions[n] || def])),
+      dental_findings: orNull(form.dental_findings),
+      diagnosis: orNull(form.diagnosis),
+      treatment_performed: orNull(form.treatment_performed),
+      recommendations: orNull(form.recommendations),
+      notes: orNull(form.notes),
+      staff_notes: orNull(form.staff_notes),
+      status: 'completed',
+      inventory_items: c.invRows
+        .filter((r) => r.item_id && parseInt(r.quantity, 10) > 0)
+        .map((r) => ({
+          item_id: parseInt(r.item_id, 10),
+          quantity: parseInt(r.quantity, 10),
+          dosage_note: r.dosage_note || null,
+        })),
+    }
+
     try {
-      const res = await dentalApi.createConsultation({
-        ...form,
-        patient_id:     parseInt(form.patient_id),
-        appointment_id: form.appointment_id ? parseInt(form.appointment_id) : null,
-        tooth_conditions: toothConditions,
-        inventory_items: invRows
-          .filter(r => r.item_id && parseInt(r.quantity) > 0)
-          .map(r => ({
-            item_id: parseInt(r.item_id),
-            quantity: parseInt(r.quantity),
-            dosage_note: r.dosage_note || null,
-          })),
-      })
+      const res = await dentalApi.createConsultation(payload)
+      c.draft.clear()
       toast.success('Dental consultation saved & chart updated!')
-      onSaved(res.data.consultation || res.data)
-      onClose()
+      onSaved?.(res.data.consultation || res.data)
+      onClose?.()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save dental consultation.')
+      const flat = c.applyApiError(err, 'Failed to save dental consultation.')
+      if (flat) {
+        if (Object.keys(flat).some((k) => k.startsWith('vitals'))) setOpen((o) => ({ ...o, vitals: true }))
+        if (FINDING_FIELDS.some((k) => flat[k])) setOpen((o) => ({ ...o, findings: true }))
+        c.scrollToFirstError()
+      }
     } finally {
       setSaving(false)
     }
   }
 
-  const renderTooth = (num) => {
-    const cond   = teethMap[num]?.condition || 'healthy'
-    const style  = CONDITION_MAP[cond] || CONDITION_MAP.healthy
-    const isSelected = form.affected_teeth.includes(num)
-    return (
-      <button
-        key={num}
-        type="button"
-        onClick={() => toggleTooth(num)}
-        title={`Tooth #${num}: ${style.label}`}
-        style={{
-          width: '42px', height: '50px',
-          borderRadius: 'var(--radius-sm)',
-          background: style.bg,
-          border: `2px solid ${isSelected ? 'var(--accent)' : style.border}`,
-          boxShadow: isSelected ? '0 0 0 3px rgba(37,99,235,0.3)' : 'var(--shadow-xs)',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', transition: 'all var(--transition)',
-          transform: isSelected ? 'scale(1.07)' : 'scale(1)',
-          position: 'relative', outline: 'none',
-        }}
-      >
-        {isSelected && (
-          <div style={{
-            position: 'absolute', top: '-5px', right: '-5px',
-            width: '13px', height: '13px', borderRadius: '50%',
-            background: 'var(--accent)', color: '#fff',
-            fontSize: '8px', fontWeight: 800,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>✓</div>
-        )}
-        <span style={{ fontSize: '0.78rem', fontWeight: 800, color: style.color }}>#{num}</span>
-        <span style={{ fontSize: '0.58rem', fontWeight: 600, color: style.color, textTransform: 'uppercase', marginTop: '1px' }}>
-          {cond === 'healthy' ? 'OK' : cond.slice(0, 4)}
-        </span>
-      </button>
-    )
-  }
-
-  // Resolve patient display name for prefilled case
-  const patientLabel = prePatientName
-    ? `${prePatientName}${initialData?.student_id ? ` (${initialData.student_id})` : ''}`
-    : null
+  const medsBadge = c.allergyMatches.length > 0
+    ? '⚠ Allergy warning'
+    : (c.invRows.length ? `${c.invRows.length} item${c.invRows.length > 1 ? 's' : ''}` : undefined)
 
   return (
-    <div
-      className="modal-overlay"
-      onClick={e => e.target === e.currentTarget && onClose()}
+    <ConsultationFormFrame
+      title="New Dental Consultation"
+      inline={inline}
+      onClose={onClose}
+      onSubmit={handleSubmit}
+      saving={saving}
+      saveLabel="Save & Complete Consultation"
+      draft={c.draft.pending}
+      onRestoreDraft={handleRestoreDraft}
+      onDiscardDraft={c.draft.discard}
     >
-      <div
-        className="modal-card"
-        style={{ maxWidth: '800px', width: '95vw', maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+      {/* 1 — Patient & visit */}
+      <CollapsibleSection number={1} title="Patient & Visit Details">
+        <PatientPicker
+          careType="dental"
+          patients={c.patients}
+          loading={c.loadingPatients}
+          value={form.patient_id}
+          onChange={(v) => setField('patient_id', v)}
+          error={errors.patient_id}
+        />
+
+        <LinkedAppointmentField
+          appointments={c.appointments}
+          loading={c.loadingAppointments}
+          value={form.appointment_id}
+          onSelect={c.selectAppointment}
+        />
+
+        <div className="form-row">
+          <ServiceField
+            careType="dental"
+            services={c.services}
+            loading={c.loadingServices}
+            value={form.service_name}
+            onChange={handleServiceChange}
+            locked={c.serviceLocked}
+            error={errors.service_name}
+          />
+          <div className="form-group">
+            <FieldLabel required htmlFor="dental-date">Consultation Date</FieldLabel>
+            <input
+              id="dental-date"
+              type="date"
+              value={form.consultation_date}
+              max={todayISO()}
+              className={errors.consultation_date ? 'input-error' : ''}
+              onChange={(e) => setField('consultation_date', e.target.value)}
+            />
+            {errors.consultation_date && <span className="field-error">{errors.consultation_date}</span>}
+          </div>
+        </div>
+
+        <div className="form-group">
+          <FieldLabel required htmlFor="dental-reason">Reason for Visit / Chief Complaint</FieldLabel>
+          <textarea
+            id="dental-reason"
+            rows={2}
+            placeholder="e.g. Toothache on upper molar, routine cleaning, cavity check..."
+            value={form.reason_for_visit}
+            className={errors.reason_for_visit ? 'input-error' : ''}
+            onChange={(e) => setField('reason_for_visit', e.target.value)}
+          />
+          {errors.reason_for_visit && <span className="field-error">{errors.reason_for_visit}</span>}
+        </div>
+
+        <div className="form-group">
+          <FieldLabel optional>Complaint Category</FieldLabel>
+          <Dropdown
+            searchable
+            ariaLabel="Complaint category"
+            value={form.complaint_category}
+            onChange={(v) => setField('complaint_category', v)}
+            options={[{ value: '', label: 'No category' }, ...COMPLAINT_CATEGORIES.dental]}
+            placeholder="Select a category"
+            searchPlaceholder="Search categories…"
+            emptyMessage="No category matches your search"
+          />
+        </div>
+      </CollapsibleSection>
+
+      {/* 2 — Vital signs */}
+      <CollapsibleSection
+        number={2}
+        title="Vital Signs"
+        optional
+        open={open.vitals}
+        onToggle={() => toggle('vitals')}
+        badge={hasVitals(form) ? 'Filled in' : undefined}
       >
-        {/* Header */}
-        <div className="modal-header">
-          <h2>New Dental Consultation</h2>
-          <button className="modal-close" onClick={onClose}>✕</button>
+        <VitalSignsFields values={form} errors={errors} onChange={setField} />
+      </CollapsibleSection>
+
+      {/* 3 — Affected teeth */}
+      <CollapsibleSection
+        number={3}
+        title="Affected Teeth (FDI Notation)"
+        optional
+        open={open.teeth}
+        onToggle={() => toggle('teeth')}
+        badge={hasTeeth(form) ? `${form.affected_teeth.length} selected` : undefined}
+      >
+        <DentalTeethSection
+          teethMap={teethMap}
+          selected={form.affected_teeth}
+          conditions={form.tooth_conditions}
+          serviceName={form.service_name}
+          onToggle={toggleTooth}
+          onConditionChange={setToothCondition}
+        />
+      </CollapsibleSection>
+
+      {/* 4 — Clinical findings */}
+      <CollapsibleSection
+        number={4}
+        title="Clinical Findings & Treatment"
+        optional
+        open={open.findings}
+        onToggle={() => toggle('findings')}
+        badge={hasFindings(form) ? 'Filled in' : undefined}
+      >
+        <div className="form-row">
+          <div className="form-group">
+            <FieldLabel optional htmlFor="dental-diagnosis">Diagnosis</FieldLabel>
+            <input id="dental-diagnosis" type="text" placeholder="e.g. Dental Caries, Gingivitis, Impacted Tooth..."
+              value={form.diagnosis} onChange={(e) => setField('diagnosis', e.target.value)} />
+          </div>
+          <div className="form-group">
+            <FieldLabel optional htmlFor="dental-findings">Dental Findings</FieldLabel>
+            <input id="dental-findings" type="text" placeholder="e.g. Deep occlusal cavity on tooth #16..."
+              value={form.dental_findings} onChange={(e) => setField('dental_findings', e.target.value)} />
+          </div>
         </div>
-
-        {/* Body */}
-        <div className="modal-body" style={{ overflowY: 'auto', flex: 1 }}>
-          {loadingInit ? (
-            <div className="table-loading"><div className="loader-ring" /></div>
-          ) : (
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-
-              {/* Section 1 — Patient & Details */}
-              <div>
-                <h3 style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)', marginBottom: '0.75rem' }}>
-                  1. Patient & Consultation Details
-                </h3>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Patient *</label>
-                    {patientLabel ? (
-                      <input disabled value={patientLabel} />
-                    ) : (
-                      <Dropdown
-                        value={String(form.patient_id ?? '')}
-                        onChange={v => setField('patient_id', v)}
-                        options={patients.map(p => ({
-                          value: String(p.id),
-                          label: `${p.name} (${p.student_id || p.email})`,
-                        }))}
-                        placeholder="Select patient"
-                        noOptionsMessage="No patients available"
-                        required
-                      />
-                    )}
-                  </div>
-                  <div className="form-group">
-                    <label>Consultation Date *</label>
-                    <input
-                      type="date"
-                      value={form.consultation_date}
-                      onChange={e => setField('consultation_date', e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Dental Service</label>
-                    <Dropdown
-                      value={form.service_name || ''}
-                      onChange={v => handleServiceChange(v)}
-                      options={services.map(s => ({ value: s.name, label: `${s.name} (${s.duration_minutes}m)` }))}
-                      placeholder="Select service"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Link to Appointment <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(Optional)</span></label>
-                    <Dropdown
-                      value={String(form.appointment_id ?? '')}
-                      onChange={v => setField('appointment_id', v)}
-                      options={[
-                        { value: '', label: 'None (Walk-in)' },
-                        ...appointments.map(a => ({
-                          value: String(a.id),
-                          label: `${a.service?.name || 'Appointment'} — ${formatAppointmentDate(a)}`,
-                        })),
-                      ]}
-                      placeholder="None (Walk-in)"
-                    />
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label>Reason for Visit / Chief Complaint</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Toothache on upper molar, routine cleaning..."
-                    value={form.reason_for_visit}
-                    onChange={e => setField('reason_for_visit', e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Section 2 — Affected Teeth */}
-              <div>
-                <h3 style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)', marginBottom: '0.75rem' }}>
-                  2. Select Affected Teeth (FDI Notation) — {form.affected_teeth.length} selected
-                </h3>
-
-                {/* Legend */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '1rem' }}>
-                  {CONDITIONS.map(c => (
-                    <div key={c.key} style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
-                      padding: '0.2rem 0.55rem', borderRadius: 'var(--radius-full)',
-                      background: c.bg, border: `1px solid ${c.border}`, fontSize: '0.7rem',
-                    }}>
-                      <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: c.dot }} />
-                      <span style={{ color: c.color, fontWeight: 600 }}>{c.label}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Odontogram */}
-                <div style={{ background: 'var(--bg-crust)', borderRadius: 'var(--radius)', padding: '1rem', border: '1px solid var(--border)' }}>
-                  {/* Upper arch */}
-                  <div style={{ textAlign: 'center', fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>
-                    ── MAXILLARY ARCH (UPPER) ──
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '0.75rem' }}>
-                    <div style={{ display: 'flex', gap: '0.3rem' }}>{QUADRANTS.upperRight.map(n => renderTooth(n))}</div>
-                    <div style={{ width: '2px', background: 'var(--accent)', opacity: 0.3 }} title="Midline" />
-                    <div style={{ display: 'flex', gap: '0.3rem' }}>{QUADRANTS.upperLeft.map(n => renderTooth(n))}</div>
-                  </div>
-
-                  {/* Lower arch */}
-                  <div style={{ textAlign: 'center', fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>
-                    ── MANDIBULAR ARCH (LOWER) ──
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
-                    <div style={{ display: 'flex', gap: '0.3rem' }}>{QUADRANTS.lowerRight.map(n => renderTooth(n))}</div>
-                    <div style={{ width: '2px', background: 'var(--accent)', opacity: 0.3 }} title="Midline" />
-                    <div style={{ display: 'flex', gap: '0.3rem' }}>{QUADRANTS.lowerLeft.map(n => renderTooth(n))}</div>
-                  </div>
-                </div>
-
-                {/* Tooth condition per selected tooth */}
-                {form.affected_teeth.length > 0 && (
-                  <div style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.5rem' }}>
-                    {form.affected_teeth.map(num => (
-                      <div key={num} style={{
-                        background: 'var(--bg-crust)', padding: '0.45rem 0.7rem',
-                        borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem',
-                      }}>
-                        <span style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--accent)' }}>Tooth #{num}</span>
-                        <Dropdown
-                          variant="compact"
-                          ariaLabel={`Condition of tooth ${num}`}
-                          value={toothConditions[num] || deriveDefaultCondition(form.service_name)}
-                          onChange={v => setToothConditions(prev => ({ ...prev, [num]: v }))}
-                          options={CONDITIONS.map(c => ({ value: c.key, label: c.label }))}
-                          style={{ flex: 1, minWidth: 0 }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Section 3 — Clinical Findings */}
-              <div>
-                <h3 style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)', marginBottom: '0.75rem' }}>
-                  3. Clinical Findings & Treatment
-                </h3>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Diagnosis</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Dental Caries, Gingivitis..."
-                      value={form.diagnosis}
-                      onChange={e => setField('diagnosis', e.target.value)}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Dental Findings</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Deep occlusal cavity on tooth #16..."
-                      value={form.dental_findings}
-                      onChange={e => setField('dental_findings', e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>Treatment Performed</label>
-                  <textarea
-                    rows="2"
-                    placeholder="e.g. Composite restoration, oral prophylaxis..."
-                    value={form.treatment_performed}
-                    onChange={e => setField('treatment_performed', e.target.value)}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Recommendations</label>
-                  <textarea
-                    rows="2"
-                    placeholder="e.g. Return in 2 weeks, avoid hard food..."
-                    value={form.recommendations}
-                    onChange={e => setField('recommendations', e.target.value)}
-                  />
-                </div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Patient Notes</label>
-                    <textarea
-                      rows="2"
-                      placeholder="Notes visible to patient"
-                      value={form.notes}
-                      onChange={e => setField('notes', e.target.value)}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label style={{ color: 'var(--red)' }}>Private Notes (Internal Only)</label>
-                    <textarea
-                      rows="2"
-                      placeholder="Hidden from patient"
-                      value={form.staff_notes}
-                      onChange={e => setField('staff_notes', e.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Medicines / Supplies Used */}
-              <div className="detail-section" style={{ marginTop: '1.25rem' }}>
-                <h3 style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.5rem' }}>
-                  4. Medicines / Supplies Used
-                </h3>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-                  Select items dispensed during this consultation. Stock will be automatically deducted.
-                </div>
-                <MedicineSupplyPicker
-                  value={invRows}
-                  onChange={setInvRows}
-                  isEdit={false}
-                  consultationType="dental"
-                  consultationId={initialData?.id}
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border)' }}>
-                <button type="button" className="btn-ghost" onClick={onClose} disabled={saving}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? 'Saving…' : 'Save Consultation'}
-                </button>
-              </div>
-            </form>
-          )}
+        <div className="form-group">
+          <FieldLabel optional htmlFor="dental-treatment">Treatment Performed</FieldLabel>
+          <textarea id="dental-treatment" rows={2} placeholder="e.g. Composite restoration, oral prophylaxis..."
+            value={form.treatment_performed} onChange={(e) => setField('treatment_performed', e.target.value)} />
         </div>
-      </div>
-    </div>
+        <div className="form-group">
+          <FieldLabel optional htmlFor="dental-recommendations">Recommendations / Instructions</FieldLabel>
+          <textarea id="dental-recommendations" rows={2} placeholder="e.g. Avoid hot food for 2 hours, brush twice daily..."
+            value={form.recommendations} onChange={(e) => setField('recommendations', e.target.value)} />
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <FieldLabel optional htmlFor="dental-notes">Patient-Visible Notes</FieldLabel>
+            <textarea id="dental-notes" rows={2} placeholder="Notes shown to the patient in the health portal"
+              value={form.notes} onChange={(e) => setField('notes', e.target.value)} />
+          </div>
+          <div className="form-group">
+            <FieldLabel optional htmlFor="dental-staff-notes"><span style={{ color: 'var(--red)' }}>Private Notes (Internal Only)</span></FieldLabel>
+            <textarea id="dental-staff-notes" rows={2} placeholder="Hidden from the patient"
+              value={form.staff_notes} onChange={(e) => setField('staff_notes', e.target.value)} />
+          </div>
+        </div>
+      </CollapsibleSection>
+
+      {/* 5 — Medicines / supplies */}
+      <CollapsibleSection
+        number={5}
+        title="Medicines / Supplies Used"
+        optional
+        open={open.meds}
+        onToggle={() => toggle('meds')}
+        badge={medsBadge}
+        badgeTone={c.allergyMatches.length > 0 ? 'warn' : undefined}
+      >
+        <div className="form-hint">Select items dispensed during this consultation. Stock is deducted automatically.</div>
+        <MedicineSupplyPicker
+          value={c.invRows}
+          onChange={c.setInvRows}
+          isEdit={false}
+          consultationType="dental"
+          allergies={c.selectedPatient?.allergies}
+          onAllergyMatches={c.setAllergyMatches}
+        />
+      </CollapsibleSection>
+    </ConsultationFormFrame>
   )
 }

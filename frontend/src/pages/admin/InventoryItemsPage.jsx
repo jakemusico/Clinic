@@ -5,6 +5,8 @@ import DashboardLayout from '../../components/DashboardLayout'
 import Dropdown from '../../components/Dropdown'
 import Pagination from '../../components/Pagination'
 import { inventoryApi } from '../../api/inventory'
+import { EMPTY } from '../../utils/emptyValue'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 
 const BLANK_ITEM = {
   name: '',
@@ -88,7 +90,7 @@ const ICONS = {
 const LOAD_ERROR_TOAST_ID = 'inventory-items-load-error'
 
 const fmtDate = (d) => {
-  if (!d) return '—'
+  if (!d) return EMPTY
   const dateObj = new Date(d + (d.length === 10 ? 'T00:00:00' : ''))
   if (isNaN(dateObj.getTime())) return d
   return dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
@@ -119,6 +121,7 @@ export default function InventoryItemsPage() {
 
   // Toolbar & Filtering
   const [search,     setSearch]     = useState(initialSearch)
+  const debouncedSearch = useDebouncedValue(search)
   const [filterCat,  setFilterCat]  = useState('all')
   const [filterStat, setFilterStat] = useState('all')
 
@@ -385,13 +388,13 @@ export default function InventoryItemsPage() {
   const lowStockCount   = Number(summary.low_stock ?? 0)
   const outOfStockCount = Number(summary.out_of_stock ?? 0)
   // While the request is failing, show a dash instead of a misleading 0
-  const statText = (v) => (loadError ? '—' : v)
+  const statText = (v) => (loadError ? EMPTY : v)
 
   const filtered = useMemo(() => {
     return items.filter(i => {
       // Search matching
-      if (search) {
-        const q = search.toLowerCase()
+      if (debouncedSearch) {
+        const q = debouncedSearch.toLowerCase()
         const matches =
           i.name?.toLowerCase().includes(q) ||
           i.category?.toLowerCase().includes(q) ||
@@ -419,7 +422,7 @@ export default function InventoryItemsPage() {
 
       return true
     })
-  }, [items, search, filterStat])
+  }, [items, debouncedSearch, filterStat])
 
   const sorted = useMemo(() => {
     return [...filtered].sort((a, b) => {
@@ -471,11 +474,11 @@ export default function InventoryItemsPage() {
     const rows = sorted.map(i => {
       const stockOrInfo =
         i.category === 'Equipment'
-          ? `Condition: ${i.equipment_status || 'Available'} | Loc: ${i.location || '—'}`
+          ? `Condition: ${i.equipment_status || 'Available'} | Loc: ${i.location || EMPTY}`
           : (i.current_stock ?? 0)
-      const reorder = i.category === 'Equipment' ? '—' : i.reorder_level
-      const expiry = i.nearest_expiry || '—'
-      const expStatus = i.expiry_status ? i.expiry_status.toUpperCase() : '—'
+      const reorder = i.category === 'Equipment' ? EMPTY : i.reorder_level
+      const expiry = i.nearest_expiry || EMPTY
+      const expStatus = i.expiry_status ? i.expiry_status.toUpperCase() : EMPTY
       const activeStatus = i.is_active ? 'Active' : 'Inactive'
 
       return [
@@ -487,7 +490,7 @@ export default function InventoryItemsPage() {
         expiry,
         expStatus,
         activeStatus,
-        i.description || '—',
+        i.description || EMPTY,
       ]
     })
 
@@ -837,7 +840,7 @@ export default function InventoryItemsPage() {
                             {item.equipment_status || 'Available'}
                           </span>
                           <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                            {item.location || '—'}
+                            {item.location || EMPTY}
                           </span>
                         </div>
                       ) : (
@@ -877,7 +880,7 @@ export default function InventoryItemsPage() {
 
                     {/* Reorder Level */}
                     <td style={{ textAlign: 'center', fontSize: '0.83rem', color: 'var(--text-sub)' }}>
-                      {isEquipment ? '—' : `≤${item.reorder_level}`}
+                      {isEquipment ? EMPTY : `≤${item.reorder_level}`}
                     </td>
 
                     {/* Nearest Expiry */}
@@ -902,7 +905,7 @@ export default function InventoryItemsPage() {
                           )}
                         </div>
                       ) : (
-                        <span style={{ color: 'var(--text-muted)' }}>—</span>
+                        <span style={{ color: 'var(--text-muted)' }}>{EMPTY}</span>
                       )}
                     </td>
 
@@ -1039,7 +1042,7 @@ export default function InventoryItemsPage() {
                     <div>
                       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>LOCATION</div>
                       <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)' }}>
-                        {selectedItem.location || '—'}
+                        {selectedItem.location || EMPTY}
                       </div>
                     </div>
                   </>
@@ -1060,7 +1063,7 @@ export default function InventoryItemsPage() {
                     <div>
                       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>NEAREST EXPIRY</div>
                       <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)' }}>
-                        {selectedItem.nearest_expiry ? fmtDate(selectedItem.nearest_expiry) : '—'}
+                        {selectedItem.nearest_expiry ? fmtDate(selectedItem.nearest_expiry) : EMPTY}
                       </div>
                     </div>
                   </>
@@ -1105,7 +1108,7 @@ export default function InventoryItemsPage() {
                               {fmtDate(b.expiry_date)}
                             </td>
                             <td style={{ fontSize: '0.82rem' }}>
-                              {b.supplier || '—'}
+                              {b.supplier || EMPTY}
                             </td>
                             <td>
                               {b.remaining === 0 ? (
@@ -1170,13 +1173,13 @@ export default function InventoryItemsPage() {
                               {t.type === 'OUT' ? `-${t.quantity}` : `+${t.quantity}`}
                             </td>
                             <td style={{ fontSize: '0.82rem' }}>
-                              {t.reason || '—'}
+                              {t.reason || EMPTY}
                             </td>
                             <td style={{ fontSize: '0.82rem' }}>
                               {t.recorded_by?.name || t.recordedBy?.name || 'Staff'}
                             </td>
                             <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                              {t.notes || '—'}
+                              {t.notes || EMPTY}
                             </td>
                           </tr>
                         ))}

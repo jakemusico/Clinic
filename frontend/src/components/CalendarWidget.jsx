@@ -28,8 +28,13 @@ function formatTime(timeStr) {
   return `${hour}:${min} ${ampm}`
 }
 
-export default function CalendarWidget({ appointments = [], userRole = '' }) {
-  const [events, setEvents] = useState([])
+/**
+ * @param events  optional. The dashboards send the calendar events along with their own data;
+ *                when given, the widget makes no request of its own.
+ */
+export default function CalendarWidget({ appointments = [], userRole = '', events: providedEvents }) {
+  const [fetchedEvents, setEvents] = useState([])
+  const events = providedEvents ?? fetchedEvents
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -37,10 +42,11 @@ export default function CalendarWidget({ appointments = [], userRole = '' }) {
   })
 
   useEffect(() => {
+    if (providedEvents !== undefined) return
     calendarApi.list().then(res => {
       setEvents(res.data.events || [])
     }).catch(err => console.error(err))
-  }, [])
+  }, [providedEvents])
 
   const toggleCollapse = () => {
     const val = !isCollapsed

@@ -6,14 +6,8 @@ import Pagination from '../../components/Pagination'
 import { recordsApi } from '../../api/records'
 import { dentalApi } from '../../api/dental'
 import { toast } from 'react-hot-toast'
-
-const formatDate = (dateStr) => {
-  if (!dateStr) return '—'
-  const cleanStr = typeof dateStr === 'string' && dateStr.includes('T') ? dateStr.split('T')[0] : String(dateStr)
-  const d = new Date(cleanStr + 'T00:00:00')
-  if (isNaN(d.getTime())) return String(dateStr)
-  return d.toLocaleDateString('en-PH', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })
-}
+import { EMPTY } from '../../utils/emptyValue'
+import { formatDateLong as formatDate } from '../../utils/dateUtils'
 
 export default function DentalPatientRecordsPage() {
   const navigate                    = useNavigate()
@@ -224,7 +218,7 @@ export default function DentalPatientRecordsPage() {
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
                         <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--accent)' }}>
-                          {c.diagnosis || 'Dental Checkup'}
+                          {c.diagnosis || EMPTY}
                         </span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <span className="status-badge completed">

@@ -1,12 +1,17 @@
-import { useEffect, useState, useCallback } from 'react'
+import { lazy, Suspense, useEffect, useState, useCallback } from 'react'
 import DashboardLayout from '../../components/DashboardLayout'
-import CalendarWidget from '../../components/CalendarWidget'
 import { dashboardApi } from '../../api/dashboard'
 import PeriodFilter from '../../components/dashboard/PeriodFilter'
-import VisitTrendsChart from '../../components/dashboard/VisitTrendsChart'
-import FrequentSymptomsChart from '../../components/dashboard/FrequentSymptomsChart'
 import RecentVisitsTable from '../../components/dashboard/RecentVisitsTable'
 import InventoryAlertBanner from '../../components/dashboard/InventoryAlertBanner'
+import { EMPTY } from '../../utils/emptyValue'
+import { CardFallback, ChartsFallback } from '../../components/dashboard/Fallbacks'
+
+// The charts (recharts) and the calendar are the heaviest parts of the page: load them as
+// separate chunks so the stat cards and the table can appear first.
+const VisitTrendsChart = lazy(() => import('../../components/dashboard/VisitTrendsChart'))
+const FrequentSymptomsChart = lazy(() => import('../../components/dashboard/FrequentSymptomsChart'))
+const CalendarWidget = lazy(() => import('../../components/CalendarWidget'))
 
 export default function DentistDashboard() {
   const [data, setData] = useState(null)
@@ -39,10 +44,10 @@ export default function DentistDashboard() {
 
   // 4 Stat cards at the top
   const statCards = [
-    { value: loading ? '—' : stats.my_dental_appointments_today ?? 0, label: "My Dental Appointments Today", icon: 'appointments' },
-    { value: loading ? '—' : stats.waiting_patients ?? 0, label: 'Waiting Patients', icon: 'schedule' },
-    { value: loading ? '—' : stats.dental_consultations_completed_today ?? 0, label: 'Dental Consultations Completed Today', icon: 'dentalChart' },
-    { value: loading ? '—' : stats.dental_supplies_low_stock ?? 0, label: 'Dental Supplies Low Stock', icon: 'inventory' },
+    { value: loading ? EMPTY : stats.my_dental_appointments_today ?? 0, label: "My Dental Appointments Today", icon: 'appointments' },
+    { value: loading ? EMPTY : stats.waiting_patients ?? 0, label: 'Waiting Patients', icon: 'schedule' },
+    { value: loading ? EMPTY : stats.dental_consultations_completed_today ?? 0, label: 'Dental Consultations Completed Today', icon: 'dentalChart' },
+    { value: loading ? EMPTY : stats.dental_supplies_low_stock ?? 0, label: 'Dental Supplies Low Stock', icon: 'inventory' },
   ]
 
   return (
@@ -70,22 +75,28 @@ export default function DentistDashboard() {
             />
 
             {/* Equal-height charts row */}
-            <div className="dash-grid-2col">
-              <VisitTrendsChart
-                data={chartData.visit_trends || []}
-                loading={loading}
-                period={period}
-              />
-              <FrequentSymptomsChart
-                data={chartData.frequent_symptoms || []}
-                loading={loading}
-              />
-            </div>
+            <Suspense fallback={<ChartsFallback />}>
+              <div className="dash-grid-2col">
+                <VisitTrendsChart
+                  data={chartData.visit_trends || []}
+                  loading={loading}
+                  period={period}
+                />
+                <FrequentSymptomsChart
+                  data={chartData.frequent_symptoms || []}
+                  categorized={chartData.categorized_consultations}
+                  total={chartData.total_consultations}
+                  loading={loading}
+                />
+              </div>
+            </Suspense>
           </div>
 
           {/* Right of Charts: Calendar Widget */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            <CalendarWidget userRole="dentist" />
+            <Suspense fallback={<CardFallback />}>
+              <CalendarWidget userRole="dentist" events={data?.calendar_events ?? []} />
+            </Suspense>
           </div>
         </div>
 

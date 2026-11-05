@@ -18,6 +18,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts'
+import { EMPTY } from '../../utils/emptyValue'
 
 /* ─── Constants ──────────────────────────────────────────────────── */
 
@@ -51,9 +52,9 @@ const TABS = [
 /* ─── Tiny helpers ───────────────────────────────────────────────── */
 
 const fmtMinutes = (mins) => {
-  if (mins === null || mins === undefined || mins === '') return '—'
+  if (mins === null || mins === undefined || mins === '') return EMPTY
   const num = typeof mins === 'number' ? mins : parseFloat(mins)
-  if (isNaN(num) || num < 0) return '—'
+  if (isNaN(num) || num < 0) return EMPTY
   const rounded = Math.round(num)
   if (rounded === 0) return '< 1 min'
   if (rounded < 60) return `${rounded} min`
@@ -306,7 +307,7 @@ function FaqsTab() {
                   </td>
                   <td style={{ fontWeight: 600, color: 'var(--text)' }}>{faq.question}</td>
                   <td style={{ fontSize: '0.8rem', color: 'var(--text-sub)' }}>
-                    {faq.keywords || <span className="text-muted">—</span>}
+                    {faq.keywords || <span className="text-muted">{EMPTY}</span>}
                   </td>
                   <td>
                     <button

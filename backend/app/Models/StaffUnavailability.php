@@ -18,7 +18,7 @@ class StaffUnavailability extends Model
     protected function casts(): array
     {
         return [
-            'unavailable_date' => 'date',
+            'unavailable_date' => 'date:Y-m-d',
         ];
     }
 

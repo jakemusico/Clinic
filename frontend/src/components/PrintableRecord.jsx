@@ -15,19 +15,11 @@
 
 import { useRef } from 'react'
 import { toast } from 'react-hot-toast'
+import { EMPTY, NO_SERVICE, serviceNameOf } from '../utils/emptyValue'
+import { formatDateLong } from '../utils/dateUtils'
 
 /* ── Helpers ────────────────────────────────────────────────── */
-const fmtDate = (dateStr) => {
-  if (!dateStr) return '—'
-  const clean = typeof dateStr === 'string' && dateStr.includes('T')
-    ? dateStr.split('T')[0]
-    : dateStr
-  const d = new Date(clean + 'T00:00:00')
-  if (isNaN(d.getTime())) return String(dateStr)
-  return d.toLocaleDateString('en-PH', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-  })
-}
+const fmtDate = (value) => formatDateLong(value, { weekday: 'long', month: 'long' })
 
 const calcBMI = (weight, height) => {
   const w = parseFloat(weight)
@@ -87,26 +79,26 @@ body{font-family:'Inter',Arial,sans-serif;font-size:11pt;color:#0F172A;backgroun
 function patientRows(pu) {
   return `
     <div class="grid2">
-      <div class="field"><div class="flabel">Full Name</div><div class="fval accent">${pu.name || '—'}</div></div>
-      <div class="field"><div class="flabel">Student / Employee ID</div><div class="fval">${pu.student_id || '—'}</div></div>
-      <div class="field"><div class="flabel">Email</div><div class="fval">${pu.email || '—'}</div></div>
-      <div class="field"><div class="flabel">Department / Course</div><div class="fval">${pu.department || '—'}</div></div>
+      <div class="field"><div class="flabel">Full Name</div><div class="fval accent">${pu.name || EMPTY}</div></div>
+      <div class="field"><div class="flabel">Student / Employee ID</div><div class="fval">${pu.student_id || EMPTY}</div></div>
+      <div class="field"><div class="flabel">Email</div><div class="fval">${pu.email || EMPTY}</div></div>
+      <div class="field"><div class="flabel">Department / Course</div><div class="fval">${pu.department || EMPTY}</div></div>
     </div>`
 }
 
 function vitalsRows(v, showBMI = true) {
   const bmiVal = v.bmi || calcBMI(v.weight, v.height)
   const cat = bmiVal ? bmiCategory(bmiVal) : ''
-  const bmiDisplay = bmiVal ? `${bmiVal} kg/m² ${cat ? `(${cat})` : ''}` : '—'
+  const bmiDisplay = bmiVal ? `${bmiVal} kg/m² ${cat ? `(${cat})` : ''}` : EMPTY
 
   return `
     <div class="vbox">
       <div class="grid3">
-        <div class="field"><div class="flabel">Blood Pressure</div><div class="fval">${v.blood_pressure || v.bp || '—'}</div></div>
-        <div class="field"><div class="flabel">Temperature</div><div class="fval">${v.temperature ? v.temperature + ' °C' : '—'}</div></div>
-        <div class="field"><div class="flabel">Pulse Rate</div><div class="fval">${v.pulse_rate ? v.pulse_rate + ' bpm' : '—'}</div></div>
-        <div class="field"><div class="flabel">Weight</div><div class="fval">${v.weight ? v.weight + ' kg' : '—'}</div></div>
-        <div class="field"><div class="flabel">Height</div><div class="fval">${v.height ? v.height + ' cm' : '—'}</div></div>
+        <div class="field"><div class="flabel">Blood Pressure</div><div class="fval">${v.blood_pressure || v.bp || EMPTY}</div></div>
+        <div class="field"><div class="flabel">Temperature</div><div class="fval">${v.temperature ? v.temperature + ' °C' : EMPTY}</div></div>
+        <div class="field"><div class="flabel">Pulse Rate</div><div class="fval">${v.pulse_rate ? v.pulse_rate + ' bpm' : EMPTY}</div></div>
+        <div class="field"><div class="flabel">Weight</div><div class="fval">${v.weight ? v.weight + ' kg' : EMPTY}</div></div>
+        <div class="field"><div class="flabel">Height</div><div class="fval">${v.height ? v.height + ' cm' : EMPTY}</div></div>
         <div class="field"><div class="flabel">BMI</div><div class="fval accent">${bmiDisplay}</div></div>
       </div>
       ${v.respiratory_rate ? `<div class="field" style="margin-top:6px"><div class="flabel">Respiratory Rate</div><div class="fval">${v.respiratory_rate} breaths/min</div></div>` : ''}
@@ -117,7 +109,7 @@ function textBlock(label, value) {
   const empty = !value || String(value).trim() === ''
   return `<div class="tblock">
     <div class="tlabel">${label}</div>
-    <div class="tval${empty ? ' empty' : ''}">${empty ? 'None recorded' : String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+    <div class="tval${empty ? ' empty' : ''}">${empty ? EMPTY : String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
   </div>`
 }
 
@@ -134,7 +126,7 @@ function buildConsultation(record, vitals, pu) {
     <div class="doc-section"><div class="sec-title">Consultation Overview</div>
       <div class="grid2">
         <div class="field"><div class="flabel">Date</div><div class="fval">${fmtDate(record.visit_date)}</div></div>
-        <div class="field"><div class="flabel">Clinic Service</div><div class="fval">${record.appointment?.service?.name || record.service_name || 'Medical Consultation'}</div></div>
+        <div class="field"><div class="flabel">Clinic Service</div><div class="fval">${serviceNameOf(record) || NO_SERVICE}</div></div>
         <div class="field"><div class="flabel">Attending Staff</div><div class="fval">${record.created_by?.name || 'Clinic Staff'}</div></div>
         <div class="field"><div class="flabel">Status</div><div class="fval">Completed</div></div>
       </div>
@@ -142,12 +134,13 @@ function buildConsultation(record, vitals, pu) {
     <div class="doc-section"><div class="sec-title">Vital Signs</div>${vitalsRows(vitals, true)}</div>
     <div class="doc-section"><div class="sec-title">Clinical Findings</div>
       ${textBlock('Reason for Visit / Chief Complaint', record.chief_complaint)}
-      ${record.symptoms ? textBlock('Symptoms', record.symptoms) : ''}
-      ${record.assessment ? textBlock('Assessment / Clinical Findings', record.assessment) : ''}
-      ${textBlock('Diagnosis', record.diagnosis || record.assessment)}
+      ${textBlock('Complaint Category', record.complaint_category)}
+      ${textBlock('Symptoms', record.symptoms)}
+      ${textBlock('Assessment / Clinical Findings', record.assessment)}
+      ${textBlock('Diagnosis', record.diagnosis)}
       ${textBlock('Treatment & Recommendations', record.treatment || record.recommendation)}
-      ${record.prescription ? textBlock('Prescription / Medicines', record.prescription) : ''}
-      ${(record.notes || record.remarks) ? textBlock('Additional Notes', record.notes || record.remarks) : ''}
+      ${textBlock('Prescription / Medicines', record.prescription)}
+      ${textBlock('Additional Notes', record.notes || record.remarks)}
     </div>
     ${sigRow(record.created_by?.name, 'Clinic Nurse / Medical Staff', false, pu.name)}`
 }
@@ -249,22 +242,23 @@ function buildDental(record, pu) {
     <div class="doc-section"><div class="sec-title">Consultation Overview</div>
       <div class="grid2">
         <div class="field"><div class="flabel">Date of Consultation</div><div class="fval">${fmtDate(record.consultation_date)}</div></div>
-        <div class="field"><div class="flabel">Service</div><div class="fval">${record.service_name || 'Dental Consultation'}</div></div>
+        <div class="field"><div class="flabel">Service</div><div class="fval">${serviceNameOf(record) || NO_SERVICE}</div></div>
         <div class="field"><div class="flabel">Attending Dentist</div><div class="fval">${record.dentist?.name || 'Dentist'}</div></div>
         <div class="field"><div class="flabel">Status</div><div class="fval">Completed</div></div>
       </div>
     </div>
-    ${record.affected_teeth && record.affected_teeth.length > 0 ? `
-      <div class="doc-section"><div class="sec-title">Affected Teeth (FDI Notation)</div>
-        <div class="teeth-list">${teethTags}</div>
-      </div>` : ''}
+    <div class="doc-section"><div class="sec-title">Vital Signs</div>${vitalsRows(record.vitals || {}, true)}</div>
+    <div class="doc-section"><div class="sec-title">Affected Teeth (FDI Notation)</div>
+      <div class="teeth-list">${teethTags || EMPTY}</div>
+    </div>
     <div class="doc-section"><div class="sec-title">Dental Examination Findings</div>
-      ${record.reason_for_visit ? textBlock('Reason for Visit / Chief Complaint', record.reason_for_visit) : ''}
-      ${record.dental_findings ? textBlock('Dental Findings', record.dental_findings) : ''}
+      ${textBlock('Reason for Visit / Chief Complaint', record.reason_for_visit)}
+      ${textBlock('Complaint Category', record.complaint_category)}
+      ${textBlock('Dental Findings', record.dental_findings)}
       ${textBlock('Diagnosis', record.diagnosis)}
       ${textBlock('Treatment Performed', record.treatment_performed)}
-      ${record.recommendations ? textBlock('Recommendations / Instructions', record.recommendations) : ''}
-      ${record.notes ? textBlock('Patient Notes', record.notes) : ''}
+      ${textBlock('Recommendations / Instructions', record.recommendations)}
+      ${textBlock('Patient Notes', record.notes)}
     </div>
     ${sigRow(record.dentist?.name, 'Attending Dentist', true, pu.name)}`
 }
@@ -310,9 +304,7 @@ export default function PrintableRecord({
   const vitals = record.vitals || {}
   const pu = patientUser || record?.patient?.user || {}
 
-  const serviceName = isDental
-    ? (record.service_name || 'Dental Consultation')
-    : (record.appointment?.service?.name || record.service_name || 'Medical Consultation')
+  const serviceName = serviceNameOf(record)
 
   const docType  = isDental ? 'dental' : getDocType(serviceName)
   const docTitle = isDental ? 'Dental Treatment Record' : getDocTitle(docType)
@@ -336,7 +328,7 @@ export default function PrintableRecord({
     const footer = `
       <div class="doc-footer">
         <span>FSUU University Clinic — Official Record</span>
-        <span>Record #${record?.id || '—'} &nbsp;|&nbsp; Printed: ${new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+        <span>Record #${record?.id || EMPTY} &nbsp;|&nbsp; Printed: ${new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
       </div>`
 
     const header = `

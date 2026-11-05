@@ -22,6 +22,7 @@ import { usePagination } from '../../hooks/usePagination'
 import DateInput from '../../components/DateInput'
 import Dropdown from '../../components/Dropdown'
 import DentalIcon from '../../components/DentalIcon'
+import { EMPTY, NO_SERVICE } from '../../utils/emptyValue'
 
 // (Icon components removed — export buttons use text-only outline style)
 
@@ -97,7 +98,7 @@ const PIE_COLORS = {
 }
 
 function TruncCell({ text, maxLen = 45 }) {
-  if (!text) return <span style={{ color: 'var(--text-muted)' }}>—</span>
+  if (!text) return <span style={{ color: 'var(--text-muted)' }}>{EMPTY}</span>
   const truncated = text.length > maxLen ? text.slice(0, maxLen) + '…' : text
   return <span title={text}>{truncated}</span>
 }
@@ -545,7 +546,7 @@ export default function ReportsPage() {
                   </svg>
                 </div>
                 <div className="stat-info">
-                  <span className="stat-value">{loading ? '—' : (appSummary.total ?? 0)}</span>
+                  <span className="stat-value">{loading ? EMPTY : (appSummary.total ?? 0)}</span>
                   <span className="stat-label">Total Bookings</span>
                 </div>
               </div>
@@ -557,8 +558,8 @@ export default function ReportsPage() {
                   </svg>
                 </div>
                 <div className="stat-info">
-                  <span className="stat-value">{loading ? '—' : (appSummary.completed ?? 0)}</span>
-                  <span className="stat-label">Completed ({loading ? '—' : (appSummary.completed_pct ?? 0)}%)</span>
+                  <span className="stat-value">{loading ? EMPTY : (appSummary.completed ?? 0)}</span>
+                  <span className="stat-label">Completed ({loading ? EMPTY : (appSummary.completed_pct ?? 0)}%)</span>
                 </div>
               </div>
 
@@ -570,7 +571,7 @@ export default function ReportsPage() {
                   </svg>
                 </div>
                 <div className="stat-info">
-                  <span className="stat-value">{loading ? '—' : (appSummary.confirmed ?? 0)}</span>
+                  <span className="stat-value">{loading ? EMPTY : (appSummary.confirmed ?? 0)}</span>
                   <span className="stat-label">Confirmed Upcoming</span>
                 </div>
               </div>
@@ -582,8 +583,8 @@ export default function ReportsPage() {
                   </svg>
                 </div>
                 <div className="stat-info">
-                  <span className="stat-value">{loading ? '—' : (appSummary.cancelled ?? 0)}</span>
-                  <span className="stat-label">Cancelled ({loading ? '—' : (appSummary.cancelled_pct ?? 0)}%)</span>
+                  <span className="stat-value">{loading ? EMPTY : (appSummary.cancelled ?? 0)}</span>
+                  <span className="stat-label">Cancelled ({loading ? EMPTY : (appSummary.cancelled_pct ?? 0)}%)</span>
                 </div>
               </div>
             </div>
@@ -681,10 +682,10 @@ export default function ReportsPage() {
                   <tbody>
                     {appPagination.paginatedItems.map(app => {
                       const consult = app.clinic_record || app.dental_consultation
-                      const diagnosis = consult?.diagnosis || '—'
-                      const treatment = consult?.treatment || consult?.treatment_performed || '—'
-                      const details = diagnosis !== '—' || treatment !== '—'
-                        ? [diagnosis !== '—' ? `Dx: ${diagnosis}` : '', treatment !== '—' ? `Tx: ${treatment}` : ''].filter(Boolean).join(' · ')
+                      const diagnosis = consult?.diagnosis || EMPTY
+                      const treatment = consult?.treatment || consult?.treatment_performed || EMPTY
+                      const details = diagnosis !== EMPTY || treatment !== EMPTY
+                        ? [diagnosis !== EMPTY ? `Dx: ${diagnosis}` : '', treatment !== EMPTY ? `Tx: ${treatment}` : ''].filter(Boolean).join(' · ')
                         : null
                       const patientUser = app.patient?.user
                       const patientId = patientUser?.student_id || patientUser?.employee_id || null
@@ -707,8 +708,8 @@ export default function ReportsPage() {
                               </div>
                             )}
                           </td>
-                          <td style={{ fontSize: '0.82rem' }}>{app.service?.name || '—'}</td>
-                          <td style={{ fontSize: '0.82rem' }}>{app.staff?.name || '—'}</td>
+                          <td style={{ fontSize: '0.82rem' }}>{app.service?.name || EMPTY}</td>
+                          <td style={{ fontSize: '0.82rem' }}>{app.staff?.name || EMPTY}</td>
                           <td>
                             <span className="status-badge" style={{ fontSize: '0.72rem', textTransform: 'capitalize' }}>
                               {app.appointment_type || 'General'}
@@ -756,7 +757,7 @@ export default function ReportsPage() {
                   </svg>
                 </div>
                 <div className="stat-info">
-                  <span className="stat-value">{loading ? '—' : (consSummary.total ?? 0)}</span>
+                  <span className="stat-value">{loading ? EMPTY : (consSummary.total ?? 0)}</span>
                   <span className="stat-label">Total Consultations</span>
                 </div>
               </div>
@@ -770,7 +771,7 @@ export default function ReportsPage() {
                   </svg>
                 </div>
                 <div className="stat-info">
-                  <span className="stat-value">{loading ? '—' : (consSummary.medical_count ?? 0)}</span>
+                  <span className="stat-value">{loading ? EMPTY : (consSummary.medical_count ?? 0)}</span>
                   <span className="stat-label">Medical Consultations</span>
                 </div>
               </div>
@@ -780,7 +781,7 @@ export default function ReportsPage() {
                   <DentalIcon size={20} />
                 </div>
                 <div className="stat-info">
-                  <span className="stat-value">{loading ? '—' : (consSummary.dental_count ?? 0)}</span>
+                  <span className="stat-value">{loading ? EMPTY : (consSummary.dental_count ?? 0)}</span>
                   <span className="stat-label">Dental Consultations</span>
                 </div>
               </div>
@@ -793,7 +794,7 @@ export default function ReportsPage() {
                   </svg>
                 </div>
                 <div className="stat-info">
-                  <span className="stat-value">{loading ? '—' : (consSummary.student_count ?? 0)}</span>
+                  <span className="stat-value">{loading ? EMPTY : (consSummary.student_count ?? 0)}</span>
                   <span className="stat-label">Student Patients</span>
                 </div>
               </div>
@@ -867,7 +868,7 @@ export default function ReportsPage() {
                         </td>
                         <td className="td-name">
                           <div>{c.patient_name}</div>
-                          {c.student_id && c.student_id !== '—' && (
+                          {c.student_id && c.student_id !== EMPTY && (
                             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                               ID: {c.student_id}
                             </div>
@@ -878,7 +879,7 @@ export default function ReportsPage() {
                             {c.type}
                           </span>
                         </td>
-                        <td style={{ fontSize: '0.82rem' }}>{c.service}</td>
+                        <td style={{ fontSize: '0.82rem' }}>{c.service || NO_SERVICE}</td>
                         <td style={{ fontSize: '0.82rem' }}>{c.attending_staff}</td>
                         <td style={{ fontSize: '0.8rem', maxWidth: '180px' }}>
                           <TruncCell text={c.complaint_diagnosis} maxLen={40} />
@@ -922,7 +923,7 @@ export default function ReportsPage() {
                   </svg>
                 </div>
                 <div className="stat-info">
-                  <span className="stat-value">{loading ? '—' : (invSummary.total_items ?? 0)}</span>
+                  <span className="stat-value">{loading ? EMPTY : (invSummary.total_items ?? 0)}</span>
                   <span className="stat-label">Total Catalog Items</span>
                 </div>
               </div>
@@ -936,7 +937,7 @@ export default function ReportsPage() {
                   </svg>
                 </div>
                 <div className="stat-info">
-                  <span className="stat-value">{loading ? '—' : (invSummary.low_stock_count ?? 0)}</span>
+                  <span className="stat-value">{loading ? EMPTY : (invSummary.low_stock_count ?? 0)}</span>
                   <span className="stat-label">Low / Out of Stock</span>
                 </div>
               </div>
@@ -949,7 +950,7 @@ export default function ReportsPage() {
                   </svg>
                 </div>
                 <div className="stat-info">
-                  <span className="stat-value">{loading ? '—' : ((invSummary.expiring_soon_count ?? 0) + (invSummary.expired_count ?? 0))}</span>
+                  <span className="stat-value">{loading ? EMPTY : ((invSummary.expiring_soon_count ?? 0) + (invSummary.expired_count ?? 0))}</span>
                   <span className="stat-label">Expiring / Expired</span>
                 </div>
               </div>
@@ -964,7 +965,7 @@ export default function ReportsPage() {
                   </svg>
                 </div>
                 <div className="stat-info">
-                  <span className="stat-value">{loading ? '—' : (invSummary.total_dispensed ?? 0)}</span>
+                  <span className="stat-value">{loading ? EMPTY : (invSummary.total_dispensed ?? 0)}</span>
                   <span className="stat-label">Units Dispensed (Window)</span>
                 </div>
               </div>
@@ -1082,7 +1083,7 @@ export default function ReportsPage() {
                           <td className="td-name">{item.name}</td>
                           <td style={{ fontSize: '0.82rem' }}>{item.category}</td>
                           <td style={{ fontWeight: 700, color: item.status === 'out_of_stock' || item.status === 'low_stock' ? 'var(--red)' : 'var(--text)' }}>
-                            {item.current_stock ?? '—'}
+                            {item.current_stock ?? EMPTY}
                           </td>
                           <td style={{ fontSize: '0.82rem' }}>{item.unit || 'pcs'}</td>
                           <td style={{ fontSize: '0.82rem' }}>{item.reorder_level}</td>
@@ -1279,7 +1280,7 @@ export default function ReportsPage() {
                   </svg>
                 </div>
                 <div className="stat-info">
-                  <span className="stat-value">{loading ? '—' : symptomTotalLogs}</span>
+                  <span className="stat-value">{loading ? EMPTY : symptomTotalLogs}</span>
                   <span className="stat-label">Total Symptom Logs</span>
                 </div>
               </div>
@@ -1293,10 +1294,10 @@ export default function ReportsPage() {
                 </div>
                 <div className="stat-info">
                   <span className="stat-value" style={{ fontSize: '1.1rem' }}>
-                    {loading ? '—' : (allSymptomCategories[0]?.name || 'None')}
+                    {loading ? EMPTY : (allSymptomCategories[0]?.name || 'None')}
                   </span>
                   <span className="stat-label">
-                    Top Complaint ({loading ? '—' : `${allSymptomCategories[0]?.count || 0} cases`})
+                    Top Complaint ({loading ? EMPTY : `${allSymptomCategories[0]?.count || 0} cases`})
                   </span>
                 </div>
               </div>
@@ -1310,7 +1311,7 @@ export default function ReportsPage() {
                   </svg>
                 </div>
                 <div className="stat-info">
-                  <span className="stat-value">{loading ? '—' : allSymptomCategories.length}</span>
+                  <span className="stat-value">{loading ? EMPTY : allSymptomCategories.length}</span>
                   <span className="stat-label">Distinct Categories</span>
                 </div>
               </div>
@@ -1540,7 +1541,7 @@ export default function ReportsPage() {
                   Total Inquiries
                 </div>
                 <div style={{ fontSize: '1.85rem', fontWeight: 700, color: 'var(--text)', marginTop: '0.35rem' }}>
-                  {loading ? '—' : chatData.total_conversations}
+                  {loading ? EMPTY : chatData.total_conversations}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
                   All student chat sessions
@@ -1552,7 +1553,7 @@ export default function ReportsPage() {
                   Resolved Inquiries
                 </div>
                 <div style={{ fontSize: '1.85rem', fontWeight: 700, color: '#16a34a', marginTop: '0.35rem' }}>
-                  {loading ? '—' : chatData.resolved_conversations}
+                  {loading ? EMPTY : chatData.resolved_conversations}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
                   Completed student inquiries
@@ -1564,7 +1565,7 @@ export default function ReportsPage() {
                   Active Inquiries
                 </div>
                 <div style={{ fontSize: '1.85rem', fontWeight: 700, color: 'var(--accent)', marginTop: '0.35rem' }}>
-                  {loading ? '—' : chatData.open_conversations}
+                  {loading ? EMPTY : chatData.open_conversations}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
                   Awaiting or ongoing response
@@ -1576,7 +1577,7 @@ export default function ReportsPage() {
                   Avg Response Time
                 </div>
                 <div style={{ fontSize: '1.85rem', fontWeight: 700, color: 'var(--text)', marginTop: '0.35rem' }}>
-                  {loading ? '—' : `${chatData.avg_response_time_minutes}m`}
+                  {loading ? EMPTY : `${chatData.avg_response_time_minutes}m`}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: chatData.unanswered_24h > 0 ? '#dc2626' : 'var(--text-muted)', marginTop: '0.2rem' }}>
                   {chatData.unanswered_24h > 0 ? `${chatData.unanswered_24h} unanswered (>24h)` : 'Time to first staff reply'}
@@ -1644,10 +1645,10 @@ export default function ReportsPage() {
                             </span>
                           </td>
                           <td style={{ fontSize: '0.8rem', color: 'var(--text-sub)', whiteSpace: 'nowrap' }}>
-                            {c.created_at || '—'}
+                            {c.created_at || EMPTY}
                           </td>
                           <td style={{ fontSize: '0.8rem', color: 'var(--text-sub)', whiteSpace: 'nowrap' }}>
-                            {c.last_message_at || '—'}
+                            {c.last_message_at || EMPTY}
                           </td>
                         </tr>
                       ))}

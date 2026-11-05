@@ -2,15 +2,11 @@ import { useEffect, useState } from 'react'
 import { recordsApi } from '../api/records'
 import PrintableRecord from './PrintableRecord'
 import { toast } from 'react-hot-toast'
+import { EMPTY, serviceLabel } from '../utils/emptyValue'
+import { formatDateLong } from '../utils/dateUtils'
 
 /* ── Helpers ────────────────────────────────────────────────── */
-const fmtDate = (dateStr) => {
-  if (!dateStr) return '—'
-  const clean = typeof dateStr === 'string' && dateStr.includes('T') ? dateStr.split('T')[0] : dateStr
-  const d = new Date(clean + 'T00:00:00')
-  if (isNaN(d.getTime())) return String(dateStr)
-  return d.toLocaleDateString('en-PH', { weekday: 'short', year: 'numeric', month: 'long', day: 'numeric' })
-}
+const fmtDate = (value) => formatDateLong(value, { month: 'long' })
 
 const calcBMI = (weight, height) => {
   const w = parseFloat(weight)
@@ -37,7 +33,7 @@ function DetailRow({ label, value, accent = false }) {
         color: accent ? 'var(--accent)' : 'var(--text)',
         borderBottom: '1px solid var(--border)', paddingBottom: '3px', minHeight: '20px'
       }}>
-        {value || '—'}
+        {value || EMPTY}
       </div>
     </div>
   )
@@ -50,12 +46,11 @@ function TextBlock({ label, value }) {
       <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-sub)', marginBottom: '4px' }}>{label}</div>
       <div style={{
         fontSize: '0.875rem', color: empty ? 'var(--text-muted)' : 'var(--text)',
-        fontStyle: empty ? 'italic' : 'normal',
         background: 'var(--bg-sub)', border: '1px solid var(--border)',
         borderRadius: 'var(--radius-sm)', padding: '0.5rem 0.75rem',
         minHeight: '36px', whiteSpace: 'pre-wrap', wordBreak: 'break-word'
       }}>
-        {empty ? 'None recorded' : value}
+        {empty ? EMPTY : value}
       </div>
     </div>
   )
@@ -76,7 +71,7 @@ function SectionHeading({ children }) {
 function RecordDetail({ record }) {
   const pu = record.patient?.user || {}
   const vitals = record.vitals || {}
-  const serviceName = record.appointment?.service?.name || record.service_name || 'Medical Consultation'
+  const serviceName = serviceLabel(record)
   const bmiVal = vitals.bmi || calcBMI(vitals.weight, vitals.height)
   const bmiDisplay = bmiVal ? `${bmiVal} kg/m² (${bmiCategory(bmiVal)})` : null
 
@@ -104,40 +99,38 @@ function RecordDetail({ record }) {
         } />
       </div>
 
-      {/* Vital Signs */}
-      {Object.keys(vitals).length > 0 && (
-        <>
-          <SectionHeading>Vital Signs</SectionHeading>
-          <div style={{
-            background: 'var(--bg-sub)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-sm)', padding: '0.85rem 1rem'
-          }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.65rem 1rem' }}>
-              <DetailRow label="Blood Pressure" value={vitals.blood_pressure || vitals.bp} />
-              <DetailRow label="Temperature" value={vitals.temperature ? `${vitals.temperature} °C` : null} />
-              <DetailRow label="Pulse Rate" value={vitals.pulse_rate ? `${vitals.pulse_rate} bpm` : null} />
-              <DetailRow label="Weight" value={vitals.weight ? `${vitals.weight} kg` : null} />
-              <DetailRow label="Height" value={vitals.height ? `${vitals.height} cm` : null} />
-              <DetailRow label="BMI" value={bmiDisplay} accent />
-            </div>
-            {vitals.respiratory_rate && (
-              <div style={{ marginTop: '0.5rem' }}>
-                <DetailRow label="Respiratory Rate" value={`${vitals.respiratory_rate} breaths/min`} />
-              </div>
-            )}
+      {/* Vital Signs (every field is shown; a dash when it was not recorded) */}
+      <SectionHeading>Vital Signs</SectionHeading>
+      <div style={{
+        background: 'var(--bg-sub)', border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-sm)', padding: '0.85rem 1rem'
+      }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.65rem 1rem' }}>
+          <DetailRow label="Blood Pressure" value={vitals.blood_pressure || vitals.bp} />
+          <DetailRow label="Temperature" value={vitals.temperature ? `${vitals.temperature} °C` : null} />
+          <DetailRow label="Pulse Rate" value={vitals.pulse_rate ? `${vitals.pulse_rate} bpm` : null} />
+          <DetailRow label="Weight" value={vitals.weight ? `${vitals.weight} kg` : null} />
+          <DetailRow label="Height" value={vitals.height ? `${vitals.height} cm` : null} />
+          <DetailRow label="BMI" value={bmiDisplay} accent />
+        </div>
+        {vitals.respiratory_rate && (
+          <div style={{ marginTop: '0.5rem' }}>
+            <DetailRow label="Respiratory Rate" value={`${vitals.respiratory_rate} breaths/min`} />
           </div>
-        </>
-      )}
+        )}
+      </div>
 
-      {/* Clinical Findings */}
+      {/* Clinical Findings (every field is shown; a dash when it was not recorded) */}
       <SectionHeading>Clinical Findings</SectionHeading>
       <TextBlock label="Reason for Visit / Chief Complaint" value={record.chief_complaint} />
-      {record.symptoms && <TextBlock label="Symptoms" value={record.symptoms} />}
-      {record.assessment && <TextBlock label="Assessment / Clinical Findings" value={record.assessment} />}
-      <TextBlock label="Diagnosis" value={record.diagnosis || record.assessment} />
+      <DetailRow label="Complaint Category" value={record.complaint_category} />
+      <div style={{ height: '0.75rem' }} />
+      <TextBlock label="Symptoms" value={record.symptoms} />
+      <TextBlock label="Assessment / Clinical Findings" value={record.assessment} />
+      <TextBlock label="Diagnosis" value={record.diagnosis} />
       <TextBlock label="Treatment & Recommendations" value={record.treatment || record.recommendation} />
-      {record.prescription && <TextBlock label="Prescription / Medicines" value={record.prescription} />}
-      {(record.notes || record.remarks) && <TextBlock label="Additional Notes" value={record.notes || record.remarks} />}
+      <TextBlock label="Prescription / Medicines" value={record.prescription} />
+      <TextBlock label="Additional Notes" value={record.notes || record.remarks} />
     </div>
   )
 }

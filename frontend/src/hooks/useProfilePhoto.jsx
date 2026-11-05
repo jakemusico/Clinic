@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { authApi } from '../api/auth'
-import PhotoCropModal from '../components/PhotoCropModal'
 import ConfirmModal from '../components/ConfirmModal'
 import { prepareImageForCrop, validatePickedFile } from '../utils/imageCrop'
 import { getApiErrorMessage } from '../utils/apiError'
+
+// The cropper (react-easy-crop) is only needed after a photo is picked: load it on demand.
+const PhotoCropModal = lazy(() => import('../components/PhotoCropModal'))
 
 /**
  * Everything a My Profile page needs for photo changes, for every role:
@@ -106,13 +108,17 @@ export default function useProfilePhoto() {
         style={{ display: 'none' }}
         onChange={handleFileChange}
       />
-      <PhotoCropModal
-        open={!!cropSrc}
-        imageSrc={cropSrc}
-        saving={busy}
-        onCancel={releaseCropUrl}
-        onSave={handleSave}
-      />
+      {cropSrc && (
+        <Suspense fallback={null}>
+          <PhotoCropModal
+            open
+            imageSrc={cropSrc}
+            saving={busy}
+            onCancel={releaseCropUrl}
+            onSave={handleSave}
+          />
+        </Suspense>
+      )}
       <ConfirmModal
         open={confirmRemove}
         title="Remove profile photo?"

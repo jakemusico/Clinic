@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\DentalChartController;
 use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ChatbotController;
+use App\Http\Controllers\Api\CountersController;
 use App\Http\Controllers\Api\ChatbotFaqController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\AuditLogController;
@@ -236,6 +237,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('dashboard/admin',   [DashboardController::class, 'admin'])->middleware('role:admin');
     Route::get('dashboard/nurse',   [DashboardController::class, 'nurse'])->middleware('role:clinic_staff,nurse,admin');
     Route::get('dashboard/dentist', [DashboardController::class, 'dentist'])->middleware('role:dentist,admin');
+    Route::get('dashboard/student', [DashboardController::class, 'student'])->middleware('role:student,faculty_staff');
+
+    // Header + chat-bubble badges in one request (notifications, appointment requests, chat)
+    Route::get('counters', CountersController::class);
     
     // ── Calendar Events ───────────────────────────────────────────────────
     Route::get('calendar-events', [CalendarEventController::class, 'index']);

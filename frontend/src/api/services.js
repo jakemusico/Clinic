@@ -1,7 +1,8 @@
 import api from './axios'
 
 export const servicesApi = {
-  list:   ()           => api.get('/clinic/services'),
+  // params: { care_type: 'medical' | 'dental', active: 1 }  (filtered by the API)
+  list:   (params)     => api.get('/clinic/services', { params }),
   get:    (id)         => api.get(`/clinic/services/${id}`),
   create: (data)       => api.post('/clinic/services', data),
   update: (id, data)   => api.put(`/clinic/services/${id}`, data),

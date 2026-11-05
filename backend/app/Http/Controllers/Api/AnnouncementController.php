@@ -15,13 +15,10 @@ use Illuminate\Support\Facades\Log;
 class AnnouncementController extends Controller
 {
     /**
-     * GET /api/announcements
-     * Return announcements filtered by the authenticated user's role.
-     * Admins and clinic staff see all announcements.
+     * The announcements a user may see, newest first. Shared with the dashboards.
      */
-    public function index(Request $request): JsonResponse
+    public static function visibleQuery(\App\Models\User $user)
     {
-        $user  = $request->user();
         $query = Announcement::query()->orderBy('created_at', 'desc');
 
         // Students only see announcements targeted at them or everyone
@@ -32,6 +29,19 @@ class AnnouncementController extends Controller
             $query->whereIn('audience', ['All', 'Staff']);
         }
         // admins see everything (no filter)
+
+        return $query;
+    }
+
+    /**
+     * GET /api/announcements
+     * Return announcements filtered by the authenticated user's role.
+     * Admins and clinic staff see all announcements.
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $user  = $request->user();
+        $query = self::visibleQuery($user);
 
         if ($request->filled('search')) {
             $search = '%' . $request->input('search') . '%';

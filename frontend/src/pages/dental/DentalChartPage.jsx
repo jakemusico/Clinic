@@ -5,6 +5,7 @@ import { dentalApi } from '../../api/dental'
 import { recordsApi } from '../../api/records'
 import { toast } from 'react-hot-toast'
 import { useAuth } from '../../context/AuthContext'
+import { EMPTY } from '../../utils/emptyValue'
 
 // FDI Notation Quadrants
 const QUADRANTS = {
@@ -375,7 +376,7 @@ export default function DentalChartPage() {
                           {styleObj.label}
                         </span>
                       </td>
-                      <td style={{ fontSize: '0.82rem', color: 'var(--text-sub)' }}>{h.notes || '—'}</td>
+                      <td style={{ fontSize: '0.82rem', color: 'var(--text-sub)' }}>{h.notes || EMPTY}</td>
                       <td style={{ fontSize: '0.82rem' }}>{h.recorded_by?.name || 'Dentist'}</td>
                     </tr>
                   )

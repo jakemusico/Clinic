@@ -1,5 +1,6 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
+import { EMPTY } from '../../utils/emptyValue'
 
 export default function StatCard({ value, label, icon: IconComponent, linkTo, badgeText }) {
   const content = (
@@ -13,7 +14,7 @@ export default function StatCard({ value, label, icon: IconComponent, linkTo, ba
         {badgeText && <span className="dash-stat-badge">{badgeText}</span>}
       </div>
       <div className="dash-stat-body">
-        <span className="dash-stat-value">{value ?? '—'}</span>
+        <span className="dash-stat-value">{value ?? EMPTY}</span>
         <span className="dash-stat-label">{label}</span>
       </div>
     </div>

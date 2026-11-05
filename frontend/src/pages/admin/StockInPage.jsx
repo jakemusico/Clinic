@@ -9,6 +9,7 @@ import useServerTable from '../../hooks/useServerTable'
 import { inventoryApi } from '../../api/inventory'
 import { inventoryItemOption, ACTION_BUTTON_STYLE } from '../../utils/inventoryOptions'
 import { formatDate, isDateExpired, isDateExpiringSoon } from '../../utils/dateUtils'
+import { EMPTY } from '../../utils/emptyValue'
 
 const BLANK_BATCH = {
   item_id: '',
@@ -179,9 +180,9 @@ export default function StockInPage() {
             <tbody>
               {table.rows.map(b => (
                 <tr key={b.id}>
-                  <td style={{ fontWeight: 600, fontSize: '0.84rem' }}>{b.item?.name || '—'}</td>
-                  <td style={{ fontSize: '0.82rem' }}>{b.batch_no || '—'}</td>
-                  <td style={{ fontSize: '0.82rem' }}>{b.supplier || '—'}</td>
+                  <td style={{ fontWeight: 600, fontSize: '0.84rem' }}>{b.item?.name || EMPTY}</td>
+                  <td style={{ fontSize: '0.82rem' }}>{b.batch_no || EMPTY}</td>
+                  <td style={{ fontSize: '0.82rem' }}>{b.supplier || EMPTY}</td>
                   <td style={{ textAlign: 'center', fontSize: '0.83rem' }}>{b.quantity_in}</td>
                   <td style={{ textAlign: 'center' }}>
                     <span className={`status-badge ${b.remaining === 0 ? 'cancelled' : 'completed'}`} style={{ fontSize: '0.72rem' }}>
@@ -191,7 +192,7 @@ export default function StockInPage() {
                   <td style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
                     {(() => {
                       const formatted = formatDate(b.expiry_date)
-                      if (formatted === '—') return '—'
+                      if (formatted === EMPTY) return EMPTY
 
                       const expired = Boolean(b.is_expired ?? isDateExpired(b.expiry_date))
                       const expiringSoon = !expired && Boolean(b.is_expiring_soon ?? isDateExpiringSoon(b.expiry_date))
@@ -211,7 +212,7 @@ export default function StockInPage() {
                     })()}
                   </td>
                   <td style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{formatDate(b.received_date)}</td>
-                  <td style={{ fontSize: '0.82rem' }}>{b.received_by?.name || '—'}</td>
+                  <td style={{ fontSize: '0.82rem' }}>{b.received_by?.name || EMPTY}</td>
                 </tr>
               ))}
             </tbody>

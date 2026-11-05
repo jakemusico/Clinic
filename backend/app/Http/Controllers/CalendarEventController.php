@@ -12,12 +12,14 @@ use Illuminate\Support\Facades\Log;
 
 class CalendarEventController extends Controller
 {
-    public function index(Request $request)
+    /**
+     * The calendar events a user may see, oldest first. Shared with the dashboards, which send
+     * them along with the rest of their data so the calendar needs no request of its own.
+     */
+    public static function visibleEvents(User $user)
     {
-        $user = $request->user();
-        
         $query = CalendarEvent::query();
-        
+
         $roleSlug = $user->role_slug;
         if ($roleSlug === 'student') {
             $query->whereIn('audience', ['All', 'Students']);
@@ -27,8 +29,13 @@ class CalendarEventController extends Controller
             $query->whereIn('audience', ['All', 'Clinic Staff']);
         }
 
+        return $query->orderBy('start_date', 'asc')->get();
+    }
+
+    public function index(Request $request)
+    {
         return response()->json([
-            'events' => $query->orderBy('start_date', 'asc')->get()
+            'events' => self::visibleEvents($request->user()),
         ]);
     }
 

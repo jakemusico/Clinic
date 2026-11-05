@@ -7,9 +7,11 @@ import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/ConfirmModal'
 import { appointmentsApi } from '../../api/appointments'
 import { servicesApi } from '../../api/services'
-import { formatAppointmentDate, formatAppointmentTime } from '../../utils/dateUtils'
+import { formatAppointmentDate, formatAppointmentTime, todayISO } from '../../utils/dateUtils'
 import Avatar from '../../components/Avatar'
 import DentalIcon from '../../components/DentalIcon'
+import { EMPTY } from '../../utils/emptyValue'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 
 const STATUS_BADGES = {
   pending:   'status-badge pending',
@@ -102,7 +104,7 @@ function RescheduleModal({ appointment, onClose, onRescheduled }) {
   const [selectedSlot, setSelectedSlot] = useState(null)
   const [saving, setSaving]   = useState(false)
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayISO()
 
   const loadSlots = useCallback(async () => {
     if (!date) return
@@ -245,7 +247,7 @@ function AppointmentDetailsModal({ appointment, onClose, onReschedule, onCancel 
             <div className="details-modal-item">
               <span className="details-modal-label">Service</span>
               <span className="details-modal-value">
-                {appointment.service?.name || '—'}
+                {appointment.service?.name || EMPTY}
               </span>
             </div>
 
@@ -330,7 +332,7 @@ function MonthCalendar({ currentMonthDate, onMonthChange, availableDates, select
   const year  = currentMonthDate.getFullYear()
   const month = currentMonthDate.getMonth()
 
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], [])
+  const todayStr = useMemo(() => todayISO(), [])
   const currentMonthStart = useMemo(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1), [])
 
   const canGoPrev = useMemo(() => {
@@ -458,6 +460,7 @@ export default function AppointmentsPage() {
   // Filter & Search State for "My Appointments"
   const [statusFilter, setStatusFilter] = useState(initStatus) // 'all' | 'confirmed' | 'pending' | 'completed' | 'cancelled'
   const [searchQuery, setSearchQuery]   = useState('')
+  const debouncedSearchQuery = useDebouncedValue(searchQuery)
   const [typeFilter, setTypeFilter]     = useState('all') // 'all' | 'medical' | 'dental'
   const [sortOrder, setSortOrder]       = useState('newest') // 'newest' | 'oldest'
   const [filterPopoverOpen, setFilterPopoverOpen] = useState(false)
@@ -508,12 +511,8 @@ export default function AppointmentsPage() {
   const loadInitialData = async () => {
     setLoading(true)
     try {
-      const [appRes, servRes] = await Promise.all([
-        appointmentsApi.list(),
-        servicesApi.list(),
-      ])
+      const appRes = await appointmentsApi.list()
       setAppointments(appRes.data.appointments || [])
-      setServices(servRes.data.services || [])
     } catch {
       toast.error('Failed to load appointments data.')
     } finally {
@@ -523,16 +522,20 @@ export default function AppointmentsPage() {
 
   useEffect(() => { loadInitialData() }, [])
 
-  // Filter services by active service type (Medical vs Dental)
-  const isDentalService = (s) => /dental|tooth|teeth|oral|gum|extraction|dentist/i.test(s.name + ' ' + (s.description || ''))
+  // Services of the chosen kind of care (Medical or Dental): the API does the filtering
+  useEffect(() => {
+    let alive = true
+    servicesApi.list({ care_type: serviceType })
+      .then(({ data }) => { if (alive) setServices(data.services || []) })
+      .catch(() => { if (alive) { setServices([]); toast.error('Failed to load services.') } })
+    return () => { alive = false }
+  }, [serviceType])
 
-  const filteredServices = useMemo(() => {
-    if (serviceType === 'dental') {
-      const dentalOnly = services.filter(s => isDentalService(s))
-      return dentalOnly.length > 0 ? dentalOnly : services
-    }
-    return services.filter(s => !isDentalService(s))
-  }, [services, serviceType])
+  // A just-switched type can still hold the previous list for a moment
+  const filteredServices = useMemo(
+    () => services.filter(s => s.care_type === serviceType),
+    [services, serviceType]
+  )
 
   // Ensure a valid service is selected when services or serviceType change
   useEffect(() => {
@@ -683,7 +686,7 @@ export default function AppointmentsPage() {
   }
 
   const formattedSummaryDate = useMemo(() => {
-    if (!selectedDate) return '—'
+    if (!selectedDate) return EMPTY
     const parts = selectedDate.split('-')
     const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]))
     return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
@@ -714,8 +717,8 @@ export default function AppointmentsPage() {
       }
 
       // 3. Search Query Filter
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase()
+      if (debouncedSearchQuery.trim()) {
+        const q = debouncedSearchQuery.toLowerCase()
         const idMatch = String(a.id).includes(q) || `#${a.id}`.includes(q)
         const serviceMatch = a.service?.name?.toLowerCase().includes(q)
         const staffMatch = a.staff?.name?.toLowerCase().includes(q)
@@ -733,14 +736,14 @@ export default function AppointmentsPage() {
       const dateB = new Date(b.scheduled_at).getTime()
       return sortOrder === 'newest' ? dateB - dateA : dateA - dateB
     })
-  }, [appointments, statusFilter, typeFilter, searchQuery, sortOrder])
+  }, [appointments, statusFilter, typeFilter, debouncedSearchQuery, sortOrder])
 
   const [apptPage, setApptPage] = useState(1)
   const [apptPageSize, setApptPageSize] = useState(10)
 
   useEffect(() => {
     setApptPage(1)
-  }, [statusFilter, typeFilter, searchQuery, sortOrder])
+  }, [statusFilter, typeFilter, debouncedSearchQuery, sortOrder])
 
   const apptTotalPages = Math.max(1, Math.ceil(filteredAppointments.length / apptPageSize))
   const paginatedAppointments = filteredAppointments.slice((apptPage - 1) * apptPageSize, apptPage * apptPageSize)
@@ -1246,7 +1249,7 @@ export default function AppointmentsPage() {
                   <div className="summary-row">
                     <span className="summary-label">Service:</span>
                     <span className="summary-value">
-                      {selectedService?.name || '—'}
+                      {selectedService?.name || EMPTY}
                     </span>
                   </div>
 
@@ -1260,14 +1263,14 @@ export default function AppointmentsPage() {
                   <div className="summary-row">
                     <span className="summary-label">Time:</span>
                     <span className="summary-value">
-                      {selectedSlot?.label || '—'}
+                      {selectedSlot?.label || EMPTY}
                     </span>
                   </div>
 
                   <div className="summary-row">
                     <span className="summary-label">Provider:</span>
                     <span className="summary-value">
-                      {selectedSlot?.provider || selectedSlot?.staff_name || '—'}
+                      {selectedSlot?.provider || selectedSlot?.staff_name || EMPTY}
                     </span>
                   </div>
                 </div>

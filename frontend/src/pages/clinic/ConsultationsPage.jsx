@@ -13,6 +13,9 @@ import Pagination from '../../components/Pagination'
 import DateInput from '../../components/DateInput'
 import Dropdown from '../../components/Dropdown'
 import Avatar from '../../components/Avatar'
+import { serviceLabel, serviceNameOf } from '../../utils/emptyValue'
+import { formatDateLong, toDateKey } from '../../utils/dateUtils'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 
 export default function ConsultationsPage() {
   const { user } = useAuth()
@@ -23,6 +26,7 @@ export default function ConsultationsPage() {
   const [lastPage, setLastPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
+  const debouncedSearch = useDebouncedValue(search)
   const [filterService, setFilterService] = useState('all')
   const [filterStaff, setFilterStaff] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
@@ -35,23 +39,13 @@ export default function ConsultationsPage() {
   const location = useLocation()
   const navigate = useNavigate()
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return 'â€”'
-    const clean = typeof dateStr === 'string' && dateStr.includes('T') ? dateStr.split('T')[0] : dateStr
-    const d = new Date(clean + 'T00:00:00')
-    if (isNaN(d.getTime())) return String(dateStr)
-    return d.toLocaleDateString('en-PH', {
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    })
-  }
+  // One shared formatter (utils/dateUtils): the same day as the one chosen in the form
+  const formatDate = formatDateLong
 
   const distinctServices = useMemo(() => {
     const set = new Set()
     records.forEach(r => {
-      const svc = r.appointment?.service?.name || r.service_name
+      const svc = serviceNameOf(r)
       if (svc) set.add(svc)
     })
     return Array.from(set).sort()
@@ -68,14 +62,13 @@ export default function ConsultationsPage() {
   const filteredRecords = useMemo(() => {
     return records.filter(r => {
       // 1. Live search
-      if (search) {
-        const q = search.toLowerCase()
+      if (debouncedSearch) {
+        const q = debouncedSearch.toLowerCase()
         const patientUser = r.patient?.user || {}
         const haystack = [
           patientUser.name,
           patientUser.student_id,
-          r.appointment?.service?.name,
-          r.service_name,
+          serviceNameOf(r),
           r.diagnosis,
           r.assessment,
           r.chief_complaint,
@@ -87,7 +80,7 @@ export default function ConsultationsPage() {
 
       // 2. Service Filter
       if (filterService !== 'all') {
-        const sName = r.appointment?.service?.name || r.service_name || ''
+        const sName = serviceNameOf(r)
         if (sName !== filterService) return false
       }
 
@@ -98,16 +91,14 @@ export default function ConsultationsPage() {
 
       // 4. Date Range Filter
       if (dateFrom || dateTo) {
-        const rDate = typeof r.visit_date === 'string' && r.visit_date.includes('T')
-          ? r.visit_date.split('T')[0]
-          : r.visit_date
+        const rDate = toDateKey(r.visit_date) || ''
         if (dateFrom && rDate < dateFrom) return false
         if (dateTo && rDate > dateTo) return false
       }
 
       return true
     })
-  }, [records, search, filterService, filterStaff, dateFrom, dateTo])
+  }, [records, debouncedSearch, filterService, filterStaff, dateFrom, dateTo])
 
   const activeFilterCount = (filterService !== 'all' ? 1 : 0) +
     (filterStaff !== 'all' ? 1 : 0) +
@@ -166,6 +157,11 @@ export default function ConsultationsPage() {
     }
   }, [location.search, location.state, navigate])
 
+  // A new consultation always starts blank. Only "Start Consultation" from an appointment (handled
+  // above) or "Edit" hands the form any data, and that data is cleared again as soon as the form closes.
+  const openNew = () => { setModal(null); setActiveTab('new') }
+  const showList = () => { setModal(null); setActiveTab('list') }
+
   const handleSaved = (saved, isEdit) => {
     if (isEdit) {
       setRecords(p => p.map(r => r.id === saved.id ? saved : r))
@@ -186,14 +182,14 @@ export default function ConsultationsPage() {
       <div className="tab-bar">
         <button
           className={`tab-btn ${activeTab === 'list' ? 'active' : ''}`}
-          onClick={() => setActiveTab('list')}
+          onClick={showList}
         >
           Consultation Logs
         </button>
         {isNurse && (
           <button
             className={`tab-btn ${activeTab === 'new' ? 'active' : ''}`}
-            onClick={() => { setModal(null); setActiveTab('new') }}
+            onClick={openNew}
           >
             + New Medical Consultation
           </button>
@@ -204,7 +200,7 @@ export default function ConsultationsPage() {
         <div style={{ width: '100%' }}>
           <ConsultationModal
             initialData={modal}
-            onClose={() => setActiveTab('list')}
+            onClose={showList}
             onSaved={handleSaved}
             inline
           />
@@ -232,7 +228,7 @@ export default function ConsultationsPage() {
                   }}
                   title="Clear search"
                 >
-                  âœ•
+                  ✕
                 </button>
               )}
             </div>
@@ -360,7 +356,7 @@ export default function ConsultationsPage() {
                   Clear Filters
                 </button>
               ) : isNurse ? (
-                <button className="btn-primary" onClick={() => setActiveTab('new')}>
+                <button className="btn-primary" onClick={openNew}>
                   Start First Consultation
                 </button>
               ) : null}
@@ -381,7 +377,7 @@ export default function ConsultationsPage() {
                 <tbody>
                   {filteredRecords.map(r => {
                     const patientUser = r.patient?.user || {}
-                    const serviceName = r.appointment?.service?.name || r.service_name || 'â€”'
+                    const serviceName = serviceLabel(r)
                     const status = r.status || 'completed'
                     return (
                       <tr key={r.id}>
@@ -438,23 +434,25 @@ export default function ConsultationsPage() {
               </table>
             </div>
           )}
+
+          {/* Pagination belongs to the list only */}
+          <Pagination
+            currentPage={page}
+            totalPages={lastPage}
+            totalItems={total}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={(s) => { setPageSize(s); setPage(1) }}
+          />
         </>
       )}
-
-      <Pagination
-        currentPage={page}
-        totalPages={lastPage}
-        totalItems={total}
-        pageSize={pageSize}
-        onPageChange={setPage}
-        onPageSizeChange={(s) => { setPageSize(s); setPage(1) }}
-      />
 
       {viewRecord && (
         <ViewConsultationModal
           record={viewRecord}
           onClose={() => setViewRecord(null)}
           onEdit={isNurse ? (rec) => {
+            setViewRecord(null)   // close the details window, otherwise it stays on top of the edit form
             setModal(rec)
             setActiveTab('new')
           } : null}

@@ -9,6 +9,7 @@ import useServerTable from '../../hooks/useServerTable'
 import { inventoryApi } from '../../api/inventory'
 import { ACTION_BUTTON_STYLE, fmtInventoryDate as fmt } from '../../utils/inventoryOptions'
 import { downloadCsv } from '../../utils/csv'
+import { EMPTY } from '../../utils/emptyValue'
 
 const TYPE_OPTIONS = [
   { value: '',    label: 'IN & OUT' },
@@ -61,17 +62,17 @@ export default function InventoryTransactionsPage() {
       const headers = ['Date', 'Item', 'Category', 'Batch No.', 'Type', 'Quantity', 'Unit', 'Reason', 'Patient', 'Consultation', 'Recorded By', 'Notes']
       const rows = list.map(tx => [
         String(tx.transaction_date || '').slice(0, 10),
-        tx.item?.name || '—',
-        tx.item?.category || '—',
-        tx.batch?.batch_no || '—',
+        tx.item?.name || EMPTY,
+        tx.item?.category || EMPTY,
+        tx.batch?.batch_no || EMPTY,
         tx.type,
         tx.quantity,
         tx.item?.unit || '',
         tx.reason,
-        tx.patient_user?.name || '—',
-        tx.consultation_type && tx.consultation_id ? `${tx.consultation_type} #${tx.consultation_id}` : '—',
-        tx.recorded_by?.name || '—',
-        tx.notes || '—',
+        tx.patient_user?.name || EMPTY,
+        tx.consultation_type && tx.consultation_id ? `${tx.consultation_type} #${tx.consultation_id}` : EMPTY,
+        tx.recorded_by?.name || EMPTY,
+        tx.notes || EMPTY,
       ])
       downloadCsv(`Inventory_Transactions_${new Date().toISOString().split('T')[0]}.csv`, headers, rows)
       toast.success(`Exported ${list.length} transaction(s) to CSV!`)
@@ -162,7 +163,7 @@ export default function InventoryTransactionsPage() {
                 <tr key={tx.id}>
                   <td style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{fmt(tx.transaction_date)}</td>
                   <td style={{ fontWeight: 600, fontSize: '0.83rem' }}>
-                    {tx.item?.name || '—'}
+                    {tx.item?.name || EMPTY}
                     {tx.batch?.batch_no && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Batch #{tx.batch.batch_no}</div>}
                   </td>
                   <td style={{ textAlign: 'center' }}>
@@ -172,13 +173,13 @@ export default function InventoryTransactionsPage() {
                   </td>
                   <td style={{ textAlign: 'center', fontSize: '0.83rem', fontWeight: 600 }}>{tx.quantity}</td>
                   <td style={{ fontSize: '0.82rem' }}>{tx.reason}</td>
-                  <td style={{ fontSize: '0.82rem' }}>{tx.patient_user?.name || '—'}</td>
+                  <td style={{ fontSize: '0.82rem' }}>{tx.patient_user?.name || EMPTY}</td>
                   <td style={{ fontSize: '0.82rem' }}>
                     {tx.consultation_type && tx.consultation_id
                       ? <span style={{ color: 'var(--accent)' }}>{tx.consultation_type} #{tx.consultation_id}</span>
-                      : '—'}
+                      : EMPTY}
                   </td>
-                  <td style={{ fontSize: '0.82rem' }}>{tx.recorded_by?.name || '—'}</td>
+                  <td style={{ fontSize: '0.82rem' }}>{tx.recorded_by?.name || EMPTY}</td>
                 </tr>
               ))}
             </tbody>

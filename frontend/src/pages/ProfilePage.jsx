@@ -14,6 +14,7 @@ import { getApiErrorMessage, getFieldErrors } from '../utils/apiError'
 import { SCHOOL_YEARS } from '../constants/schoolData'
 import Dropdown from '../components/Dropdown'
 import './ProfilePage.css'
+import { EMPTY } from '../utils/emptyValue'
 
 const BLOOD_TYPES = ['Unknown', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
 
@@ -465,7 +466,7 @@ function PatientProfilePage() {
 
               <div className="profile-field-group">
                 <label>Age <span style={{ color: '#94A3B8', fontWeight: 400, fontSize: '0.78rem' }}>(auto-computed)</span></label>
-                <input type="text" className="profile-input readonly" value={formData.age ? `${formData.age} years old` : '—'} readOnly disabled />
+                <input type="text" className="profile-input readonly" value={formData.age ? `${formData.age} years old` : EMPTY} readOnly disabled />
               </div>
 
               <div className="profile-field-group">
@@ -903,8 +904,8 @@ function PatientProfilePage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem', fontSize: '0.82rem' }}>
                   <div>
                     <div style={{ fontWeight: 600, color: '#0F172A', marginBottom: '0.35rem' }}>Student &amp; Guardian Details</div>
-                    <p style={{ margin: '0.15rem 0' }}><strong>DOB:</strong> {formData.date_of_birth || '—'}</p>
-                    <p style={{ margin: '0.15rem 0' }}><strong>Age:</strong> {formData.age ? `${formData.age} years old` : '—'}</p>
+                    <p style={{ margin: '0.15rem 0' }}><strong>DOB:</strong> {formData.date_of_birth || EMPTY}</p>
+                    <p style={{ margin: '0.15rem 0' }}><strong>Age:</strong> {formData.age ? `${formData.age} years old` : EMPTY}</p>
                     <p style={{ margin: '0.15rem 0' }}><strong>Sex:</strong> {formData.gender === 'female' ? 'Female' : 'Male'}</p>
                     <p style={{ margin: '0.15rem 0' }}><strong>Parent/Guardian:</strong> {formData.guardian_name} ({formData.guardian_relationship})</p>
                     <p style={{ margin: '0.15rem 0' }}><strong>Parent Phone:</strong> {formData.guardian_contact}</p>
@@ -912,7 +913,7 @@ function PatientProfilePage() {
                   </div>
                   <div>
                     <div style={{ fontWeight: 600, color: '#0F172A', marginBottom: '0.35rem' }}>Health &amp; Medical Info</div>
-                    <p style={{ margin: '0.15rem 0' }}><strong>Blood Type:</strong> {formData.blood_type || '—'}</p>
+                    <p style={{ margin: '0.15rem 0' }}><strong>Blood Type:</strong> {formData.blood_type || EMPTY}</p>
                     <p style={{ margin: '0.15rem 0' }}><strong>Allergies:</strong> {formData.allergies || 'None Reported'}</p>
                     <p style={{ margin: '0.15rem 0' }}><strong>Conditions:</strong> {formData.medical_conditions || 'None'}</p>
                     <p style={{ margin: '0.15rem 0' }}><strong>Medications:</strong> {formData.current_medications || 'None'}</p>

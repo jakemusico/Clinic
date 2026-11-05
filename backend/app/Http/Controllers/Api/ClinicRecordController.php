@@ -4,13 +4,17 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ClinicRecord;
+use App\Models\DentalConsultation;
 use App\Models\Patient;
 use App\Models\User;
 use App\Models\Appointment;
 use App\Services\AuditLogger;
+use App\Services\ConsultationServiceName;
+use App\Support\VitalsRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class ClinicRecordController extends Controller
 {
@@ -121,12 +125,21 @@ class ClinicRecordController extends Controller
             return response()->json(['message' => 'Only nurse/clinic staff can create medical patient records.'], 403);
         }
 
-        $validated = $request->validate([
+        // Linked to an appointment: the service is the appointment's. Otherwise the nurse must pick a medical one.
+        $appointmentId = $request->input('appointment_id');
+        $request->merge([
+            'service_name' => ConsultationServiceName::resolve($request->input('service_name'), $appointmentId),
+        ]);
+
+        // Required: patient, date, service, reason for the visit. Everything else is optional.
+        $validated = $request->validate(array_merge([
             'patient_id'       => ['required', 'integer', 'exists:patients,id'],
-            'appointment_id'   => ['nullable', 'integer', 'exists:appointments,id'],
+            'appointment_id'   => ['nullable', 'integer', Rule::exists('appointments', 'id')->where('appointment_type', 'medical')],
+            'service_name'     => ConsultationServiceName::rules('medical', locked: (bool) $appointmentId),
+            'visit_date'       => ['required', 'date', 'date_format:Y-m-d'],
+            'chief_complaint'  => ['required', 'string'],
             'diagnosis'        => ['nullable', 'string', 'max:255'],
             'assessment'       => ['nullable', 'string'],
-            'chief_complaint'  => ['nullable', 'string'],
             'complaint_category' => ['nullable', 'string', 'max:100'],
             'symptoms'         => ['nullable', 'string'],
             'treatment'        => ['nullable', 'string'],
@@ -134,11 +147,14 @@ class ClinicRecordController extends Controller
             'prescription'     => ['nullable', 'string'],
             'notes'            => ['nullable', 'string'],
             'remarks'          => ['nullable', 'string'],
-            'visit_date'       => ['required', 'date', 'date_format:Y-m-d'],
-            'vitals'           => ['nullable', 'array'],
             'inventory_items'  => ['nullable', 'array'],
             'inventory_items.*.item_id'  => ['required_with:inventory_items', 'integer', 'exists:inventory_items,id'],
             'inventory_items.*.quantity' => ['required_with:inventory_items', 'integer', 'min:1'],
+        ], VitalsRules::rules()), [
+            'service_name.required'   => 'Please select the clinic service for this consultation.',
+            'service_name.exists'     => 'The selected service is not an available medical service.',
+            'appointment_id.exists'   => 'That appointment is not a medical appointment.',
+            'chief_complaint.required' => 'Please enter the reason for the visit / chief complaint.',
         ]);
 
         // Pre-validate stock before creating the record
@@ -150,25 +166,23 @@ class ClinicRecordController extends Controller
             }
         }
 
-        $diagnosis = $validated['diagnosis'] ?? $validated['assessment'] ?? $validated['chief_complaint'] ?? 'General Medical Consultation';
-        $treatment = $validated['treatment'] ?? $validated['recommendation'] ?? null;
-
         $record = ClinicRecord::create([
             'patient_id'         => $validated['patient_id'],
             'appointment_id'     => $validated['appointment_id'] ?? null,
+            'service_name'       => $validated['service_name'],
             'created_by'         => $user->id,
-            'diagnosis'          => $diagnosis,
+            'diagnosis'          => $validated['diagnosis'] ?? null,
             'assessment'         => $validated['assessment'] ?? null,
-            'chief_complaint'    => $validated['chief_complaint'] ?? null,
+            'chief_complaint'    => $validated['chief_complaint'],
             'complaint_category' => $validated['complaint_category'] ?? null,
             'symptoms'           => $validated['symptoms'] ?? null,
-            'prescription'    => $validated['prescription'] ?? null,
-            'remarks'         => $validated['remarks'] ?? null,
-            'treatment'       => $treatment,
-            'recommendation'  => $validated['recommendation'] ?? null,
-            'notes'           => $validated['notes'] ?? null,
-            'vitals'          => $validated['vitals'] ?? null,
-            'visit_date'      => $validated['visit_date'],
+            'prescription'       => $validated['prescription'] ?? null,
+            'remarks'            => $validated['remarks'] ?? null,
+            'treatment'          => $validated['treatment'] ?? $validated['recommendation'] ?? null,
+            'recommendation'     => $validated['recommendation'] ?? null,
+            'notes'              => $validated['notes'] ?? null,
+            'vitals'             => $this->cleanVitals($validated['vitals'] ?? null),
+            'visit_date'         => $validated['visit_date'],
         ]);
 
         if ($record->appointment_id) {
@@ -181,7 +195,7 @@ class ClinicRecordController extends Controller
         // Automatically update patient medical history
         $patient = Patient::find($record->patient_id);
         if ($patient) {
-            $diagText = $record->diagnosis ?: ($record->assessment ?: 'Consultation');
+            $diagText = $record->diagnosis ?: ($record->assessment ?: ($record->chief_complaint ?: 'Consultation'));
             $entry = "[" . date('Y-m-d', strtotime($validated['visit_date'])) . "] " . $diagText;
             if ($record->treatment) {
                 $entry .= " - Treatment: " . $record->treatment;
@@ -220,11 +234,19 @@ class ClinicRecordController extends Controller
             return response()->json(['message' => 'Only nurse/clinic staff can modify medical patient records.'], 403);
         }
 
-        $validated = $request->validate([
-            'appointment_id'   => ['nullable', 'integer', 'exists:appointments,id'],
+        // Keep the saved service unless a different one is picked; a linked appointment's service always wins.
+        $appointmentId = $request->exists('appointment_id') ? $request->input('appointment_id') : $clinicRecord->appointment_id;
+        $given         = ConsultationServiceName::resolve($request->input('service_name'), $appointmentId);
+        $serviceChanged = $given !== null && $given !== $clinicRecord->service_name;
+        $request->merge(['service_name' => $given ?? $clinicRecord->service_name]);
+
+        $validated = $request->validate(array_merge([
+            'appointment_id'   => ['nullable', 'integer', Rule::exists('appointments', 'id')->where('appointment_type', 'medical')],
+            'service_name'     => ConsultationServiceName::rules('medical', locked: (bool) $appointmentId || ! $serviceChanged, required: false),
+            'visit_date'       => ['required', 'date', 'date_format:Y-m-d'],
+            'chief_complaint'  => ['required', 'string'],
             'diagnosis'        => ['nullable', 'string', 'max:255'],
             'assessment'       => ['nullable', 'string'],
-            'chief_complaint'  => ['nullable', 'string'],
             'complaint_category' => ['nullable', 'string', 'max:100'],
             'symptoms'         => ['nullable', 'string'],
             'treatment'        => ['nullable', 'string'],
@@ -232,15 +254,17 @@ class ClinicRecordController extends Controller
             'prescription'     => ['nullable', 'string'],
             'notes'            => ['nullable', 'string'],
             'remarks'          => ['nullable', 'string'],
-            'visit_date'       => ['required', 'date', 'date_format:Y-m-d'],
-            'vitals'           => ['nullable', 'array'],
             'inventory_items'  => ['nullable', 'array'],
             'inventory_items.*.item_id'  => ['required_with:inventory_items', 'integer', 'exists:inventory_items,id'],
             'inventory_items.*.quantity' => ['required_with:inventory_items', 'integer', 'min:1'],
+        ], VitalsRules::rules()), [
+            'service_name.exists'      => 'The selected service is not an available medical service.',
+            'appointment_id.exists'    => 'That appointment is not a medical appointment.',
+            'chief_complaint.required' => 'Please enter the reason for the visit / chief complaint.',
         ]);
 
-        if (empty($validated['diagnosis']) && ! empty($validated['assessment'])) {
-            $validated['diagnosis'] = $validated['assessment'];
+        if (array_key_exists('vitals', $validated)) {
+            $validated['vitals'] = $this->cleanVitals($validated['vitals']);
         }
 
         // Pre-validate stock before saving
@@ -279,6 +303,17 @@ class ClinicRecordController extends Controller
         ]);
     }
 
+    /** Vital signs with every empty value removed; null when nothing was recorded. */
+    private function cleanVitals(?array $vitals): ?array
+    {
+        if (! $vitals) {
+            return null;
+        }
+        $clean = array_filter($vitals, fn ($v) => $v !== null && $v !== '');
+
+        return $clean ?: null;
+    }
+
     public function listPatients(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -304,19 +339,38 @@ class ClinicRecordController extends Controller
             ->orderBy('name')
             ->get();
 
-        $patients = $users->map(function ($u) {
-            $patient = Patient::firstOrCreate(['user_id' => $u->id]);
+        // One query for the existing patient profiles, then create any that are missing
+        $profiles = Patient::whereIn('user_id', $users->pluck('id'))->get()->keyBy('user_id');
+        foreach ($users as $u) {
+            if (! $profiles->has($u->id)) {
+                $profiles[$u->id] = Patient::create(['user_id' => $u->id]);
+            }
+        }
+
+        // Date of the last visit, per kind of care (shown on the consultation form)
+        $lastMedical = ClinicRecord::selectRaw('patient_id, MAX(visit_date) as last_visit')
+            ->groupBy('patient_id')->pluck('last_visit', 'patient_id');
+        $lastDental = DentalConsultation::selectRaw('patient_id, MAX(consultation_date) as last_visit')
+            ->groupBy('patient_id')->pluck('last_visit', 'patient_id');
+
+        $patients = $users->map(function ($u) use ($profiles, $lastMedical, $lastDental) {
+            $patient = $profiles[$u->id];
             return [
-                'id'         => $patient->id,
-                'user_id'    => $u->id,
-                'name'       => $u->name,
-                'email'      => $u->email,
-                'student_id' => $u->student_id,
-                'role'       => $u->role,
-                'contact_no' => $u->contact_no,
-                'department' => $u->department,
+                'id'                  => $patient->id,
+                'user_id'             => $u->id,
+                'name'                => $u->name,
+                'email'               => $u->email,
+                'student_id'          => $u->student_id,
+                'role'                => $u->role,
+                'contact_no'          => $u->contact_no,
+                'department'          => $u->department,
+                'grade_level'         => $u->grade_level,
+                'section'             => $u->section,
+                'allergies'           => $patient->allergies,
+                'last_medical_visit'  => $lastMedical[$patient->id] ?? null,
+                'last_dental_visit'   => $lastDental[$patient->id] ?? null,
             ];
-        });
+        })->values();
 
         return response()->json(['patients' => $patients]);
     }

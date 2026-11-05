@@ -1,4 +1,80 @@
+import { EMPTY } from './emptyValue'
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** The clinic works in this time zone. Laravel (APP_TIMEZONE) uses the same one. */
+export const APP_TIME_ZONE = 'Asia/Manila'
+
+const pad2 = (n) => String(n).padStart(2, '0')
+
+/** Wall-clock parts of an instant in the clinic's time zone. */
+function clinicParts(date) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: APP_TIME_ZONE,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  }).formatToParts(date)
+  const get = (t) => parts.find((p) => p.type === t)?.value
+  return { y: get('year'), m: get('month'), d: get('day'), h: get('hour'), mi: get('minute'), s: get('second') }
+}
+
+/** Today as YYYY-MM-DD in the clinic's time zone (never the UTC date that toISOString gives). */
+export function todayISO() {
+  const { y, m, d } = clinicParts(new Date())
+  return `${y}-${m}-${d}`
+}
+
+/**
+ * The calendar day of a value as YYYY-MM-DD, or null when it is not a date.
+ *  - 'YYYY-MM-DD' (what the API sends for date columns) is returned as it is
+ *  - a timestamp with no zone ('2026-11-03 10:14:10') keeps its own day
+ *  - a timestamp with a zone ('...T16:00:00.000000Z') is converted to the clinic's time zone
+ * Use this instead of split('T')[0] or toISOString(), which give the UTC day and so are a day off.
+ */
+export function toDateKey(val) {
+  if (val === null || val === undefined || val === '') return null
+  if (val instanceof Date) {
+    return Number.isNaN(val.getTime()) ? null : `${val.getFullYear()}-${pad2(val.getMonth() + 1)}-${pad2(val.getDate())}`
+  }
+  const str = String(val).trim()
+  if (!str || str === 'null' || str === 'undefined' || str === '0000-00-00') return null
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str
+  const noZone = str.match(/^(\d{4}-\d{2}-\d{2})[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/)
+  if (noZone) return noZone[1]
+  const d = new Date(str)
+  if (Number.isNaN(d.getTime())) return null
+  const { y, m, d: day } = clinicParts(d)
+  return `${y}-${m}-${day}`
+}
+
+/** 'YYYY-MM-DD HH:mm:ss' in the clinic's time zone (CSV / report exports). */
+export function toDateTimeKey(val) {
+  if (!val) return null
+  const str = String(val).trim()
+  const noZone = str.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(?::(\d{2}))?/)
+  if (noZone && !/(Z|[+-]\d{2}:?\d{2})$/.test(str)) return `${noZone[1]} ${noZone[2]}:${noZone[3] || '00'}`
+  const d = new Date(str)
+  if (Number.isNaN(d.getTime())) return null
+  const { y, m, d: day, h, mi, s } = clinicParts(d)
+  return `${y}-${m}-${day} ${h}:${mi}:${s}`
+}
+
+/**
+ * Long date for detail views, tables and print: 'Tue, Nov 3, 2026'.
+ * Built from the calendar day only, so it never moves by a day with the browser's time zone.
+ * @param {object} [opts] Intl.DateTimeFormat options (weekday / month / year / day)
+ */
+export function formatDateLong(val, opts = {}) {
+  const key = toDateKey(typeof val === 'object' && val !== null && !(val instanceof Date) ? (val.raw_date || val.visit_date || val.consultation_date || val.date) : val)
+  if (!key) return EMPTY
+  const [y, m, d] = key.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d, 12))
+  if (Number.isNaN(dt.getTime())) return EMPTY
+  return dt.toLocaleDateString('en-PH', {
+    timeZone: 'UTC',
+    weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
+    ...opts,
+  })
+}
 
 /**
  * Extracts a date string or Date object from an input (appointment object or raw value)
@@ -6,7 +82,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 export function getAppointmentDateRaw(val) {
   if (!val) return null
   if (typeof val === 'object' && !(val instanceof Date)) {
-    return val.scheduled_at || val.appointment_date || val.date || null
+    return val.appointment_date || val.scheduled_at || val.date || null
   }
   return val
 }
@@ -30,22 +106,10 @@ export function formatAppointmentDate(val) {
   const raw = getAppointmentDateRaw(val)
   if (!raw) return '-'
 
-  if (typeof raw === 'string') {
-    // Check for "YYYY-MM-DD" pattern
-    const m = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
-    if (m) {
-      const year = parseInt(m[1], 10)
-      const month = parseInt(m[2], 10)
-      const day = parseInt(m[3], 10)
-      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-        return `${MONTHS[month - 1]} ${day}, ${year}`
-      }
-    }
-  }
-
-  const d = new Date(raw)
-  if (isNaN(d.getTime())) return '-'
-  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`
+  const key = toDateKey(raw)
+  if (!key) return '-'
+  const [year, month, day] = key.split('-').map(Number)
+  return `${MONTHS[month - 1]} ${day}, ${year}`
 }
 
 /**
@@ -80,8 +144,10 @@ export function formatAppointmentTime(val) {
   const d = new Date(raw)
   if (isNaN(d.getTime())) return '-'
 
-  let hours = d.getHours()
-  const minutes = String(d.getMinutes()).padStart(2, '0')
+  // clock time in the clinic's time zone, the same one the server uses
+  const parts = clinicParts(d)
+  let hours = parseInt(parts.h, 10)
+  const minutes = parts.mi
   const ampm = hours >= 12 ? 'PM' : 'AM'
   hours = hours % 12 || 12
   return `${hours}:${minutes} ${ampm}`
@@ -101,41 +167,26 @@ export function formatAppointmentDateTime(val) {
 
 /**
  * Formats a date value (string, Date, or object) as "Oct 19, 2028".
- * Returns "—" for null, empty, or invalid values. Never returns "Invalid Date".
+ * Returns EMPTY for null, empty, or invalid values. Never returns "Invalid Date".
  */
 export function formatDate(val) {
-  if (!val) return '—'
+  if (!val) return EMPTY
 
   let raw = val
   if (typeof val === 'object' && !(val instanceof Date)) {
-    raw = val.expiry_date || val.received_date || val.scheduled_at || val.appointment_date || val.transaction_date || val.date || val.created_at || null
+    raw = val.expiry_date || val.received_date || val.appointment_date || val.scheduled_at || val.transaction_date || val.raw_date || val.visit_date || val.consultation_date || val.date || val.created_at || null
   }
-  if (!raw) return '—'
+  if (!raw) return EMPTY
 
   if (raw instanceof Date) {
-    if (isNaN(raw.getTime())) return '—'
+    if (isNaN(raw.getTime())) return EMPTY
     return `${MONTHS[raw.getMonth()]} ${raw.getDate()}, ${raw.getFullYear()}`
   }
 
-  const str = String(raw).trim()
-  if (!str || str === 'null' || str === 'undefined' || str === '0000-00-00') return '—'
-
-  // Match pure YYYY-MM-DD
-  const ymdOnly = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
-  if (ymdOnly) {
-    const year = parseInt(ymdOnly[1], 10)
-    const month = parseInt(ymdOnly[2], 10)
-    const day = parseInt(ymdOnly[3], 10)
-    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-      return `${MONTHS[month - 1]} ${day}, ${year}`
-    }
-  }
-
-  // Handle ISO string or date with time
-  const d = new Date(str)
-  if (isNaN(d.getTime())) return '—'
-
-  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`
+  const key = toDateKey(raw)
+  if (!key) return EMPTY
+  const [year, month, day] = key.split('-').map(Number)
+  return `${MONTHS[month - 1]} ${day}, ${year}`
 }
 
 /**

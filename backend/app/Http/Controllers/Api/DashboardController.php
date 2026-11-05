@@ -2,31 +2,40 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\CalendarEventController;
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
 use App\Models\ClinicRecord;
+use App\Models\Conversation;
 use App\Models\DentalConsultation;
 use App\Models\InventoryBatch;
 use App\Models\InventoryItem;
-use App\Models\InventoryTransaction;
-use App\Models\Conversation;
+use App\Models\Patient;
 use App\Models\User;
+use App\Support\ConsultationRow;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * One endpoint per role returns everything its dashboard needs (stats, charts, recent visits,
+ * alerts, calendar events), so a dashboard loads with a single request.
+ *
+ * Slow-changing numbers (charts, stock levels, student count) are cached for a short time;
+ * anything that must be fresh (today's appointments, recent visits) is always read live.
+ */
 class DashboardController extends Controller
 {
-    /**
-     * Helper to compute stock for an item.
-     */
-    private function getItemStock(int $itemId): int
-    {
-        $in  = InventoryTransaction::where('item_id', $itemId)->where('type', 'IN')->sum('quantity');
-        $out = InventoryTransaction::where('item_id', $itemId)->where('type', 'OUT')->sum('quantity');
-        return max(0, $in - $out);
-    }
+    /** Seconds the chart data is cached. */
+    private const CHART_TTL = 60;
+
+    /** Seconds the stock levels and expiry counts are cached. */
+    private const STOCK_TTL = 60;
+
+    /** Seconds small admin counters are cached. */
+    private const COUNT_TTL = 30;
 
     /**
      * Map complaints and diagnoses into standardized category buckets.
@@ -84,170 +93,149 @@ class DashboardController extends Controller
     }
 
     /**
-     * Compute visit trends over time and frequent symptoms for a specific role and date period.
+     * Restrict $query to consultations that happened in [$start, $end] (Y-m-d). A consultation
+     * with no date counts on the day it was created. Written as plain ranges so the
+     * date and created_at indexes can be used.
+     */
+    private function inRange($query, string $dateColumn, string $start, string $end)
+    {
+        return $query->where(function ($q) use ($dateColumn, $start, $end) {
+            $q->whereBetween($dateColumn, [$start, $end])
+              ->orWhere(function ($sub) use ($dateColumn, $start, $end) {
+                  $sub->whereNull($dateColumn)->whereBetween('created_at', ["{$start} 00:00:00", "{$end} 23:59:59"]);
+              });
+        });
+    }
+
+    /** The consultation tables a role's dashboard counts: [table, date column, text column, type]. */
+    private function consultationSources(string $role): array
+    {
+        $sources = [];
+        if ($role === 'admin' || $role === 'clinic_staff') {
+            $sources[] = ['clinic_records', 'visit_date', 'chief_complaint', 'medical'];
+        }
+        if ($role === 'admin' || $role === 'dentist') {
+            $sources[] = ['dental_consultations', 'consultation_date', 'reason_for_visit', 'dental'];
+        }
+
+        return $sources;
+    }
+
+    /**
+     * Visits per calendar day between $start and $end: ['2026-11-04' => 3, ...].
+     * One grouped query per table instead of one query per day / month.
+     */
+    private function visitsPerDay(string $role, string $start, string $end): array
+    {
+        $days = [];
+        foreach ($this->consultationSources($role) as [$table, $dateColumn]) {
+            $rows = $this->inRange(DB::table($table), $dateColumn, $start, $end)
+                ->selectRaw("COALESCE({$dateColumn}, DATE(created_at)) AS d, COUNT(*) AS c")
+                ->groupBy('d')
+                ->get();
+            foreach ($rows as $row) {
+                $days[$row->d] = ($days[$row->d] ?? 0) + (int) $row->c;
+            }
+        }
+
+        return $days;
+    }
+
+    /**
+     * Visit trends and frequent symptoms for a role and period (cached for CHART_TTL seconds).
      */
     private function getTrendsAndSymptoms(string $role, string $period, int $month, int $year): array
     {
+        $key = sprintf('dash:charts:%s:%s:%d:%d:%s', $role, $period, $month, $year, Carbon::today()->toDateString());
+
+        return Cache::remember($key, self::CHART_TTL, fn () => $this->buildTrendsAndSymptoms($role, $period, $month, $year));
+    }
+
+    private function buildTrendsAndSymptoms(string $role, string $period, int $month, int $year): array
+    {
         $today = Carbon::today();
-        $labels = [];
         $trendData = [];
-        $startDate = null;
-        $endDate = null;
 
         if ($period === 'daily') {
-            // Days of the selected month
             $daysInMonth = Carbon::createFromDate($year, $month, 1)->daysInMonth;
-            $startDate = Carbon::createFromDate($year, $month, 1)->startOfDay()->toDateString();
-            $endDate = Carbon::createFromDate($year, $month, $daysInMonth)->endOfDay()->toDateString();
+            $startDate = sprintf('%04d-%02d-01', $year, $month);
+            $endDate = sprintf('%04d-%02d-%02d', $year, $month, $daysInMonth);
+            $perDay = $this->visitsPerDay($role, $startDate, $endDate);
 
             for ($d = 1; $d <= $daysInMonth; $d++) {
                 $dateStr = sprintf('%04d-%02d-%02d', $year, $month, $d);
-                $label = Carbon::parse($dateStr)->format('M j');
-                $shortLabel = (string) $d;
-
-                $count = 0;
-                if ($role === 'admin' || $role === 'clinic_staff') {
-                    $count += ClinicRecord::where(function ($q) use ($dateStr) {
-                        $q->whereDate('visit_date', $dateStr)
-                          ->orWhere(function ($sub) use ($dateStr) {
-                              $sub->whereNull('visit_date')->whereDate('created_at', $dateStr);
-                          });
-                    })->count();
-                }
-                if ($role === 'admin' || $role === 'dentist') {
-                    $count += DentalConsultation::where(function ($q) use ($dateStr) {
-                        $q->whereDate('consultation_date', $dateStr)
-                          ->orWhere(function ($sub) use ($dateStr) {
-                              $sub->whereNull('consultation_date')->whereDate('created_at', $dateStr);
-                          });
-                    })->count();
-                }
-
                 $trendData[] = [
                     'date'        => $dateStr,
-                    'label'       => $label,
-                    'short_label' => $shortLabel,
-                    'visits'      => $count,
+                    'label'       => Carbon::parse($dateStr)->format('M j'),
+                    'short_label' => (string) $d,
+                    'visits'      => $perDay[$dateStr] ?? 0,
                 ];
             }
         } elseif ($period === 'yearly') {
             // Last 5 years
             $currentYear = $today->year;
             $startYear = $currentYear - 4;
-            $startDate = Carbon::createFromDate($startYear, 1, 1)->startOfDay()->toDateString();
-            $endDate = Carbon::createFromDate($currentYear, 12, 31)->endOfDay()->toDateString();
+            $startDate = "{$startYear}-01-01";
+            $endDate = "{$currentYear}-12-31";
+            $perDay = $this->visitsPerDay($role, $startDate, $endDate);
 
+            $perYear = [];
+            foreach ($perDay as $day => $count) {
+                $perYear[(int) substr($day, 0, 4)] = ($perYear[(int) substr($day, 0, 4)] ?? 0) + $count;
+            }
             for ($y = $startYear; $y <= $currentYear; $y++) {
-                $yStart = "{$y}-01-01";
-                $yEnd = "{$y}-12-31";
-
-                $count = 0;
-                if ($role === 'admin' || $role === 'clinic_staff') {
-                    $count += ClinicRecord::where(function ($q) use ($yStart, $yEnd) {
-                        $q->whereBetween('visit_date', [$yStart, $yEnd])
-                          ->orWhere(function ($sub) use ($yStart, $yEnd) {
-                              $sub->whereNull('visit_date')->whereBetween('created_at', ["{$yStart} 00:00:00", "{$yEnd} 23:59:59"]);
-                          });
-                    })->count();
-                }
-                if ($role === 'admin' || $role === 'dentist') {
-                    $count += DentalConsultation::where(function ($q) use ($yStart, $yEnd) {
-                        $q->whereBetween('consultation_date', [$yStart, $yEnd])
-                          ->orWhere(function ($sub) use ($yStart, $yEnd) {
-                              $sub->whereNull('consultation_date')->whereBetween('created_at', ["{$yStart} 00:00:00", "{$yEnd} 23:59:59"]);
-                          });
-                    })->count();
-                }
-
                 $trendData[] = [
                     'label'       => (string) $y,
                     'short_label' => (string) $y,
-                    'visits'      => $count,
+                    'visits'      => $perYear[$y] ?? 0,
                 ];
             }
         } else {
             // Monthly: 12 months of the selected year (default)
-            $startDate = Carbon::createFromDate($year, 1, 1)->startOfDay()->toDateString();
-            $endDate = Carbon::createFromDate($year, 12, 31)->endOfDay()->toDateString();
+            $startDate = "{$year}-01-01";
+            $endDate = "{$year}-12-31";
+            $perDay = $this->visitsPerDay($role, $startDate, $endDate);
 
+            $perMonth = [];
+            foreach ($perDay as $day => $count) {
+                $perMonth[(int) substr($day, 5, 2)] = ($perMonth[(int) substr($day, 5, 2)] ?? 0) + $count;
+            }
             for ($m = 1; $m <= 12; $m++) {
-                $mStart = sprintf('%04d-%02d-01', $year, $m);
-                $daysInM = Carbon::createFromDate($year, $m, 1)->daysInMonth;
-                $mEnd = sprintf('%04d-%02d-%02d', $year, $m, $daysInM);
                 $monthName = Carbon::createFromDate($year, $m, 1)->format('M');
-
-                $count = 0;
-                if ($role === 'admin' || $role === 'clinic_staff') {
-                    $count += ClinicRecord::where(function ($q) use ($mStart, $mEnd) {
-                        $q->whereBetween('visit_date', [$mStart, $mEnd])
-                          ->orWhere(function ($sub) use ($mStart, $mEnd) {
-                              $sub->whereNull('visit_date')->whereBetween('created_at', ["{$mStart} 00:00:00", "{$mEnd} 23:59:59"]);
-                          });
-                    })->count();
-                }
-                if ($role === 'admin' || $role === 'dentist') {
-                    $count += DentalConsultation::where(function ($q) use ($mStart, $mEnd) {
-                        $q->whereBetween('consultation_date', [$mStart, $mEnd])
-                          ->orWhere(function ($sub) use ($mStart, $mEnd) {
-                              $sub->whereNull('consultation_date')->whereBetween('created_at', ["{$mStart} 00:00:00", "{$mEnd} 23:59:59"]);
-                          });
-                    })->count();
-                }
-
                 $trendData[] = [
                     'label'       => $monthName,
                     'short_label' => $monthName,
-                    'visits'      => $count,
+                    'visits'      => $perMonth[$m] ?? 0,
                 ];
             }
         }
 
-        // 2. Compute Frequent Symptoms in that range
+        // Frequent symptoms in the same range. Identical complaint/diagnosis text is grouped in
+        // SQL so only the distinct combinations are categorised in PHP.
         $categoryCounts = [];
         $totalSymptomsCount = 0;
 
-        if ($role === 'admin' || $role === 'clinic_staff') {
-            $medQuery = ClinicRecord::query();
-            if ($startDate && $endDate) {
-                $medQuery->where(function ($q) use ($startDate, $endDate) {
-                    $q->whereBetween('visit_date', [$startDate, $endDate])
-                      ->orWhere(function ($sub) use ($startDate, $endDate) {
-                          $sub->whereNull('visit_date')->whereBetween('created_at', ["{$startDate} 00:00:00", "{$endDate} 23:59:59"]);
-                      });
-                });
-            }
-            $medRecords = $medQuery->get(['complaint_category', 'chief_complaint', 'diagnosis']);
-            foreach ($medRecords as $r) {
-                $cat = $this->categorizeComplaint($r->complaint_category, $r->chief_complaint, $r->diagnosis, 'medical');
-                $categoryCounts[$cat] = ($categoryCounts[$cat] ?? 0) + 1;
-                $totalSymptomsCount++;
+        foreach ($this->consultationSources($role) as [$table, $dateColumn, $textColumn, $type]) {
+            $rows = $this->inRange(DB::table($table), $dateColumn, $startDate, $endDate)
+                ->select('complaint_category', "{$textColumn} AS complaint", 'diagnosis')
+                ->selectRaw('COUNT(*) AS c')
+                ->groupBy('complaint_category', $textColumn, 'diagnosis')
+                ->get();
+
+            foreach ($rows as $row) {
+                $cat = $this->categorizeComplaint($row->complaint_category, $row->complaint, $row->diagnosis, $type);
+                $categoryCounts[$cat] = ($categoryCounts[$cat] ?? 0) + (int) $row->c;
+                $totalSymptomsCount += (int) $row->c;
             }
         }
 
-        if ($role === 'admin' || $role === 'dentist') {
-            $dentQuery = DentalConsultation::query();
-            if ($startDate && $endDate) {
-                $dentQuery->where(function ($q) use ($startDate, $endDate) {
-                    $q->whereBetween('consultation_date', [$startDate, $endDate])
-                      ->orWhere(function ($sub) use ($startDate, $endDate) {
-                          $sub->whereNull('consultation_date')->whereBetween('created_at', ["{$startDate} 00:00:00", "{$endDate} 23:59:59"]);
-                      });
-                });
-            }
-            $dentRecords = $dentQuery->get(['complaint_category', 'reason_for_visit', 'diagnosis']);
-            foreach ($dentRecords as $d) {
-                $cat = $this->categorizeComplaint($d->complaint_category, $d->reason_for_visit, $d->diagnosis, 'dental');
-                $categoryCounts[$cat] = ($categoryCounts[$cat] ?? 0) + 1;
-                $totalSymptomsCount++;
-            }
-        }
+        // Consultations that fell into the catch-all buckets (no category and nothing recognisable in the text)
+        $uncategorizedCount = ($categoryCounts['Other'] ?? 0) + ($categoryCounts['Dental Checkup'] ?? 0);
 
-        // Sort descending
         arsort($categoryCounts);
 
         // Top 5 categories + Others
         $frequentSymptoms = [];
-        $top5 = array_slice($categoryCounts, 0, 5, true);
         $othersCount = 0;
 
         $index = 0;
@@ -280,117 +268,118 @@ class DashboardController extends Controller
             'visit_trends'       => $trendData,
             'frequent_symptoms'  => $frequentSymptoms,
             'total_consultations'=> $totalSymptomsCount,
+            'categorized_consultations' => max(0, $totalSymptomsCount - $uncategorizedCount),
         ];
     }
 
     /**
-     * Get latest 8 consultation visits with student/patient details, service, complaint, and staff.
+     * Latest consultation visits with patient, service, complaint and staff.
+     * Always read live, and only the 8 newest rows of each table are loaded.
      */
     private function getRecentVisits(string $role, int $limit = 8): array
     {
         $visits = collect();
 
         if ($role === 'admin' || $role === 'clinic_staff') {
-            $med = ClinicRecord::with(['patient.user', 'appointment.service', 'createdBy'])
+            $med = ClinicRecord::with(['patient.user', 'createdBy'])
                 ->orderByDesc('visit_date')
                 ->orderByDesc('created_at')
                 ->limit($limit)
                 ->get()
-                ->map(function ($r) {
-                    $u = $r->patient?->user;
-                    $vDate = $r->visit_date ? Carbon::parse($r->visit_date)->toDateString() : ($r->created_at ? $r->created_at->toDateString() : '');
-                    $formattedDate = $vDate ? Carbon::parse($vDate)->format('M j, Y') : '—';
-                    $complaintText = $r->complaint_category ?: ($r->chief_complaint ?: ($r->diagnosis ?: 'General Consultation'));
-
-                    return [
-                        'id'                  => "med-{$r->id}",
-                        'record_id'           => $r->id,
-                        'type'                => 'medical',
-                        'patient_id'          => $r->patient_id,
-                        'patient_user_id'     => $u?->id,
-                        'student_name'        => $u?->name ?? 'Walk-in Patient',
-                        'student_id'          => $u?->student_id ?? '—',
-                        'role'                => $u?->role ?? 'student',
-                        'service'             => $r->appointment?->service?->name ?? 'Medical Consultation',
-                        'complaint_diagnosis' => $complaintText,
-                        'status'              => 'Completed',
-                        'attending_staff'     => $r->createdBy?->name ?? 'Clinic Nurse',
-                        'date'                => $formattedDate,
-                        'raw_date'            => $vDate,
-                        'created_at'          => $r->created_at?->toISOString(),
-                    ];
-                });
+                ->map(fn ($r) => ConsultationRow::medical($r));
             $visits = $visits->merge($med);
         }
 
         if ($role === 'admin' || $role === 'dentist') {
-            $dent = DentalConsultation::with(['patient.user', 'appointment.service', 'dentist'])
+            $dent = DentalConsultation::with(['patient.user', 'dentist'])
                 ->orderByDesc('consultation_date')
                 ->orderByDesc('created_at')
                 ->limit($limit)
                 ->get()
-                ->map(function ($c) {
-                    $u = $c->patient?->user;
-                    $vDate = $c->consultation_date ? Carbon::parse($c->consultation_date)->toDateString() : ($c->created_at ? $c->created_at->toDateString() : '');
-                    $formattedDate = $vDate ? Carbon::parse($vDate)->format('M j, Y') : '—';
-                    $complaintText = $c->complaint_category ?: ($c->reason_for_visit ?: ($c->diagnosis ?: 'Dental Examination'));
-
-                    return [
-                        'id'                  => "dent-{$c->id}",
-                        'record_id'           => $c->id,
-                        'type'                => 'dental',
-                        'patient_id'          => $c->patient_id,
-                        'patient_user_id'     => $u?->id,
-                        'student_name'        => $u?->name ?? 'Dental Patient',
-                        'student_id'          => $u?->student_id ?? '—',
-                        'role'                => $u?->role ?? 'student',
-                        'service'             => $c->appointment?->service?->name ?? ($c->diagnosis ?: 'Dental Consultation'),
-                        'complaint_diagnosis' => $complaintText,
-                        'status'              => 'Completed',
-                        'attending_staff'     => $c->dentist?->name ?? 'Dentist',
-                        'date'                => $formattedDate,
-                        'raw_date'            => $vDate,
-                        'created_at'          => $c->created_at?->toISOString(),
-                    ];
-                });
+                ->map(fn ($c) => ConsultationRow::dental($c));
             $visits = $visits->merge($dent);
         }
 
         // Sort merged visits by raw_date/created_at descending and take 8
         return $visits
-            ->sortByDesc(fn($v) => $v['raw_date'] . ' ' . $v['created_at'])
+            ->sortByDesc(fn ($v) => $v['raw_date'] . ' ' . $v['created_at'])
             ->values()
             ->take($limit)
             ->all();
     }
 
     /**
-     * Compute inventory alert counts and banner info.
+     * Stock levels, low-stock counts per dashboard and the expiring-soon count, from two
+     * aggregate queries (cached for STOCK_TTL seconds). It replaces a loop that ran two
+     * queries for every inventory item, twice per dashboard.
+     *
+     * low_stock          every active non-equipment item (admin, alert banner)
+     * low_stock_med      active medicines and supplies (nurse)
+     * low_stock_supply   active supplies (dentist)
      */
+    private function stockSnapshot(): array
+    {
+        return Cache::remember('dash:stock-snapshot:' . Carbon::today()->toDateString(), self::STOCK_TTL, function () {
+            $stock = DB::table('inventory_transactions')
+                ->selectRaw("item_id, SUM(CASE WHEN type = 'IN' THEN quantity WHEN type = 'OUT' THEN -quantity ELSE 0 END) AS stock")
+                ->groupBy('item_id')
+                ->pluck('stock', 'item_id');
+
+            $low = ['low_stock' => 0, 'low_stock_med' => 0, 'low_stock_supply' => 0];
+            foreach (InventoryItem::where('is_active', true)->get(['id', 'category', 'reorder_level']) as $item) {
+                if (max(0, (int) ($stock[$item->id] ?? 0)) > $item->reorder_level) {
+                    continue;
+                }
+                if ($item->category !== null && $item->category !== 'Equipment') {
+                    $low['low_stock']++;
+                }
+                if (in_array($item->category, ['Medicine', 'Supply'], true)) {
+                    $low['low_stock_med']++;
+                }
+                if ($item->category === 'Supply') {
+                    $low['low_stock_supply']++;
+                }
+            }
+
+            $today = Carbon::today()->toDateString();
+            $in30Days = Carbon::today()->addDays(30)->toDateString();
+            $low['expiring_soon'] = InventoryBatch::whereNotNull('expiry_date')
+                ->where('quantity_in', '>', DB::raw('quantity_used'))
+                ->where('expiry_date', '>', $today)
+                ->where('expiry_date', '<=', $in30Days)
+                ->count();
+
+            return $low;
+        });
+    }
+
+    /** Low stock + expiring soon, for the inventory alert banner. */
     private function getInventoryAlertSummary(): array
     {
-        $today = Carbon::today()->toDateString();
-        $in30Days = Carbon::today()->addDays(30)->toDateString();
-
-        $items = InventoryItem::where('category', '!=', 'Equipment')->where('is_active', true)->get();
-        $lowStock = 0;
-        foreach ($items as $item) {
-            if ($this->getItemStock($item->id) <= $item->reorder_level) {
-                $lowStock++;
-            }
-        }
-
-        $expiringSoon = InventoryBatch::whereNotNull('expiry_date')
-            ->where('quantity_in', '>', DB::raw('quantity_used'))
-            ->where('expiry_date', '>', $today)
-            ->where('expiry_date', '<=', $in30Days)
-            ->count();
+        $snapshot = $this->stockSnapshot();
 
         return [
-            'low_stock'     => $lowStock,
-            'expiring_soon' => $expiringSoon,
-            'total'         => $lowStock + $expiringSoon,
+            'low_stock'     => $snapshot['low_stock'],
+            'expiring_soon' => $snapshot['expiring_soon'],
+            'total'         => $snapshot['low_stock'] + $snapshot['expiring_soon'],
         ];
+    }
+
+    /** [start, end] of today as datetime strings, for index-friendly range queries on timestamps. */
+    private function todayBounds(): array
+    {
+        return [Carbon::today()->startOfDay()->toDateTimeString(), Carbon::today()->endOfDay()->toDateTimeString()];
+    }
+
+    /** Consultations recorded today (by visit date, or created today) in one table. */
+    private function consultationsToday(string $model, string $dateColumn): int
+    {
+        $today = Carbon::today()->toDateString();
+        [$from, $to] = $this->todayBounds();
+
+        return $model::where(function ($q) use ($dateColumn, $today, $from, $to) {
+            $q->where($dateColumn, $today)->orWhereBetween('created_at', [$from, $to]);
+        })->count();
     }
 
     /**
@@ -399,49 +388,40 @@ class DashboardController extends Controller
      */
     public function admin(Request $request): JsonResponse
     {
-        $today = Carbon::today()->toDateString();
         $period = $request->query('period', 'monthly'); // 'daily' | 'monthly' | 'yearly'
         $month = (int) $request->query('month', Carbon::today()->month);
         $year = (int) $request->query('year', Carbon::today()->year);
+        [$from, $to] = $this->todayBounds();
 
-        // 1. Stats Cards
-        $todayAppointments = Appointment::whereDate('scheduled_at', $today)->count();
-        $consultationsToday = ClinicRecord::whereDate('visit_date', $today)
-            ->orWhereDate('created_at', $today)
-            ->count()
-            + DentalConsultation::whereDate('consultation_date', $today)
-            ->orWhereDate('created_at', $today)
-            ->count();
-        $registeredStudents = User::where('role', 'student')->count();
+        // 1. Stats cards
+        $todayAppointments = Appointment::whereBetween('scheduled_at', [$from, $to])->count();
+        $consultationsToday = $this->consultationsToday(ClinicRecord::class, 'visit_date')
+            + $this->consultationsToday(DentalConsultation::class, 'consultation_date');
+        $registeredStudents = Cache::remember('dash:registered-students', self::COUNT_TTL, fn () => User::where('role', 'student')->count());
         $invAlerts = $this->getInventoryAlertSummary();
 
-        // 2. Charts & Frequent Symptoms
-        $chartData = $this->getTrendsAndSymptoms('admin', $period, $month, $year);
-
-        // 3. Recent Visits table (Latest 8 rows)
-        $recentVisits = $this->getRecentVisits('admin', 8);
-
         // Unanswered conversations count (open with no staff reply in 24h)
-        $unansweredConversations = Conversation::where('status', 'open')
+        $unansweredConversations = Cache::remember('dash:unanswered-conversations', self::COUNT_TTL, fn () => Conversation::where('status', 'open')
             ->where('created_at', '<', Carbon::now()->subHours(24))
             ->whereDoesntHave('messages', function ($q) {
                 $q->whereHas('sender', function ($sq) {
                     $sq->whereIn('role', ['clinic_staff', 'dentist']);
                 });
             })
-            ->count();
+            ->count());
 
         return response()->json([
             'stats' => [
                 'today_appointments'        => $todayAppointments,
-                'consultations_today'      => $consultationsToday,
-                'registered_students'      => $registeredStudents,
-                'inventory_alerts'         => $invAlerts['total'],
-                'unanswered_conversations' => $unansweredConversations,
+                'consultations_today'       => $consultationsToday,
+                'registered_students'       => $registeredStudents,
+                'inventory_alerts'          => $invAlerts['total'],
+                'unanswered_conversations'  => $unansweredConversations,
             ],
-            'inventory_alert'   => $invAlerts,
-            'charts'            => $chartData,
-            'recent_visits'     => $recentVisits,
+            'inventory_alert' => $invAlerts,
+            'charts'          => $this->getTrendsAndSymptoms('admin', $period, $month, $year),
+            'recent_visits'   => $this->getRecentVisits('admin', 8),
+            'calendar_events' => CalendarEventController::visibleEvents($request->user()),
         ]);
     }
 
@@ -452,59 +432,28 @@ class DashboardController extends Controller
     public function nurse(Request $request): JsonResponse
     {
         $user = $request->user();
-        $today = Carbon::today()->toDateString();
         $period = $request->query('period', 'monthly');
         $month = (int) $request->query('month', Carbon::today()->month);
         $year = (int) $request->query('year', Carbon::today()->year);
+        [$from, $to] = $this->todayBounds();
 
-        // 1. 4 Stat Cards
-        $myAppointmentsToday = Appointment::where('appointment_type', 'medical')
-            ->whereDate('scheduled_at', $today)
-            ->where(function ($q) use ($user) {
-                if ($user) {
-                    $q->where('staff_id', $user->id)
-                      ->orWhereNull('staff_id');
-                }
-            })
-            ->count();
-
-        $waitingPatients = Appointment::where('appointment_type', 'medical')
-            ->whereDate('scheduled_at', $today)
-            ->whereIn('status', ['confirmed', 'pending'])
-            ->count();
-
-        $consultationsCompletedToday = ClinicRecord::where(function ($q) use ($today) {
-                $q->whereDate('visit_date', $today)
-                  ->orWhereDate('created_at', $today);
-            })
-            ->count();
-
-        $medItems = InventoryItem::whereIn('category', ['Medicine', 'Supply'])->where('is_active', true)->get();
-        $lowStockCount = 0;
-        foreach ($medItems as $item) {
-            if ($this->getItemStock($item->id) <= $item->reorder_level) {
-                $lowStockCount++;
-            }
-        }
-
-        $invAlerts = $this->getInventoryAlertSummary();
-
-        // 2. Charts (Medical only)
-        $chartData = $this->getTrendsAndSymptoms('clinic_staff', $period, $month, $year);
-
-        // 3. Recent Visits table (Medical only, latest 8)
-        $recentVisits = $this->getRecentVisits('clinic_staff', 8);
+        // Today's medical appointments: mine (or unassigned) and still waiting, in one query
+        $appts = Appointment::where('appointment_type', 'medical')
+            ->whereBetween('scheduled_at', [$from, $to])
+            ->selectRaw("COALESCE(SUM(CASE WHEN staff_id = ? OR staff_id IS NULL THEN 1 ELSE 0 END), 0) AS mine, COALESCE(SUM(CASE WHEN status IN ('confirmed', 'pending') THEN 1 ELSE 0 END), 0) AS waiting", [$user->id])
+            ->first();
 
         return response()->json([
             'stats' => [
-                'my_appointments_today'         => $myAppointmentsToday,
-                'waiting_patients'              => $waitingPatients,
-                'consultations_completed_today' => $consultationsCompletedToday,
-                'low_stock_items'               => $lowStockCount,
+                'my_appointments_today'         => (int) $appts->mine,
+                'waiting_patients'              => (int) $appts->waiting,
+                'consultations_completed_today' => $this->consultationsToday(ClinicRecord::class, 'visit_date'),
+                'low_stock_items'               => $this->stockSnapshot()['low_stock_med'],
             ],
-            'inventory_alert' => $invAlerts,
-            'charts'          => $chartData,
-            'recent_visits'   => $recentVisits,
+            'inventory_alert' => $this->getInventoryAlertSummary(),
+            'charts'          => $this->getTrendsAndSymptoms('clinic_staff', $period, $month, $year),
+            'recent_visits'   => $this->getRecentVisits('clinic_staff', 8),
+            'calendar_events' => CalendarEventController::visibleEvents($user),
         ]);
     }
 
@@ -515,53 +464,71 @@ class DashboardController extends Controller
     public function dentist(Request $request): JsonResponse
     {
         $user = $request->user();
-        $today = Carbon::today()->toDateString();
         $period = $request->query('period', 'monthly');
         $month = (int) $request->query('month', Carbon::today()->month);
         $year = (int) $request->query('year', Carbon::today()->year);
+        [$from, $to] = $this->todayBounds();
 
-        // 1. 4 Stat Cards
-        $myDentalAppointmentsToday = Appointment::where('appointment_type', 'dental')
-            ->whereDate('scheduled_at', $today)
-            ->count();
-
-        $waitingPatients = Appointment::where('appointment_type', 'dental')
-            ->whereDate('scheduled_at', $today)
-            ->whereIn('status', ['confirmed', 'pending'])
-            ->count();
-
-        $dentalConsultationsCompletedToday = DentalConsultation::where(function ($q) use ($today) {
-                $q->whereDate('consultation_date', $today)
-                  ->orWhereDate('created_at', $today);
-            })
-            ->count();
-
-        $supplyItems = InventoryItem::where('category', 'Supply')->where('is_active', true)->get();
-        $dentalSuppliesLowStock = 0;
-        foreach ($supplyItems as $item) {
-            if ($this->getItemStock($item->id) <= $item->reorder_level) {
-                $dentalSuppliesLowStock++;
-            }
-        }
-
-        $invAlerts = $this->getInventoryAlertSummary();
-
-        // 2. Charts (Dental only)
-        $chartData = $this->getTrendsAndSymptoms('dentist', $period, $month, $year);
-
-        // 3. Recent Visits table (Dental only, latest 8)
-        $recentVisits = $this->getRecentVisits('dentist', 8);
+        $appts = Appointment::where('appointment_type', 'dental')
+            ->whereBetween('scheduled_at', [$from, $to])
+            ->selectRaw("COUNT(*) AS total, COALESCE(SUM(CASE WHEN status IN ('confirmed', 'pending') THEN 1 ELSE 0 END), 0) AS waiting")
+            ->first();
 
         return response()->json([
             'stats' => [
-                'my_dental_appointments_today'         => $myDentalAppointmentsToday,
-                'waiting_patients'                     => $waitingPatients,
-                'dental_consultations_completed_today' => $dentalConsultationsCompletedToday,
-                'dental_supplies_low_stock'            => $dentalSuppliesLowStock,
+                'my_dental_appointments_today'         => (int) $appts->total,
+                'waiting_patients'                     => (int) $appts->waiting,
+                'dental_consultations_completed_today' => $this->consultationsToday(DentalConsultation::class, 'consultation_date'),
+                'dental_supplies_low_stock'            => $this->stockSnapshot()['low_stock_supply'],
             ],
-            'inventory_alert' => $invAlerts,
-            'charts'          => $chartData,
-            'recent_visits'   => $recentVisits,
+            'inventory_alert' => $this->getInventoryAlertSummary(),
+            'charts'          => $this->getTrendsAndSymptoms('dentist', $period, $month, $year),
+            'recent_visits'   => $this->getRecentVisits('dentist', 8),
+            'calendar_events' => CalendarEventController::visibleEvents($user),
+        ]);
+    }
+
+    /**
+     * GET /api/dashboard/student
+     * Student and faculty/staff dashboard: counts, the appointments around today (for the
+     * upcoming list and the calendar), recent notifications, announcements and calendar events.
+     */
+    public function student(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $patientId = Patient::where('user_id', $user->id)->value('id');
+
+        $appointments = collect();
+        $upcomingCount = 0;
+        $completedVisits = 0;
+
+        if ($patientId) {
+            $upcomingCount = Appointment::where('patient_id', $patientId)->whereIn('status', ['pending', 'confirmed'])->count();
+            $completedVisits = ClinicRecord::where('patient_id', $patientId)->count();
+
+            // Six months either side of today covers the list, the next appointment and the calendar.
+            $appointments = Appointment::where('patient_id', $patientId)
+                ->whereBetween('scheduled_at', [Carbon::now()->subMonths(6), Carbon::now()->addMonths(6)])
+                ->with(['service:id,name', 'staff:id,name'])
+                ->orderBy('scheduled_at')
+                ->limit(150)
+                ->get(['id', 'patient_id', 'service_id', 'staff_id', 'scheduled_at', 'status', 'appointment_type']);
+        }
+
+        $notifications = NotificationController::visibleQuery($user);
+        $unreadNotifications = (clone $notifications)->where('is_read', false)->count();
+        $recentNotifications = NotificationController::recent($notifications, 12);
+
+        return response()->json([
+            'stats' => [
+                'upcoming_appointments' => $upcomingCount,
+                'completed_visits'      => $completedVisits,
+                'unread_notifications'  => $unreadNotifications,
+            ],
+            'appointments'    => $appointments,
+            'notifications'   => $recentNotifications,
+            'announcements'   => AnnouncementController::visibleQuery($user)->limit(10)->get(),
+            'calendar_events' => CalendarEventController::visibleEvents($user),
         ]);
     }
 }

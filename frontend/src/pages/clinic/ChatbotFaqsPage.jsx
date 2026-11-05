@@ -7,6 +7,7 @@ import Pagination from '../../components/Pagination'
 import { usePagination } from '../../hooks/usePagination'
 import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/ConfirmModal'
+import { EMPTY } from '../../utils/emptyValue'
 
 const CATEGORY_LABELS = {
   appointments: 'Appointments',
@@ -227,7 +228,7 @@ export default function ChatbotFaqsPage() {
                     {faq.question}
                   </td>
                   <td style={{ fontSize: '0.8rem', color: 'var(--text-sub)' }}>
-                    {faq.keywords || <span className="text-muted">—</span>}
+                    {faq.keywords || <span className="text-muted">{EMPTY}</span>}
                   </td>
                   <td>
                     <button

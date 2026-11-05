@@ -5,6 +5,7 @@ import Pagination from '../../components/Pagination'
 import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/ConfirmModal'
 import { announcementsApi } from '../../api/announcements'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 
 const EMPTY_FORM = {
   title: '',
@@ -20,6 +21,7 @@ export default function AdminAnnouncementsPage() {
   const [form, setForm]                   = useState(EMPTY_FORM)
   const [saving, setSaving]               = useState(false)
   const [search, setSearch]               = useState('')
+  const debouncedSearch = useDebouncedValue(search)
   const [page, setPage]                   = useState(1)
   const [pageSize, setPageSize]           = useState(10)
   const [lastPage, setLastPage]           = useState(1)
@@ -29,7 +31,7 @@ export default function AdminAnnouncementsPage() {
   const fetchAnnouncements = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await announcementsApi.list({ page, per_page: pageSize, search })
+      const res = await announcementsApi.list({ page, per_page: pageSize, search: debouncedSearch })
       setAnnouncements(res.data.announcements || res.data.data || [])
       setLastPage(res.data.last_page || 1)
       setTotal(res.data.total ?? (res.data.announcements || []).length)
@@ -38,7 +40,7 @@ export default function AdminAnnouncementsPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, pageSize, search])
+  }, [page, pageSize, debouncedSearch])
 
   useEffect(() => {
     fetchAnnouncements()

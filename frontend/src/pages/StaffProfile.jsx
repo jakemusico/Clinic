@@ -10,6 +10,7 @@ import Dropdown from '../components/Dropdown'
 import useProfilePhoto from '../hooks/useProfilePhoto'
 import { getApiErrorMessage, getFieldErrors } from '../utils/apiError'
 import './ProfilePage.css'
+import { EMPTY } from '../utils/emptyValue'
 
 // ── SVG Icon Helper ──────────────────────────────────────────────────────────
 function ProfileIcon({ name, size = 16 }) {
@@ -321,7 +322,7 @@ export default function StaffProfile() {
 
             <h3 className="staff-summary-name">{displayName}</h3>
             <span className="staff-summary-badge">{roleName}</span>
-            <p className="staff-summary-email">{formData.email || '—'}</p>
+            <p className="staff-summary-email">{formData.email || EMPTY}</p>
 
             <div className="staff-summary-divider" />
 
@@ -333,7 +334,7 @@ export default function StaffProfile() {
               </div>
               <div className="staff-meta-item">
                 <span className="staff-meta-label">Employee ID</span>
-                <span className="staff-meta-val">{formData.student_id || '—'}</span>
+                <span className="staff-meta-val">{formData.student_id || EMPTY}</span>
               </div>
               {!isAdmin && formData.license_no && (
                 <div className="staff-meta-item">
@@ -343,11 +344,11 @@ export default function StaffProfile() {
               )}
               <div className="staff-meta-item">
                 <span className="staff-meta-label">Contact</span>
-                <span className="staff-meta-val">{formData.contact_no || '—'}</span>
+                <span className="staff-meta-val">{formData.contact_no || EMPTY}</span>
               </div>
               <div className="staff-meta-item">
                 <span className="staff-meta-label">Sex</span>
-                <span className="staff-meta-val" style={{ textTransform: 'capitalize' }}>{formData.sex || '—'}</span>
+                <span className="staff-meta-val" style={{ textTransform: 'capitalize' }}>{formData.sex || EMPTY}</span>
               </div>
             </div>
           </div>

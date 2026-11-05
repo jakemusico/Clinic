@@ -7,27 +7,23 @@ use App\Models\Notification;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class NotificationController extends Controller
 {
+    /** Newest notifications returned when the caller does not paginate (keeps the payload bounded). */
+    private const DEFAULT_LIMIT = 200;
+    private const MAX_LIMIT = 500;
+
     /**
-     * GET /api/notifications
-     * Retrieve all notifications for the authenticated user.
+     * The notifications a user can see. Nurses and dentists keep chat notifications out of the
+     * bell, the bell count and the Notifications page. Shared by the list and the header counters
+     * so both always agree.
      */
-    public function index(Request $request): JsonResponse
+    public static function visibleQuery(\App\Models\User $user)
     {
-        $user = $request->user();
-
-        // If the authenticated user is an admin, automatically generate low stock & expiring soon alerts
-        if ($user->role === 'admin') {
-            InventoryController::checkAlertsAndNotifyAdmins();
-        }
-
         $query = Notification::where('user_id', $user->id);
 
-        // NURSE and DENTIST side:
-        // Keep the bell for non-chat notifications only (appointments, inventory, etc.).
-        // Exclude chat-type notifications from the bell dropdown, the bell count, and the Notifications page.
         if ($user->isClinicStaff() || $user->isDentist()) {
             $query->where(function ($q) {
                 $q->whereNull('target_type')
@@ -39,6 +35,51 @@ class NotificationController extends Controller
             })
             ->where('title', 'not like', 'New message from%');
         }
+
+        return $query;
+    }
+
+    /**
+     * The newest $limit notifications, unread ones first. Done as two index-friendly queries
+     * (unread newest-first, then read newest-first) instead of one "ORDER BY is_read, created_at
+     * DESC", which MySQL can only answer by sorting every notification the user has ever had.
+     */
+    public static function recent($visibleQuery, int $limit)
+    {
+        $unread = (clone $visibleQuery)->where('is_read', false)->orderByDesc('created_at')->limit($limit)->get();
+
+        if ($unread->count() >= $limit) {
+            return $unread;
+        }
+
+        $read = (clone $visibleQuery)->where('is_read', true)->orderByDesc('created_at')->limit($limit - $unread->count())->get();
+
+        return $unread->concat($read)->values();
+    }
+
+    /**
+     * Admins get low stock / expiring alerts generated as notifications. That check reads the
+     * whole inventory, so run it at most once every 2 minutes instead of on every poll.
+     * (Alerts are already de-duplicated per item per day.)
+     */
+    public static function syncAdminAlerts(\App\Models\User $user): void
+    {
+        if ($user->role === 'admin' && Cache::add('inventory:admin-alert-sync', 1, 120)) {
+            InventoryController::checkAlertsAndNotifyAdmins();
+        }
+    }
+
+    /**
+     * GET /api/notifications
+     * Retrieve the notifications of the authenticated user (newest 200 unless paginated).
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        self::syncAdminAlerts($user);
+
+        $query = self::visibleQuery($user);
 
         $unreadCount = (clone $query)->where('is_read', false)->count();
 
@@ -62,10 +103,9 @@ class NotificationController extends Controller
             ]);
         }
 
-        $notifications = $query
-            ->orderBy('is_read', 'asc') // unread first
-            ->orderBy('created_at', 'desc')
-            ->get();
+        $limit = min(self::MAX_LIMIT, max(1, (int) $request->input('limit', self::DEFAULT_LIMIT)));
+
+        $notifications = self::recent($query, $limit); // unread first, then newest
 
         return response()->json([
             'notifications' => $notifications,

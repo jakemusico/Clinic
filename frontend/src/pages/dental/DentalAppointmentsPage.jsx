@@ -7,6 +7,8 @@ import { toast } from 'react-hot-toast'
 import { formatAppointmentDateTime } from '../../utils/dateUtils'
 import Pagination from '../../components/Pagination'
 import Avatar from '../../components/Avatar'
+import { EMPTY } from '../../utils/emptyValue'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 
 const STATUS_BADGES = {
   pending:   'status-badge pending',
@@ -24,6 +26,7 @@ export default function DentalAppointmentsPage() {
   const [appointments, setAppointments]       = useState([])
   const [filterStatus, setFilterStatus]       = useState(initialStatus)
   const [searchQuery, setSearchQuery]         = useState('')
+  const debouncedSearchQuery = useDebouncedValue(searchQuery)
   const [viewRecord, setViewRecord]           = useState(null)
   const [page, setPage]                       = useState(1)
   const [pageSize, setPageSize]               = useState(10)
@@ -77,8 +80,8 @@ export default function DentalAppointmentsPage() {
     const matchesStatus = filterStatus === 'all' || a.status === filterStatus
     const patientName = a.patient?.user?.name || ''
     const studentId = a.patient?.user?.student_id || ''
-    const matchesSearch = patientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          studentId.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesSearch = patientName.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+                          studentId.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
     return matchesStatus && matchesSearch
   })
 
@@ -154,10 +157,10 @@ export default function DentalAppointmentsPage() {
                     </span>
                   </td>
                   <td style={{ fontSize: '0.82rem', color: 'var(--text-sub)' }}>
-                    {appt.patient?.user?.student_id || appt.patient?.user?.department || '—'}
+                    {appt.patient?.user?.student_id || appt.patient?.user?.department || EMPTY}
                   </td>
                   <td>{appt.service?.name || 'Dental Service'}</td>
-                  <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{appt.notes || '—'}</td>
+                  <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{appt.notes || EMPTY}</td>
                   <td>
                     <span className={STATUS_BADGES[appt.status] || 'status-badge pending'}>
                       {appt.status}
@@ -211,7 +214,7 @@ export default function DentalAppointmentsPage() {
                       )}
 
                       {appt.status === 'cancelled' && (
-                        <span className="text-muted" style={{ fontSize: '0.8rem' }}>—</span>
+                        <span className="text-muted" style={{ fontSize: '0.8rem' }}>{EMPTY}</span>
                       )}
                     </div>
                   </td>

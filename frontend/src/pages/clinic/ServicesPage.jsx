@@ -3,9 +3,20 @@ import { toast } from 'react-hot-toast'
 import DashboardLayout from '../../components/DashboardLayout'
 import Pagination from '../../components/Pagination'
 import { usePagination } from '../../hooks/usePagination'
+import Dropdown from '../../components/Dropdown'
 import { servicesApi } from '../../api/services'
+import { EMPTY } from '../../utils/emptyValue'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 
-const EMPTY_FORM = { name: '', description: '', duration_minutes: 30, fee: '', is_active: true }
+const EMPTY_FORM = { name: '', care_type: 'medical', description: '', duration_minutes: 30, fee: '', is_active: true }
+
+// Which kind of care a service belongs to: medical -> nurse, dental -> dentist
+const CARE_TYPE_OPTIONS = [
+  { value: 'medical', label: 'Medical (Nurse)' },
+  { value: 'dental', label: 'Dental (Dentist)' },
+]
+const CARE_TYPE_LABEL = { medical: 'Medical', dental: 'Dental' }
+const CARE_TYPE_BADGE = { medical: 'role-blue', dental: 'role-purple' }
 
 function ServiceModal({ service, onClose, onSaved }) {
   const isEdit = Boolean(service?.id)
@@ -48,6 +59,20 @@ function ServiceModal({ service, onClose, onSaved }) {
             <input value={form.name} onChange={e => set('name', e.target.value)}
               placeholder="e.g. Medical Consultation" className={errors.name ? 'input-error' : ''} required />
             {errors.name && <span className="field-error">{errors.name}</span>}
+          </div>
+          <div className="form-group">
+            <label>Care Type</label>
+            <Dropdown
+              ariaLabel="Care type"
+              value={form.care_type || 'medical'}
+              onChange={v => set('care_type', v)}
+              options={CARE_TYPE_OPTIONS}
+              invalid={Boolean(errors.care_type)}
+            />
+            <span className="form-hint">
+              Medical services are used by the Nurse; dental services by the Dentist (consultations and appointment booking).
+            </span>
+            {errors.care_type && <span className="field-error">{errors.care_type}</span>}
           </div>
           <div className="form-group">
             <label>Description</label>
@@ -121,6 +146,7 @@ export default function ServicesPage() {
   const [services, setServices]       = useState([])
   const [loading, setLoading]         = useState(true)
   const [search, setSearch]           = useState('')
+  const debouncedSearch = useDebouncedValue(search)
   const [modalService, setModalService] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [toggling, setToggling]       = useState(null)
@@ -165,8 +191,8 @@ export default function ServicesPage() {
   }
 
   const filtered = services.filter(s =>
-    s.name.toLowerCase().includes(search.toLowerCase()) ||
-    (s.description || '').toLowerCase().includes(search.toLowerCase())
+    s.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+    (s.description || '').toLowerCase().includes(debouncedSearch.toLowerCase())
   )
 
   const pagination = usePagination({ items: filtered })
@@ -202,6 +228,7 @@ export default function ServicesPage() {
             <thead>
               <tr>
                 <th>Service Name</th>
+                <th>Care Type</th>
                 <th>Description</th>
                 <th>Duration</th>
                 <th>Fee</th>
@@ -213,7 +240,8 @@ export default function ServicesPage() {
               {pagination.paginatedItems.map(s => (
                 <tr key={s.id}>
                   <td className="td-name">{s.name}</td>
-                  <td className="td-desc">{s.description || <span className="text-muted">—</span>}</td>
+                  <td><span className={`status-badge ${CARE_TYPE_BADGE[s.care_type] || 'role-blue'}`}>{CARE_TYPE_LABEL[s.care_type] || 'Medical'}</span></td>
+                  <td className="td-desc">{s.description || <span className="text-muted">{EMPTY}</span>}</td>
                   <td>{s.duration_minutes} min</td>
                   <td>{s.fee > 0 ? `₱${parseFloat(s.fee).toFixed(2)}` : <span className="text-muted">Free</span>}</td>
                   <td>

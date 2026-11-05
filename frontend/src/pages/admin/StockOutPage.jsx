@@ -10,6 +10,7 @@ import Pagination from '../../components/Pagination'
 import ConfirmModal from '../../components/ConfirmModal'
 import { inventoryApi } from '../../api/inventory'
 import { inventoryItemOption, ACTION_BUTTON_STYLE, fmtInventoryDate as fmt } from '../../utils/inventoryOptions'
+import { EMPTY } from '../../utils/emptyValue'
 
 const REASONS = ['Dispensed', 'Used in clinic', 'Expired', 'Damaged', 'Adjustment']
 
@@ -249,7 +250,7 @@ export default function StockOutPage() {
                 <tr key={tx.id}>
                   <td style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{fmt(tx.transaction_date)}</td>
                   <td style={{ fontWeight: 600, fontSize: '0.83rem' }}>
-                    {tx.item?.name || '—'}
+                    {tx.item?.name || EMPTY}
                     {tx.batch?.batch_no && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Batch #{tx.batch.batch_no}</div>}
                   </td>
                   <td style={{ textAlign: 'center', fontSize: '0.83rem', fontWeight: 600 }}>
@@ -259,8 +260,8 @@ export default function StockOutPage() {
                     {tx.reason}
                     {tx.patient_user?.name && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{tx.patient_user.name}</div>}
                   </td>
-                  <td style={{ fontSize: '0.82rem' }}>{tx.recorded_by?.name || '—'}</td>
-                  <td style={{ fontSize: '0.82rem' }}>{tx.notes || '—'}</td>
+                  <td style={{ fontSize: '0.82rem' }}>{tx.recorded_by?.name || EMPTY}</td>
+                  <td style={{ fontSize: '0.82rem' }}>{tx.notes || EMPTY}</td>
                 </tr>
               ))}
             </tbody>
@@ -300,8 +301,8 @@ export default function StockOutPage() {
                       <tbody>
                         {pagedExpired.map(b => (
                           <tr key={b.id}>
-                            <td style={{ fontWeight: 600, fontSize: '0.84rem' }}>{b.item?.name || '—'}</td>
-                            <td style={{ fontSize: '0.82rem' }}>{b.batch_no || '—'}</td>
+                            <td style={{ fontWeight: 600, fontSize: '0.84rem' }}>{b.item?.name || EMPTY}</td>
+                            <td style={{ fontSize: '0.82rem' }}>{b.batch_no || EMPTY}</td>
                             <td style={{ fontSize: '0.82rem', color: '#ef4444' }}>{fmt(b.expiry_date)}</td>
                             <td style={{ textAlign: 'center', fontSize: '0.82rem' }}>{b.remaining} {b.item?.unit || ''}</td>
                             <td style={{ textAlign: 'center' }}>

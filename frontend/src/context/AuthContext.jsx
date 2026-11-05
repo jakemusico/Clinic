@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { authApi } from '../api/auth'
+import { clearAllConsultationDrafts } from '../hooks/useConsultationDraft'
 
 const AuthContext = createContext(null)
 
@@ -55,6 +56,7 @@ export function AuthProvider({ children }) {
     } finally {
       localStorage.removeItem('auth_token')
       localStorage.removeItem('auth_user')
+      clearAllConsultationDrafts()   // unfinished consultation drafts contain patient details
       setUser(null)
     }
   }

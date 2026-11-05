@@ -9,9 +9,12 @@ use App\Models\DentalChartTooth;
 use App\Models\Patient;
 use App\Models\Appointment;
 use App\Services\AuditLogger;
+use App\Services\ConsultationServiceName;
+use App\Support\VitalsRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class DentalConsultationController extends Controller
 {
@@ -124,12 +127,20 @@ class DentalConsultationController extends Controller
             return response()->json(['message' => 'Only dentists can create dental consultation records.'], 403);
         }
 
-        $validated = $request->validate([
+        // Linked to an appointment: the service is the appointment's. Otherwise the dentist must pick a dental one.
+        $appointmentId = $request->input('appointment_id');
+        $request->merge([
+            'service_name' => ConsultationServiceName::resolve($request->input('service_name'), $appointmentId),
+        ]);
+
+        // Required: patient, date, service, reason for the visit. Everything else is optional.
+        $validated = $request->validate(array_merge([
             'patient_id'          => ['required', 'integer', 'exists:patients,id'],
-            'appointment_id'      => ['nullable', 'integer', 'exists:appointments,id'],
+            'appointment_id'      => ['nullable', 'integer', Rule::exists('appointments', 'id')->where('appointment_type', 'dental')],
+            'service_name'        => ConsultationServiceName::rules('dental', locked: (bool) $appointmentId),
             'consultation_date'   => ['required', 'date', 'date_format:Y-m-d'],
             'status'              => ['nullable', 'string', 'in:completed,pending,cancelled'],
-            'reason_for_visit'    => ['nullable', 'string'],
+            'reason_for_visit'    => ['required', 'string'],
             'complaint_category'  => ['nullable', 'string', 'max:100'],
             'affected_teeth'      => ['nullable', 'array'],
             'affected_teeth.*'    => ['integer', 'min:1', 'max:52'],
@@ -144,6 +155,11 @@ class DentalConsultationController extends Controller
             'inventory_items'     => ['nullable', 'array'],
             'inventory_items.*.item_id'  => ['required_with:inventory_items', 'integer', 'exists:inventory_items,id'],
             'inventory_items.*.quantity' => ['required_with:inventory_items', 'integer', 'min:1'],
+        ], VitalsRules::rules()), [
+            'service_name.required'      => 'Please select the dental service for this consultation.',
+            'service_name.exists'        => 'The selected service is not an available dental service.',
+            'appointment_id.exists'      => 'That appointment is not a dental appointment.',
+            'reason_for_visit.required'  => 'Please enter the reason for the visit / chief complaint.',
         ]);
 
         // Pre-validate inventory stock
@@ -158,14 +174,16 @@ class DentalConsultationController extends Controller
         $consultation = DentalConsultation::create([
             'patient_id'          => $validated['patient_id'],
             'appointment_id'      => $validated['appointment_id'] ?? null,
+            'service_name'        => $validated['service_name'],
             'created_by'          => $user->id,
             'consultation_date'   => $validated['consultation_date'],
             'status'              => $validated['status'] ?? 'completed',
-            'reason_for_visit'    => $validated['reason_for_visit'] ?? null,
+            'reason_for_visit'    => $validated['reason_for_visit'],
+            'vitals'              => $this->cleanVitals($validated['vitals'] ?? null),
             'complaint_category'  => $validated['complaint_category'] ?? null,
             'affected_teeth'      => $validated['affected_teeth'] ?? [],
             'dental_findings'     => $validated['dental_findings'] ?? null,
-            'diagnosis'           => $validated['diagnosis'] ?? 'Dental Consultation',
+            'diagnosis'           => $validated['diagnosis'] ?? null,
             'treatment_performed' => $validated['treatment_performed'] ?? null,
             'recommendations'     => $validated['recommendations'] ?? null,
             'notes'               => $validated['notes'] ?? null,
@@ -248,6 +266,17 @@ class DentalConsultationController extends Controller
         ], 201);
     }
 
+    /** Vital signs with every empty value removed; null when nothing was recorded. */
+    private function cleanVitals(?array $vitals): ?array
+    {
+        if (! $vitals) {
+            return null;
+        }
+        $clean = array_filter($vitals, fn ($v) => $v !== null && $v !== '');
+
+        return $clean ?: null;
+    }
+
     /**
      * Derive a dental_chart_teeth condition from the booked service name or treatment text.
      * Returns null when the service/treatment does not cleanly map to a known condition
@@ -287,10 +316,16 @@ class DentalConsultationController extends Controller
             return response()->json(['message' => 'Only dentists can modify dental consultation records.'], 403);
         }
 
-        $validated = $request->validate([
+        // Keep the saved service unless a different one is picked; a linked appointment's service always wins.
+        $given          = ConsultationServiceName::resolve($request->input('service_name'), $dentalConsultation->appointment_id);
+        $serviceChanged = $given !== null && $given !== $dentalConsultation->service_name;
+        $request->merge(['service_name' => $given ?? $dentalConsultation->service_name]);
+
+        $validated = $request->validate(array_merge([
+            'service_name'        => ConsultationServiceName::rules('dental', locked: (bool) $dentalConsultation->appointment_id || ! $serviceChanged, required: false),
             'consultation_date'   => ['required', 'date', 'date_format:Y-m-d'],
             'status'              => ['nullable', 'string', 'in:completed,pending,cancelled'],
-            'reason_for_visit'    => ['nullable', 'string'],
+            'reason_for_visit'    => ['required', 'string'],
             'complaint_category'  => ['nullable', 'string', 'max:100'],
             'affected_teeth'      => ['nullable', 'array'],
             'dental_findings'     => ['nullable', 'string'],
@@ -302,7 +337,14 @@ class DentalConsultationController extends Controller
             'inventory_items'     => ['nullable', 'array'],
             'inventory_items.*.item_id'  => ['required_with:inventory_items', 'integer', 'exists:inventory_items,id'],
             'inventory_items.*.quantity' => ['required_with:inventory_items', 'integer', 'min:1'],
+        ], VitalsRules::rules()), [
+            'service_name.exists'       => 'The selected service is not an available dental service.',
+            'reason_for_visit.required' => 'Please enter the reason for the visit / chief complaint.',
         ]);
+
+        if (array_key_exists('vitals', $validated)) {
+            $validated['vitals'] = $this->cleanVitals($validated['vitals']);
+        }
 
         // Pre-validate inventory stock
         $inventoryItems = $validated['inventory_items'] ?? [];

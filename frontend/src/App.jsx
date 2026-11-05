@@ -1,53 +1,55 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider } from './context/AuthContext'
 import { ChatbotProvider } from './context/ChatbotContext'
 import { ProtectedRoute, PublicRoute } from './components/RouteGuards'
+import { PageFallback } from './components/dashboard/Fallbacks'
 
 import Login    from './pages/Login'
-import Register from './pages/Register'
-import StudentDashboard     from './pages/dashboards/StudentDashboard'
-import FacultyDashboard     from './pages/dashboards/FacultyDashboard'
-import ClinicStaffDashboard from './pages/dashboards/ClinicStaffDashboard'
-import DentistDashboard     from './pages/dashboards/DentistDashboard'
-import AdminDashboard       from './pages/dashboards/AdminDashboard'
+const Register = lazy(() => import('./pages/Register'))
+const StudentDashboard = lazy(() => import('./pages/dashboards/StudentDashboard'))
+const FacultyDashboard = lazy(() => import('./pages/dashboards/FacultyDashboard'))
+const ClinicStaffDashboard = lazy(() => import('./pages/dashboards/ClinicStaffDashboard'))
+const DentistDashboard = lazy(() => import('./pages/dashboards/DentistDashboard'))
+const AdminDashboard = lazy(() => import('./pages/dashboards/AdminDashboard'))
 import DashboardShell       from './components/DashboardShell'
 
-import ServicesPage         from './pages/clinic/ServicesPage'
-import SchedulePage         from './pages/clinic/SchedulePage'
-import PatientRecordsPage   from './pages/clinic/PatientRecordsPage'
-import MyRecordsPage        from './pages/patient/MyRecordsPage'
-import AppointmentsPage     from './pages/patient/AppointmentsPage'
-import HelpContactPage      from './pages/patient/HelpContactPage'
-import AppointmentsManagementPage from './pages/clinic/AppointmentsManagementPage'
-import NotificationsPage from './pages/NotificationsPage'
-import ChatbotSupportPage from './pages/clinic/ChatbotSupportPage'
-import UsersPage        from './pages/admin/UsersPage'
-import AuditLogsPage    from './pages/admin/AuditLogsPage'
-import TermsEditorPage  from './pages/admin/TermsEditorPage'
-import SectionsPage     from './pages/admin/SectionsPage'
-import AdminCalendarPage from './pages/admin/AdminCalendarPage'
-import ClinicInfoPage from './pages/admin/ClinicInfoPage'
-import AdminAnnouncementsPage from './pages/admin/AdminAnnouncementsPage'
-import InventoryDashboardPage from './pages/admin/InventoryDashboardPage'
-import InventoryItemsPage from './pages/admin/InventoryItemsPage'
-import StockInPage from './pages/admin/StockInPage'
-import StockOutPage from './pages/admin/StockOutPage'
-import InventoryTransactionsPage from './pages/admin/InventoryTransactionsPage'
-import ReportsPage      from './pages/clinic/ReportsPage'
-import ProfilePage      from './pages/ProfilePage'
-import SettingsPage     from './pages/SettingsPage'
-import ConsultationsPage from './pages/clinic/ConsultationsPage'
-import PeoplePage         from './pages/clinic/PeoplePage'
-import PersonProfilePage  from './pages/clinic/PersonProfilePage'
-import ChangePasswordPage from './pages/ChangePasswordPage'
-import StaffMessagesPage from './pages/clinic/StaffMessagesPage'
+const ServicesPage = lazy(() => import('./pages/clinic/ServicesPage'))
+const SchedulePage = lazy(() => import('./pages/clinic/SchedulePage'))
+const PatientRecordsPage = lazy(() => import('./pages/clinic/PatientRecordsPage'))
+const MyRecordsPage = lazy(() => import('./pages/patient/MyRecordsPage'))
+const AppointmentsPage = lazy(() => import('./pages/patient/AppointmentsPage'))
+const HelpContactPage = lazy(() => import('./pages/patient/HelpContactPage'))
+const AppointmentsManagementPage = lazy(() => import('./pages/clinic/AppointmentsManagementPage'))
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'))
+const ChatbotSupportPage = lazy(() => import('./pages/clinic/ChatbotSupportPage'))
+const UsersPage = lazy(() => import('./pages/admin/UsersPage'))
+const AuditLogsPage = lazy(() => import('./pages/admin/AuditLogsPage'))
+const TermsEditorPage = lazy(() => import('./pages/admin/TermsEditorPage'))
+const SectionsPage = lazy(() => import('./pages/admin/SectionsPage'))
+const AdminCalendarPage = lazy(() => import('./pages/admin/AdminCalendarPage'))
+const ClinicInfoPage = lazy(() => import('./pages/admin/ClinicInfoPage'))
+const AdminAnnouncementsPage = lazy(() => import('./pages/admin/AdminAnnouncementsPage'))
+const InventoryDashboardPage = lazy(() => import('./pages/admin/InventoryDashboardPage'))
+const InventoryItemsPage = lazy(() => import('./pages/admin/InventoryItemsPage'))
+const StockInPage = lazy(() => import('./pages/admin/StockInPage'))
+const StockOutPage = lazy(() => import('./pages/admin/StockOutPage'))
+const InventoryTransactionsPage = lazy(() => import('./pages/admin/InventoryTransactionsPage'))
+const ReportsPage = lazy(() => import('./pages/clinic/ReportsPage'))
+const ProfilePage = lazy(() => import('./pages/ProfilePage'))
+const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+const ConsultationsPage = lazy(() => import('./pages/clinic/ConsultationsPage'))
+const PeoplePage = lazy(() => import('./pages/clinic/PeoplePage'))
+const PersonProfilePage = lazy(() => import('./pages/clinic/PersonProfilePage'))
+const ChangePasswordPage = lazy(() => import('./pages/ChangePasswordPage'))
+const StaffMessagesPage = lazy(() => import('./pages/clinic/StaffMessagesPage'))
 
 // Dental pages
-import DentalAppointmentsPage   from './pages/dental/DentalAppointmentsPage'
-import DentalConsultationsPage  from './pages/dental/DentalConsultationsPage'
-import DentalChartPage          from './pages/dental/DentalChartPage'
-import DentalPatientRecordsPage from './pages/dental/DentalPatientRecordsPage'
+const DentalAppointmentsPage = lazy(() => import('./pages/dental/DentalAppointmentsPage'))
+const DentalConsultationsPage = lazy(() => import('./pages/dental/DentalConsultationsPage'))
+const DentalChartPage = lazy(() => import('./pages/dental/DentalChartPage'))
+const DentalPatientRecordsPage = lazy(() => import('./pages/dental/DentalPatientRecordsPage'))
 
 /** /admin/inventory/... -> /clinic/inventory/... (keeps ?search= and #hash) */
 function LegacyInventoryRedirect() {
@@ -76,6 +78,7 @@ export default function App() {
             }}
           />
 
+          <Suspense fallback={<PageFallback />}>
           <Routes>
             {/* Root */}
             <Route path="/" element={<Navigate to="/login" replace />} />
@@ -363,6 +366,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/login" replace />} />
 
           </Routes>
+          </Suspense>
         </BrowserRouter>
       </ChatbotProvider>
     </AuthProvider>

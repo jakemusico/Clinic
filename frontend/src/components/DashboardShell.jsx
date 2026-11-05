@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation, Link, NavLink, Outlet } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { useChatbot } from '../context/ChatbotContext'
 import { notificationsApi } from '../api/notifications'
-import { appointmentsApi } from '../api/appointments'
 import { adminApi } from '../api/admin'
 import { chatApi } from '../api/chat'
+import { useCounters } from '../hooks/useCounters'
+import { PageFallback } from './dashboard/Fallbacks'
+import { poll } from '../utils/polling'
 import ChatbotWidget from './ChatbotWidget'
 import fsuuLogo from '../assets/fsuu_logo.png'
 import PatientSearchBar from './PatientSearchBar'
@@ -318,111 +320,31 @@ export default function DashboardShell() {
   const notifDropdownRef = useRef(null)
   const dropdownRef = useRef(null)
 
-  // Fetch unread in-app notifications
+  // Header badges (bell, appointment requests, unread chat): ONE shared request, polled every
+  // 45 s while the tab is visible and refreshed at once by the 'notifications-updated',
+  // 'appointments-updated' and 'messages-updated' events. See hooks/useCounters.
+  const counters = useCounters(!!user?.id)
+
   useEffect(() => {
-    let mounted = true
-    const fetchCount = async () => {
-      try {
-        const { data } = await notificationsApi.list()
-        if (mounted) {
-          const isStaff = ['clinic_staff', 'nurse', 'dentist'].includes(user?.role)
-          const notifs = (data.notifications || []).filter(n => {
-            if (!isStaff) return true
-            const isChatNotif = n.target_type === 'conversation' ||
-              n.action_url?.includes('/clinic/messages') ||
-              n.title?.startsWith('New message from')
-            return !isChatNotif
-          })
-          const unread = notifs.filter(n => !n.is_read).length
-          setUnreadCount(unread)
-          setRecentNotifs(notifs.slice(0, 5))
-        }
-      } catch { }
-    }
-    fetchCount()
-    const interval = setInterval(fetchCount, 60_000)
-    const handleUpdate = () => fetchCount()
-    window.addEventListener('notifications-updated', handleUpdate)
-    return () => {
-      mounted = false
-      clearInterval(interval)
-      window.removeEventListener('notifications-updated', handleUpdate)
-    }
-  }, [user])
+    setUnreadCount(counters.notifications.unread_count)
+    setRecentNotifs(counters.notifications.recent)
+  }, [counters.notifications])
 
-  // Fetch unread appointment request counts for staff / dentist / admin
   useEffect(() => {
-    if (!user || !['clinic_staff', 'dentist', 'admin'].includes(user.role)) return
+    setApptCounts(counters.appointments)
+  }, [counters.appointments])
 
-    let mounted = true
-    const fetchAppts = async () => {
-      try {
-        const { data } = await appointmentsApi.unreadCount()
-        if (mounted) {
-          setApptCounts(data)
-        }
-      } catch { }
-    }
-
-    fetchAppts()
-    const interval = setInterval(fetchAppts, 30_000)
-
-    const handleUpdate = () => fetchAppts()
-    window.addEventListener('appointments-updated', handleUpdate)
-
-    return () => {
-      mounted = false
-      clearInterval(interval)
-      window.removeEventListener('appointments-updated', handleUpdate)
-    }
-  }, [user])
-
-  // Fetch unread live chat messages count for staff (nurse / dentist)
   useEffect(() => {
-    if (!user || !['clinic_staff', 'nurse', 'dentist'].includes(user.role)) return
+    setUnreadMessagesCount(counters.chat.unread_count || 0)
+  }, [counters.chat.unread_count])
 
-    let mounted = true
-    const fetchUnreadMessages = async () => {
-      try {
-        const { data } = await chatApi.getUnreadCount()
-        if (mounted) {
-          setUnreadMessagesCount(data.unread_count || 0)
-        }
-      } catch { }
-    }
-
-    fetchUnreadMessages()
-    const interval = setInterval(fetchUnreadMessages, 4000)
-
-    const handleUpdate = () => fetchUnreadMessages()
-    window.addEventListener('messages-updated', handleUpdate)
-
-    return () => {
-      mounted = false
-      clearInterval(interval)
-      window.removeEventListener('messages-updated', handleUpdate)
-    }
-  }, [user])
-
-  // Heartbeat for staff (nurse / dentist) to update last_active_at for online status
+  // Heartbeat for staff (nurse / dentist): keeps last_active_at fresh so students see "Online".
+  // Every 60 s. Unlike the badges it also runs in a hidden tab, otherwise a nurse who switches
+  // tabs for two minutes would show as offline.
   useEffect(() => {
-    if (!user || !['clinic_staff', 'nurse', 'dentist'].includes(user.role)) return
-
-    let mounted = true
-    const sendHeartbeat = async () => {
-      try {
-        await chatApi.heartbeat()
-      } catch { }
-    }
-
-    sendHeartbeat()
-    const interval = setInterval(sendHeartbeat, 45_000)
-
-    return () => {
-      mounted = false
-      clearInterval(interval)
-    }
-  }, [user])
+    if (!user?.id || !['clinic_staff', 'nurse', 'dentist'].includes(user.role)) return undefined
+    return poll(() => chatApi.heartbeat(), 60_000, { whenHidden: true })
+  }, [user?.id, user?.role])
 
 
   useEffect(() => {
@@ -907,7 +829,9 @@ export default function DashboardShell() {
           )}
 
           <div className={`dashboard-content-card ${FROZEN_INVENTORY_PAGES.includes(location.pathname) ? 'dashboard-content-card--no-scroll' : ''}`}>
+            <Suspense fallback={<PageFallback />}>
             <Outlet context={{ setPageInfo }} />
+          </Suspense>
           </div>
         </div>
       </main>

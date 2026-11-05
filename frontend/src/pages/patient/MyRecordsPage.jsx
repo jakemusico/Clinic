@@ -8,6 +8,8 @@ import { recordsApi } from '../../api/records'
 import { dentalApi } from '../../api/dental'
 import Avatar from '../../components/Avatar'
 import DentalIcon from '../../components/DentalIcon'
+import { EMPTY, serviceLabel } from '../../utils/emptyValue'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 
 const Icon = ({ d, size = 16 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
@@ -21,7 +23,7 @@ const ICONS = {
 }
 
 const formatDate = (dateStr) => {
-  if (!dateStr) return '—'
+  if (!dateStr) return EMPTY
   const cleanStr = typeof dateStr === 'string' && dateStr.includes('T') ? dateStr.split('T')[0] : String(dateStr)
   const d = new Date(cleanStr + 'T00:00:00')
   if (isNaN(d.getTime())) return String(dateStr)
@@ -51,7 +53,7 @@ function ViewMedicalRecordModal({ record, onClose }) {
 
   const bmiVal = vitals.bmi || calcBMI(vitals.weight, vitals.height)
   const bmiCat = bmiVal ? getBMICategory(bmiVal) : ''
-  const bmiDisplay = bmiVal ? `${bmiVal} kg/m² ${bmiCat ? `(${bmiCat})` : ''}` : '—'
+  const bmiDisplay = bmiVal ? `${bmiVal} kg/m² ${bmiCat ? `(${bmiCat})` : ''}` : EMPTY
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -78,7 +80,7 @@ function ViewMedicalRecordModal({ record, onClose }) {
             <h3 style={{ color: 'var(--accent)', fontWeight: 700, marginBottom: '0.6rem' }}>Consultation Overview</h3>
             <div className="detail-grid">
               <div><strong>Consultation Date:</strong> {formatDate(record.visit_date)}</div>
-              <div><strong>Clinic Service:</strong> {record.appointment?.service?.name || record.service_name || 'General Consultation'}</div>
+              <div><strong>Clinic Service:</strong> {serviceLabel(record)}</div>
               <div><strong>Status:</strong> <span className={`status-badge ${status}`} style={{ textTransform: 'capitalize' }}>{status}</span></div>
               <div><strong>Attending Staff:</strong> {record.created_by?.name || 'Clinic Staff'}</div>
             </div>
@@ -88,11 +90,11 @@ function ViewMedicalRecordModal({ record, onClose }) {
           <div className="detail-section">
             <h3 style={{ color: 'var(--accent)', fontWeight: 700, marginBottom: '0.6rem' }}>Vital Signs</h3>
             <div className="detail-grid" style={{ background: 'var(--bg-crust)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-              <div><strong>Blood Pressure:</strong> {vitals.blood_pressure || vitals.bp || '—'}</div>
-              <div><strong>Temperature:</strong> {vitals.temperature ? `${vitals.temperature} °C` : '—'}</div>
-              <div><strong>Pulse Rate:</strong> {vitals.pulse_rate ? `${vitals.pulse_rate} bpm` : '—'}</div>
-              <div><strong>Weight:</strong> {vitals.weight ? `${vitals.weight} kg` : '—'}</div>
-              <div><strong>Height:</strong> {vitals.height ? `${vitals.height} cm` : '—'}</div>
+              <div><strong>Blood Pressure:</strong> {vitals.blood_pressure || vitals.bp || EMPTY}</div>
+              <div><strong>Temperature:</strong> {vitals.temperature ? `${vitals.temperature} °C` : EMPTY}</div>
+              <div><strong>Pulse Rate:</strong> {vitals.pulse_rate ? `${vitals.pulse_rate} bpm` : EMPTY}</div>
+              <div><strong>Weight:</strong> {vitals.weight ? `${vitals.weight} kg` : EMPTY}</div>
+              <div><strong>Height:</strong> {vitals.height ? `${vitals.height} cm` : EMPTY}</div>
               <div><strong>BMI:</strong> {bmiDisplay}</div>
             </div>
           </div>
@@ -104,7 +106,7 @@ function ViewMedicalRecordModal({ record, onClose }) {
             <div className="detail-block" style={{ marginBottom: '0.75rem' }}>
               <strong>Reason for Visit / Chief Complaint:</strong>
               <div className="detail-text" style={{ marginTop: '0.25rem', padding: '0.5rem 0.75rem', background: '#F8FAFC', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                {record.chief_complaint || '—'}
+                {record.chief_complaint || EMPTY}
               </div>
             </div>
 
@@ -129,14 +131,14 @@ function ViewMedicalRecordModal({ record, onClose }) {
             <div className="detail-block" style={{ marginBottom: '0.75rem' }}>
               <strong>Diagnosis:</strong>
               <div className="detail-text highlighted" style={{ marginTop: '0.25rem', padding: '0.5rem 0.75rem', fontWeight: 600, color: 'var(--accent)', background: 'var(--accent-light)', borderRadius: 'var(--radius-sm)' }}>
-                {record.diagnosis || 'General Check-up'}
+                {record.diagnosis || EMPTY}
               </div>
             </div>
 
             <div className="detail-block" style={{ marginBottom: '0.75rem' }}>
               <strong>Treatment & Recommendations:</strong>
               <div className="detail-text" style={{ marginTop: '0.25rem', padding: '0.5rem 0.75rem', background: '#F8FAFC', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                {record.treatment || record.recommendation || '—'}
+                {record.treatment || record.recommendation || EMPTY}
               </div>
             </div>
 
@@ -202,7 +204,7 @@ function ViewDentalRecordModal({ record, onClose }) {
             <h3 style={{ color: 'var(--accent)', fontWeight: 700, marginBottom: '0.6rem' }}>Consultation Overview</h3>
             <div className="detail-grid">
               <div><strong>Consultation Date:</strong> {formatDate(record.consultation_date)}</div>
-              <div><strong>Dental Service:</strong> {record.appointment?.service?.name || record.diagnosis || 'Dental Consultation'}</div>
+              <div><strong>Dental Service:</strong> {serviceLabel(record)}</div>
               <div><strong>Status:</strong> <span className={`status-badge ${status}`} style={{ textTransform: 'capitalize' }}>{status}</span></div>
               <div><strong>Attending Dentist:</strong> {record.dentist?.name || 'Dentist'}</div>
             </div>
@@ -231,7 +233,7 @@ function ViewDentalRecordModal({ record, onClose }) {
             <div className="detail-block" style={{ marginBottom: '0.75rem' }}>
               <strong>Reason for Visit / Chief Complaint:</strong>
               <div className="detail-text" style={{ marginTop: '0.25rem', padding: '0.5rem 0.75rem', background: '#F8FAFC', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                {record.reason_for_visit || '—'}
+                {record.reason_for_visit || EMPTY}
               </div>
             </div>
 
@@ -247,14 +249,14 @@ function ViewDentalRecordModal({ record, onClose }) {
             <div className="detail-block" style={{ marginBottom: '0.75rem' }}>
               <strong>Diagnosis:</strong>
               <div className="detail-text highlighted" style={{ marginTop: '0.25rem', padding: '0.5rem 0.75rem', fontWeight: 600, color: 'var(--accent)', background: 'var(--accent-light)', borderRadius: 'var(--radius-sm)' }}>
-                {record.diagnosis || 'Dental Examination'}
+                {record.diagnosis || EMPTY}
               </div>
             </div>
 
             <div className="detail-block" style={{ marginBottom: '0.75rem' }}>
               <strong>Treatment Performed:</strong>
               <div className="detail-text" style={{ marginTop: '0.25rem', padding: '0.5rem 0.75rem', background: '#F8FAFC', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                {record.treatment_performed || '—'}
+                {record.treatment_performed || EMPTY}
               </div>
             </div>
 
@@ -302,6 +304,7 @@ export default function MyRecordsPage() {
   const [dentalRecords, setDentalRecords]   = useState([])
   const [loading, setLoading]           = useState(true)
   const [search, setSearch]             = useState('')
+  const debouncedSearch = useDebouncedValue(search)
   const [viewMedicalRecord, setViewMedicalRecord] = useState(null)
   const [viewDentalRecord, setViewDentalRecord]   = useState(null)
 
@@ -324,15 +327,15 @@ export default function MyRecordsPage() {
   useEffect(() => { load() }, [])
 
   const filteredMedical = medicalRecords.filter(r =>
-    (r.diagnosis || '').toLowerCase().includes(search.toLowerCase()) ||
-    (r.treatment || '').toLowerCase().includes(search.toLowerCase()) ||
-    (r.chief_complaint || '').toLowerCase().includes(search.toLowerCase())
+    (r.diagnosis || '').toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+    (r.treatment || '').toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+    (r.chief_complaint || '').toLowerCase().includes(debouncedSearch.toLowerCase())
   )
 
   const filteredDental = dentalRecords.filter(r =>
-    (r.diagnosis || '').toLowerCase().includes(search.toLowerCase()) ||
-    (r.treatment_performed || '').toLowerCase().includes(search.toLowerCase()) ||
-    (r.reason_for_visit || '').toLowerCase().includes(search.toLowerCase())
+    (r.diagnosis || '').toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+    (r.treatment_performed || '').toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+    (r.reason_for_visit || '').toLowerCase().includes(debouncedSearch.toLowerCase())
   )
 
   const [medPage, setMedPage] = useState(1)
@@ -343,7 +346,7 @@ export default function MyRecordsPage() {
   useEffect(() => {
     setMedPage(1)
     setDentPage(1)
-  }, [search, activeTab])
+  }, [debouncedSearch, activeTab])
 
   const medTotalPages = Math.max(1, Math.ceil(filteredMedical.length / medPageSize))
   const paginatedMedical = filteredMedical.slice((medPage - 1) * medPageSize, medPage * medPageSize)
@@ -419,8 +422,8 @@ export default function MyRecordsPage() {
                     <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
                       {formatDate(r.visit_date)}
                     </td>
-                    <td>{r.appointment?.service?.name || r.service_name || 'Medical Consultation'}</td>
-                    <td className="td-name">{r.diagnosis || r.assessment || 'General Check-up'}</td>
+                    <td>{serviceLabel(r)}</td>
+                    <td className="td-name">{r.diagnosis || r.assessment || EMPTY}</td>
                     <td>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
                         <Avatar src={r.created_by?.avatar_url} name={r.created_by?.name} size={24} />
@@ -475,7 +478,7 @@ export default function MyRecordsPage() {
                     <td style={{ fontWeight: 600, whiteSpace: 'nowrap', fontSize: '0.82rem' }}>
                       {formatDate(r.consultation_date)}
                     </td>
-                    <td className="td-name">{r.reason_for_visit || 'Dental Checkup'}</td>
+                    <td className="td-name">{r.reason_for_visit || EMPTY}</td>
                     <td>
                       {r.affected_teeth && r.affected_teeth.length > 0 ? (
                         <span className="status-badge completed">#{r.affected_teeth.join(', #')}</span>
@@ -483,8 +486,8 @@ export default function MyRecordsPage() {
                         <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>None</span>
                       )}
                     </td>
-                    <td style={{ fontWeight: 600 }}>{r.diagnosis || '—'}</td>
-                    <td style={{ fontSize: '0.82rem', color: 'var(--text-sub)' }}>{r.treatment_performed || '—'}</td>
+                    <td style={{ fontWeight: 600 }}>{r.diagnosis || EMPTY}</td>
+                    <td style={{ fontSize: '0.82rem', color: 'var(--text-sub)' }}>{r.treatment_performed || EMPTY}</td>
                     <td style={{ fontSize: '0.82rem' }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
                         <Avatar src={r.dentist?.avatar_url} name={r.dentist?.name} size={24} />

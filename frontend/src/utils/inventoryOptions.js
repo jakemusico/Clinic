@@ -1,3 +1,4 @@
+import { EMPTY } from './emptyValue'
 /**
  * Builds a Dropdown option for an inventory item:
  * name (label), category beside it (badge) and available stock on the right (sublabel).
@@ -33,7 +34,7 @@ export const ACTION_BUTTON_STYLE = {
 }
 
 export const fmtInventoryDate = (d) => {
-  if (!d) return '—'
+  if (!d) return EMPTY
   const s = String(d).slice(0, 10)
   return new Date(s + 'T00:00:00').toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })
 }

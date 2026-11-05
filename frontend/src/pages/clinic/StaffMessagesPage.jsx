@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast'
 import DashboardLayout from '../../components/DashboardLayout'
 import Pagination from '../../components/Pagination'
 import { chatApi } from '../../api/chat'
+import { poll } from '../../utils/polling'
 import { useAuth } from '../../context/AuthContext'
 import {
   MessageActionSheet,
@@ -269,15 +270,6 @@ export default function StaffMessagesPage() {
     }
   }, [])
 
-  /* ── Heartbeat for staff presence (every 45s) ──────────────────── */
-  useEffect(() => {
-    chatApi.heartbeat().catch(() => {})
-    const hbInterval = setInterval(() => {
-      chatApi.heartbeat().catch(() => {})
-    }, 45000)
-    return () => clearInterval(hbInterval)
-  }, [])
-
   /* ── Scroll Helpers ────────────────────────────────────────────── */
 
   const scrollToBottom = useCallback((behavior = 'auto') => {
@@ -379,7 +371,7 @@ export default function StaffMessagesPage() {
     }
   }, [selectedId, scrollToBottom])
 
-  /* ── Silent Polling every 4s (Pauses when Tab Hidden or Offline) ── */
+  /* ── Silent polling every 7s (pauses when the tab is hidden or offline) ── */
   useEffect(() => {
     let isMounted = true
 
@@ -431,25 +423,13 @@ export default function StaffMessagesPage() {
       }
     }
 
-    if (isOnline) {
-      runSilentPoll()
-    }
-
-    const interval = setInterval(() => {
-      if (isOnline) runSilentPoll()
-    }, 4000)
-
-    const handleVisibilityChange = () => {
-      if (!document.hidden && isOnline) {
-        runSilentPoll()
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
+    // Every 7 s while this page is open and the tab is visible; fetches at once on open and when
+    // the tab returns. (The header badges and the staff heartbeat run in DashboardShell.)
+    const stopPolling = poll(runSilentPoll, 7000)
 
     return () => {
       isMounted = false
-      clearInterval(interval)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      stopPolling()
     }
   }, [selectedId, user?.id, isOnline])
 

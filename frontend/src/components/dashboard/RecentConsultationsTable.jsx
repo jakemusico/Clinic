@@ -1,6 +1,8 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
 import EmptyState from './EmptyState'
+import { EMPTY } from '../../utils/emptyValue'
+import { formatDate } from '../../utils/dateUtils'
 
 export default function RecentConsultationsTable({
   title = "Recent Consultations",
@@ -50,7 +52,7 @@ export default function RecentConsultationsTable({
                   return (
                     <tr key={row.id}>
                       <td className="dash-td-date">
-                        <span className="dash-date-text">{row.visit_date || row.consultation_date || '—'}</span>
+                        <span className="dash-date-text">{formatDate(row.visit_date || row.consultation_date)}</span>
                       </td>
                       <td>
                         <div className="dash-patient-name">{row.patient_name}</div>
@@ -61,7 +63,7 @@ export default function RecentConsultationsTable({
                       </td>
                       <td className="dash-td-diagnosis">
                         <div className="dash-diagnosis-text">
-                          {row.diagnosis || row.treatment_performed || 'General Consultation'}
+                          {row.diagnosis || row.treatment_performed || EMPTY}
                         </div>
                         {role === 'dentist' && row.treatment_performed && (
                           <div className="dash-treatment-text">{row.treatment_performed}</div>
@@ -73,7 +75,7 @@ export default function RecentConsultationsTable({
                             View
                           </Link>
                         ) : (
-                          '—'
+                          EMPTY
                         )}
                       </td>
                     </tr>

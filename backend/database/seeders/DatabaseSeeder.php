@@ -193,6 +193,9 @@ class DatabaseSeeder extends Seeder
         ];
 
         foreach ($services as $s) {
+            // medical (nurse) or dental (dentist) care; dental services are recognised by their name
+            $s['care_type'] = preg_match('/dental|tooth|teeth|oral|gum|extraction|dentist/i', $s['name']) === 1 ? 'dental' : 'medical';
+
             \App\Models\ClinicService::firstOrCreate(
                 ['name' => $s['name']],
                 $s

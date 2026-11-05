@@ -10,6 +10,7 @@ class ClinicRecord extends Model
     protected $fillable = [
         'patient_id',
         'appointment_id',
+        'service_name',
         'created_by',
         'diagnosis',
         'prescription',
@@ -28,7 +29,7 @@ class ClinicRecord extends Model
     protected function casts(): array
     {
         return [
-            'visit_date' => 'date',
+            'visit_date' => 'date:Y-m-d',
             'vitals'     => 'array',
         ];
     }

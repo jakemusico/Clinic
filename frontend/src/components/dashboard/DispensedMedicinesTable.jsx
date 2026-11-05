@@ -1,6 +1,7 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
 import EmptyState from './EmptyState'
+import { EMPTY } from '../../utils/emptyValue'
 
 export default function DispensedMedicinesTable({
   title = "Recently Dispensed Medicines",
@@ -45,7 +46,7 @@ export default function DispensedMedicinesTable({
                 {items.map((row) => (
                   <tr key={row.id}>
                     <td className="dash-td-date">
-                      <span className="dash-date-text">{row.transaction_date || '—'}</span>
+                      <span className="dash-date-text">{row.transaction_date || EMPTY}</span>
                     </td>
                     <td>
                       <div className="dash-item-name">{row.item_name}</div>

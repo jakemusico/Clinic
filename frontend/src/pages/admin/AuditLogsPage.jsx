@@ -5,6 +5,7 @@ import Pagination from '../../components/Pagination'
 import DateInput from '../../components/DateInput'
 import Dropdown from '../../components/Dropdown'
 import { adminApi } from '../../api/admin'
+import { EMPTY } from '../../utils/emptyValue'
 
 /* ── Human-readable action labels ──────────────────────────────────────── */
 const ACTION_LABELS = {
@@ -61,7 +62,7 @@ const ACTION_LABELS = {
 }
 
 function formatAction(raw) {
-  if (!raw) return '—'
+  if (!raw) return EMPTY
   if (ACTION_LABELS[raw]) return ACTION_LABELS[raw]
   // Fallback: convert snake_case / UPPER_SNAKE to Title Case
   return raw
@@ -342,17 +343,17 @@ export default function AuditLogsPage() {
                                 {log.model_type.split('\\').pop()}
                               </div>
                               <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                                {log.model_id ? `ID: ${log.model_id}` : '—'}
+                                {log.model_id ? `ID: ${log.model_id}` : EMPTY}
                               </div>
                             </div>
                           ) : (
-                            <span style={{ color: 'var(--text-muted)' }}>—</span>
+                            <span style={{ color: 'var(--text-muted)' }}>{EMPTY}</span>
                           )}
                         </td>
 
                         {/* IP */}
                         <td style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-                          {log.ip_address || '—'}
+                          {log.ip_address || EMPTY}
                         </td>
 
                         {/* Timestamp */}

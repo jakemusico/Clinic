@@ -152,6 +152,17 @@ class AppointmentController extends Controller
             if ($request->filled('appointment_type') && $request->appointment_type !== 'all') {
                 $query->where('appointment_type', $request->appointment_type);
             }
+            // The nurse only ever sees medical appointments and the dentist only dental ones,
+            // whatever the request asks for. Admin sees both.
+            if ($user->role === 'clinic_staff') {
+                $query->where('appointment_type', 'medical');
+            } elseif ($user->role === 'dentist') {
+                $query->where('appointment_type', 'dental');
+            }
+            // ?care_type=medical|dental -> only appointments whose service is of that kind of care
+            if (in_array($request->query('care_type'), ClinicService::CARE_TYPES, true)) {
+                $query->whereHas('service', fn ($q) => $q->where('care_type', $request->query('care_type')));
+            }
         }
 
         if ($request->filled('search')) {
@@ -232,6 +243,13 @@ class AppointmentController extends Controller
             return response()->json(['message' => 'This service is currently unavailable.'], 422);
         }
 
+        // The service must belong to the kind of care being booked (medical -> nurse, dental -> dentist)
+        if ($service->care_type !== $validated['appointment_type']) {
+            return response()->json([
+                'message' => "This is not a {$validated['appointment_type']} service. Please choose a {$validated['appointment_type']} service.",
+            ], 422);
+        }
+
         // Check staff role
         $staff = User::findOrFail($staffId);
         if (!in_array($staff->role, ['clinic_staff', 'dentist'])) {
@@ -257,7 +275,7 @@ class AppointmentController extends Controller
         ]);
 
         // Notify attending staff
-        $isDental = in_array(strtolower($service->category ?? ''), ['dental']);
+        $isDental = $service->care_type === ClinicService::CARE_DENTAL;
         $staffUrl = $isDental
             ? "/dental/appointments?status=pending&highlight={$appointment->id}"
             : "/clinic/appointments?status=pending&highlight={$appointment->id}";

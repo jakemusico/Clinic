@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { inventoryApi } from '../api/inventory'
 import Dropdown from './Dropdown'
 import { inventoryItemOption } from '../utils/inventoryOptions'
+import { findAllergyMatches } from '../utils/consultation'
 
 /**
  * Shared Medicine/Supply Picker for Nurse and Dentist Consultations
@@ -12,7 +13,10 @@ import { inventoryItemOption } from '../utils/inventoryOptions'
  * - Added items: quantity stepper (capped by available stock), optional dosage note, remove button
  * - No duplicates (increase quantity instead)
  */
-export function MedicineSupplyPicker({ value = [], onChange, isEdit = false, consultationType = 'medical', consultationId = null }) {
+export function MedicineSupplyPicker({
+  value = [], onChange, isEdit = false, consultationType = 'medical', consultationId = null,
+  allergies = '', onAllergyMatches,
+}) {
   const [dispensableItems, setDispensableItems] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -42,6 +46,16 @@ export function MedicineSupplyPicker({ value = [], onChange, isEdit = false, con
 
   // Get already added item IDs
   const addedItemIds = useMemo(() => new Set(value.map(v => String(v.item_id))), [value])
+
+  // Allergy check: only when the patient's profile has allergy data
+  const allergyMatches = useMemo(() => {
+    const added = value
+      .map(v => dispensableItems.find(i => String(i.id) === String(v.item_id)))
+      .filter(Boolean)
+    return findAllergyMatches(allergies, added)
+  }, [allergies, value, dispensableItems])
+
+  useEffect(() => { onAllergyMatches?.(allergyMatches) }, [allergyMatches]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Options for the shared Dropdown: name + category + available stock,
   // out-of-stock rows disabled, low stock (<= 10) in amber, already-added rows marked.
@@ -119,6 +133,19 @@ export function MedicineSupplyPicker({ value = [], onChange, isEdit = false, con
           noOptionsMessage="No items available"
         />
       </div>
+
+      {allergyMatches.length > 0 && (
+        <div className="consult-warning" role="alert">
+          <span aria-hidden="true">⚠️</span>
+          <div>
+            <strong>Allergy warning.</strong>{' '}
+            {allergyMatches.map((m, i) => (
+              <span key={m.item.id}>{i > 0 ? ' ' : ''}{m.item.name} may conflict with the patient&apos;s recorded allergy ({m.allergy}).</span>
+            ))}
+            <div style={{ marginTop: '0.2rem' }}>Please check with the patient before dispensing.</div>
+          </div>
+        </div>
+      )}
 
       {/* Added Items List */}
       {value.length > 0 && (

@@ -5,6 +5,7 @@ import ConfirmModal from '../../components/ConfirmModal'
 import Dropdown from '../../components/Dropdown'
 import { schedulesApi } from '../../api/schedules'
 import { useAuth } from '../../context/AuthContext'
+import { todayISO } from '../../utils/dateUtils'
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 const DAY_LABELS = { monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed', thursday: 'Thu', friday: 'Fri', saturday: 'Sat', sunday: 'Sun' }
@@ -231,7 +232,7 @@ function UnavailabilityModal({ staffList, currentUser, isAdmin, onClose, onAdded
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayISO()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -301,12 +302,12 @@ function SlotPreview({ staffList, currentUser, isAdmin }) {
   const [selectedStaffId, setSelectedStaffId] = useState(() => (
     isAdmin ? (staffList[0]?.id || '') : currentUser?.id
   ))
-  const [date, setDate]   = useState(new Date().toISOString().split('T')[0])
+  const [date, setDate]   = useState(todayISO())
   const [slots, setSlots] = useState(null)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayISO()
 
   const loadSlots = useCallback(async () => {
     if (!date || !selectedStaffId) return

@@ -1,8 +1,11 @@
 import PrintableRecord from './PrintableRecord'
+import { EMPTY, serviceLabel } from '../utils/emptyValue'
+import { formatDateLong } from '../utils/dateUtils'
 
 export function ViewDentalConsultationModal({ record, onClose }) {
   const patientUser = record.patient?.user || {}
   const status = record.status || 'completed'
+  const vitals = record.vitals || {}
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -18,9 +21,9 @@ export function ViewDentalConsultationModal({ record, onClose }) {
             <h3 style={{ color: 'var(--accent)', fontWeight: 700, marginBottom: '0.6rem' }}>Patient Information</h3>
             <div className="detail-grid">
               <div><strong>Name:</strong> {patientUser.name || 'Student'}</div>
-              <div><strong>Student / Employee ID:</strong> {patientUser.student_id || 'N/A'}</div>
-              <div><strong>Email:</strong> {patientUser.email || 'N/A'}</div>
-              <div><strong>Department:</strong> {patientUser.department || 'N/A'}</div>
+              <div><strong>Student / Employee ID:</strong> {patientUser.student_id || EMPTY}</div>
+              <div><strong>Email:</strong> {patientUser.email || EMPTY}</div>
+              <div><strong>Department:</strong> {patientUser.department || EMPTY}</div>
             </div>
           </div>
 
@@ -28,10 +31,23 @@ export function ViewDentalConsultationModal({ record, onClose }) {
           <div className="detail-section">
             <h3 style={{ color: 'var(--accent)', fontWeight: 700, marginBottom: '0.6rem' }}>Consultation Overview</h3>
             <div className="detail-grid">
-              <div><strong>Consultation Date:</strong> {new Date((record.consultation_date?.includes('T') ? record.consultation_date.split('T')[0] : record.consultation_date) + 'T00:00:00').toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })}</div>
-              <div><strong>Dental Service:</strong> {record.appointment?.service?.name || record.diagnosis || 'Dental Consultation'}</div>
+              <div><strong>Consultation Date:</strong> {formatDateLong(record.consultation_date, { month: 'long' })}</div>
+              <div><strong>Dental Service:</strong> {serviceLabel(record)}</div>
               <div><strong>Status:</strong> <span className={`status-badge ${status}`} style={{ textTransform: 'capitalize' }}>{status}</span></div>
               <div><strong>Attending Dentist:</strong> {record.dentist?.name || 'Dentist'}</div>
+            </div>
+          </div>
+
+          {/* Vital Signs */}
+          <div className="detail-section">
+            <h3 style={{ color: 'var(--accent)', fontWeight: 700, marginBottom: '0.6rem' }}>Vital Signs</h3>
+            <div className="detail-grid" style={{ background: 'var(--bg-crust)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+              <div><strong>Blood Pressure:</strong> {vitals.blood_pressure || vitals.bp || EMPTY}</div>
+              <div><strong>Temperature:</strong> {vitals.temperature ? `${vitals.temperature} °C` : EMPTY}</div>
+              <div><strong>Pulse Rate:</strong> {vitals.pulse_rate ? `${vitals.pulse_rate} bpm` : EMPTY}</div>
+              <div><strong>Weight:</strong> {vitals.weight ? `${vitals.weight} kg` : EMPTY}</div>
+              <div><strong>Height:</strong> {vitals.height ? `${vitals.height} cm` : EMPTY}</div>
+              <div><strong>BMI:</strong> {vitals.bmi ? `${vitals.bmi} kg/m²` : EMPTY}</div>
             </div>
           </div>
 
@@ -46,7 +62,7 @@ export function ViewDentalConsultationModal({ record, onClose }) {
                   </span>
                 ))
               ) : (
-                <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>No specific teeth recorded</span>
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{EMPTY}</span>
               )}
             </div>
           </div>
@@ -58,50 +74,26 @@ export function ViewDentalConsultationModal({ record, onClose }) {
             <div className="detail-block" style={{ marginBottom: '0.75rem' }}>
               <strong>Reason for Visit / Chief Complaint:</strong>
               <div className="detail-text" style={{ marginTop: '0.25rem', padding: '0.5rem 0.75rem', background: '#F8FAFC', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                {record.reason_for_visit || '—'}
+                {record.reason_for_visit || EMPTY}
               </div>
             </div>
 
-            {record.dental_findings && (
-              <div className="detail-block" style={{ marginBottom: '0.75rem' }}>
-                <strong>Dental Findings:</strong>
-                <div className="detail-text" style={{ marginTop: '0.25rem', padding: '0.5rem 0.75rem', background: '#F8FAFC', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                  {record.dental_findings}
+            {[
+              ['Complaint Category', record.complaint_category],
+              ['Dental Findings', record.dental_findings],
+              ['Diagnosis', record.diagnosis],
+              ['Treatment Performed', record.treatment_performed],
+              ['Recommendations', record.recommendations],
+              ['Patient-Visible Notes', record.notes],
+              ['Private Staff Notes', record.staff_notes],
+            ].map(([label, value]) => (
+              <div className="detail-block" style={{ marginBottom: '0.75rem' }} key={label}>
+                <strong>{label}:</strong>
+                <div className="detail-text" style={{ marginTop: '0.25rem', padding: '0.5rem 0.75rem', background: '#F8FAFC', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', whiteSpace: 'pre-wrap' }}>
+                  {value && String(value).trim() ? value : EMPTY}
                 </div>
               </div>
-            )}
-
-            <div className="detail-block" style={{ marginBottom: '0.75rem' }}>
-              <strong>Diagnosis:</strong>
-              <div className="detail-text highlighted" style={{ marginTop: '0.25rem', padding: '0.5rem 0.75rem', fontWeight: 600, color: 'var(--accent)', background: 'var(--accent-light)', borderRadius: 'var(--radius-sm)' }}>
-                {record.diagnosis || 'Dental Examination'}
-              </div>
-            </div>
-
-            <div className="detail-block" style={{ marginBottom: '0.75rem' }}>
-              <strong>Treatment Performed:</strong>
-              <div className="detail-text" style={{ marginTop: '0.25rem', padding: '0.5rem 0.75rem', background: '#F8FAFC', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                {record.treatment_performed || '—'}
-              </div>
-            </div>
-
-            {record.recommendations && (
-              <div className="detail-block" style={{ marginBottom: '0.75rem' }}>
-                <strong>Recommendations:</strong>
-                <div className="detail-text" style={{ marginTop: '0.25rem', padding: '0.5rem 0.75rem', background: '#F8FAFC', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                  {record.recommendations}
-                </div>
-              </div>
-            )}
-
-            {(record.notes || record.staff_notes) && (
-              <div className="detail-block">
-                <strong>Additional / Staff Notes:</strong>
-                <div className="detail-text" style={{ marginTop: '0.25rem', padding: '0.5rem 0.75rem', background: '#F8FAFC', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                  {record.notes || record.staff_notes}
-                </div>
-              </div>
-            )}
+            ))}
           </div>
 
           <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1.25rem' }}>

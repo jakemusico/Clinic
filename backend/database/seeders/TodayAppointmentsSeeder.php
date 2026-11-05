@@ -109,6 +109,7 @@ class TodayAppointmentsSeeder extends Seeder
                 ],
                 [
                     'created_by'      => $nurseUser->id,
+                    'service_name'    => 'Medical Consultation',
                     'diagnosis'       => 'Mild seasonal allergy / Rhinitis',
                     'chief_complaint' => 'Sneezing, nasal congestion',
                     'treatment'       => 'Antihistamine advice, rest and hydration',
@@ -125,6 +126,7 @@ class TodayAppointmentsSeeder extends Seeder
                 ],
                 [
                     'created_by'          => $dentistUser->id,
+                    'service_name'        => 'Dental Cleaning',
                     'reason_for_visit'    => 'Annual dental checkup',
                     'dental_findings'     => 'Healthy gingiva, mild plaque on lower anterior lingual surfaces',
                     'diagnosis'           => 'Dental Examination & Cleaning',

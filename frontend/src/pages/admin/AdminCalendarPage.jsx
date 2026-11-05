@@ -6,6 +6,8 @@ import Pagination from '../../components/Pagination'
 import { usePagination } from '../../hooks/usePagination'
 import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/ConfirmModal'
+import { EMPTY } from '../../utils/emptyValue'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 
 const EVENT_TYPES = ['Clinic Closure', 'Health Activity', 'Holiday', 'Announcement']
 const AUDIENCES   = ['All', 'Students', 'Faculty/Staff', 'Clinic Staff']
@@ -29,7 +31,7 @@ function formatTime(timeStr) {
 }
 
 function formatDate(dateStr, endDateStr = null, allDay = true, startTime = null, endTime = null) {
-  if (!dateStr) return '—'
+  if (!dateStr) return EMPTY
   const cleanStart = String(dateStr).split('T')[0]
   const dStart = new Date(cleanStart + 'T00:00:00')
   if (isNaN(dStart.getTime())) return dateStr
@@ -63,6 +65,7 @@ export default function AdminCalendarPage() {
   const [loading, setLoading]         = useState(true)
   const [saving, setSaving]           = useState(false)
   const [searchTerm, setSearchTerm]   = useState('')
+  const debouncedSearchTerm = useDebouncedValue(searchTerm)
   const [typeFilter, setTypeFilter]   = useState('All')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [currentEvent, setCurrentEvent] = useState(null)
@@ -151,7 +154,7 @@ export default function AdminCalendarPage() {
   }
 
   const filtered = events.filter(e => {
-    const matchSearch = e.title.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchSearch = e.title.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
     const matchType   = typeFilter === 'All' || e.type === typeFilter
     return matchSearch && matchType
   })

@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import DashboardLayout from '../../components/DashboardLayout'
-import CalendarWidget from '../../components/CalendarWidget'
-import { appointmentsApi } from '../../api/appointments'
-import { recordsApi }       from '../../api/records'
-import { notificationsApi } from '../../api/notifications'
+import { dashboardApi } from '../../api/dashboard'
 import { useAuth } from '../../context/AuthContext'
-import { announcementsApi } from '../../api/announcements'
+import { CardFallback } from '../../components/dashboard/Fallbacks'
 import { formatAppointmentDate, formatAppointmentTime } from '../../utils/dateUtils'
+import { EMPTY } from '../../utils/emptyValue'
+
+const CalendarWidget = lazy(() => import('../../components/CalendarWidget'))
 
 const Icon = ({ d, size = 16 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
@@ -43,51 +43,41 @@ const STATUS_MAP = {
 
 export default function StudentDashboard() {
   const { user } = useAuth()
-  const [appointments, setAppointments] = useState([])
-  const [records,      setRecords]      = useState([])
-  const [notifs,       setNotifs]       = useState([])
-  const [unread,       setUnread]       = useState(0)
-  const [loading,      setLoading]      = useState(true)
-  const [announcementsList, setAnnouncementsList] = useState([]) // will be loaded from API
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const fetchAnnouncements = async () => {
-      try {
-        const res = await announcementsApi.list();
-        setAnnouncementsList(res.data.announcements || []);
-      } catch (e) {
-        console.error('Failed to load announcements', e);
-      }
-    };
-    fetchAnnouncements();
-    const handleUpdate = () => fetchAnnouncements();
-    window.addEventListener('announcements-updated', handleUpdate);
-    return () => window.removeEventListener('announcements-updated', handleUpdate);
-  }, [])
-
-  useEffect(() => {
-    Promise.allSettled([
-      appointmentsApi.list(),
-      recordsApi.list(),
-      notificationsApi.list(),
-    ]).then(([a, r, n]) => {
-      if (a.status === 'fulfilled') setAppointments(a.value.data.appointments || [])
-      if (r.status === 'fulfilled') setRecords(r.value.data.records || r.value.data || [])
-      if (n.status === 'fulfilled') {
-        const uniqueNotifs = []
-        const seen = new Set()
-        for (const notif of (n.value.data.notifications || [])) {
-          if (!seen.has(notif.created_at)) {
-            seen.add(notif.created_at)
-            uniqueNotifs.push(notif)
-          }
-        }
-        setNotifs(uniqueNotifs)
-        setUnread(n.value.data.unread_count || 0)
-      }
+  // ONE request for the whole dashboard: counts, appointments, notifications, announcements and calendar events
+  const load = useCallback(async () => {
+    try {
+      const res = await dashboardApi.student()
+      setData(res.data)
+    } catch (e) {
+      console.error('Failed to load dashboard', e)
+    } finally {
       setLoading(false)
-    })
+    }
   }, [])
+
+  useEffect(() => {
+    load()
+    // an announcement was posted or removed in this browser: reload
+    window.addEventListener('announcements-updated', load)
+    return () => window.removeEventListener('announcements-updated', load)
+  }, [load])
+
+  const appointments = data?.appointments ?? []
+  const unread = data?.stats?.unread_notifications ?? 0
+  const notifs = (() => {
+    const unique = []
+    const seen = new Set()
+    for (const notif of (data?.notifications ?? [])) {
+      if (!seen.has(notif.created_at)) {
+        seen.add(notif.created_at)
+        unique.push(notif)
+      }
+    }
+    return unique
+  })()
 
   const upcomingAppts = appointments.filter(a => a.status === 'pending' || a.status === 'confirmed').sort((a,b) => new Date(a.scheduled_at || a.appointment_date || 0) - new Date(b.scheduled_at || b.appointment_date || 0))
   const completedAppts = appointments.filter(a => a.status === 'completed').sort((a,b) => new Date(b.scheduled_at || b.appointment_date || 0) - new Date(a.scheduled_at || a.appointment_date || 0))
@@ -97,12 +87,12 @@ export default function StudentDashboard() {
 
   // announcementsList comes directly from the DB /api/announcements endpoint
   // (already filtered by audience for this user's role on the backend)
-  const displayAnnouncements = announcementsList
+  const displayAnnouncements = data?.announcements ?? []
 
   const stats = [
-    { value: loading ? '—' : upcomingAppts.length, label: 'Upcoming Appointments', icon: 'appointments' },
-    { value: loading ? '—' : records.length,       label: 'Completed Visits',      icon: 'myRecords' },
-    { value: loading ? '—' : unread,               label: 'Unread Notifications',  icon: 'notifications' },
+    { value: loading ? EMPTY : (data?.stats?.upcoming_appointments ?? 0), label: 'Upcoming Appointments', icon: 'appointments' },
+    { value: loading ? EMPTY : (data?.stats?.completed_visits ?? 0), label: 'Completed Visits',      icon: 'myRecords' },
+    { value: loading ? EMPTY : unread,               label: 'Unread Notifications',  icon: 'notifications' },
   ]
 
   return (
@@ -248,7 +238,7 @@ export default function StudentDashboard() {
                         <td data-label="Date" style={{ fontSize: '0.8rem', color: 'var(--text-sub)', fontWeight: 600, whiteSpace: 'nowrap' }}>
                           {formatAppointmentDate(a)}
                         </td>
-                        <td data-label="Service" className="td-name">{a.clinic_service?.name || a.service?.name || '—'}</td>
+                        <td data-label="Service" className="td-name">{a.clinic_service?.name || a.service?.name || EMPTY}</td>
                         <td data-label="Staff / Provider" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{a.staff?.name || 'Assigned Staff'}</td>
                         <td data-label="Status"><span className={`status-badge ${s.cls}`}>{s.label}</span></td>
                       </tr>
@@ -263,7 +253,9 @@ export default function StudentDashboard() {
 
         {/* ── Right Column ───────────────────────────────────────── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          <CalendarWidget appointments={appointments} userRole={user?.role} />
+          <Suspense fallback={<CardFallback />}>
+            <CalendarWidget appointments={appointments} userRole={user?.role} events={data?.calendar_events ?? []} />
+          </Suspense>
           
           <div className="data-table-wrap">
             <div style={{ padding: '1rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

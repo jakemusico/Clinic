@@ -5,9 +5,10 @@ import DashboardLayout from '../../components/DashboardLayout'
 import { appointmentsApi } from '../../api/appointments'
 import { ViewConsultationModal } from '../../components/ViewConsultationModal'
 import { useAuth } from '../../context/AuthContext'
-import { formatAppointmentDateTime } from '../../utils/dateUtils'
+import { formatAppointmentDateTime, todayISO } from '../../utils/dateUtils'
 import Pagination from '../../components/Pagination'
 import Avatar from '../../components/Avatar'
+import { EMPTY } from '../../utils/emptyValue'
 
 const STATUS_BADGES = {
   pending:   'status-badge inactive',
@@ -23,7 +24,7 @@ function RescheduleModal({ appointment, onClose, onRescheduled }) {
   const [selectedSlot, setSelectedSlot] = useState(null)
   const [saving, setSaving]   = useState(false)
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayISO()
 
   const loadSlots = useCallback(async () => {
     if (!date) return
@@ -343,7 +344,7 @@ export default function AppointmentsManagementPage() {
 
                       {a.status === 'cancelled' && (
                         <span className="text-muted" style={{ fontSize: '0.8rem' }}>
-                          {a.cancellation_reason ? `Reason: ${a.cancellation_reason}` : '—'}
+                          {a.cancellation_reason ? `Reason: ${a.cancellation_reason}` : EMPTY}
                         </span>
                       )}
                     </div>

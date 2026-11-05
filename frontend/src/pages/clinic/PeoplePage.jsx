@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext'
 import { ConsultationModal } from '../../components/ConsultationModal'
 import { DentalConsultationModal } from '../../components/DentalConsultationModal'
 import Avatar from '../../components/Avatar'
+import { EMPTY } from '../../utils/emptyValue'
 
 export default function PeoplePage() {
   const { user } = useAuth()
@@ -147,13 +148,13 @@ export default function PeoplePage() {
                         {p.name}
                       </div>
                     </td>
-                    <td>{p.student_id || '—'}</td>
+                    <td>{p.student_id || EMPTY}</td>
                     {activeTab === 'student' ? (
-                      <td>{[p.grade_level, p.section].filter(Boolean).join(' - ') || '—'}</td>
+                      <td>{[p.grade_level, p.section].filter(Boolean).join(' - ') || EMPTY}</td>
                     ) : (
                       <>
-                        <td>{p.department || '—'}</td>
-                        <td>{p.grade_level || '—'}</td> {/* We use grade_level to store Position for faculty, or if we don't have a specific field, maybe it's in department */}
+                        <td>{p.department || EMPTY}</td>
+                        <td>{p.grade_level || EMPTY}</td> {/* We use grade_level to store Position for faculty, or if we don't have a specific field, maybe it's in department */}
                       </>
                     )}
                     <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>

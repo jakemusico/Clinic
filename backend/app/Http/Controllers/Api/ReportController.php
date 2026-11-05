@@ -16,6 +16,8 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Support\ConsultationRow;
+use App\Support\Placeholder;
 
 class ReportController extends Controller
 {
@@ -256,38 +258,17 @@ class ReportController extends Controller
                 });
 
             if ($serviceId && $serviceId !== 'all') {
-                $medQuery->whereHas('appointment', fn($q) => $q->where('service_id', $serviceId));
+                // match the service saved on the record, or the one of the linked appointment
+                $svcName = (string) ClinicService::whereKey($serviceId)->value('name');
+                $medQuery->where(fn($sq) => $sq
+                    ->whereHas('appointment', fn($a) => $a->where('service_id', $serviceId))
+                    ->orWhere('service_name', $svcName));
             }
             if ($staffId && $staffId !== 'all') {
                 $medQuery->where('created_by', $staffId);
             }
 
-            $medRecords = $medQuery->get()->map(function ($r) {
-                $u = $r->patient?->user;
-                $vDate = $r->visit_date ? Carbon::parse($r->visit_date)->toDateString() : ($r->created_at ? $r->created_at->toDateString() : '');
-                $formattedDate = $vDate ? Carbon::parse($vDate)->format('M j, Y') : '—';
-                $complaintText = $r->complaint_category ?: ($r->chief_complaint ?: ($r->diagnosis ?: 'General Consultation'));
-
-                return [
-                    'id'                  => "med-{$r->id}",
-                    'record_id'           => $r->id,
-                    'type'                => 'medical',
-                    'patient_id'          => $r->patient_id,
-                    'patient_name'        => $u?->name ?? 'Walk-in Patient',
-                    'student_id'          => $u?->student_id ?? ($u?->employee_id ?? '—'),
-                    'role'                => $u?->role ?? 'student',
-                    'service'             => $r->appointment?->service?->name ?? 'Medical Consultation',
-                    'complaint_category'  => $r->complaint_category ?: 'General Consultation',
-                    'complaint_diagnosis' => $complaintText,
-                    'diagnosis'           => $r->diagnosis ?: '—',
-                    'treatment'           => $r->treatment ?: '—',
-                    'status'              => 'Completed',
-                    'attending_staff'     => $r->createdBy?->name ?? 'Clinic Nurse',
-                    'date'                => $formattedDate,
-                    'raw_date'            => $vDate,
-                    'created_at'          => $r->created_at?->toISOString(),
-                ];
-            });
+            $medRecords = $medQuery->get()->map(fn ($r) => ConsultationRow::medical($r));
 
             $consultations = $consultations->merge($medRecords);
         }
@@ -303,38 +284,17 @@ class ReportController extends Controller
                 });
 
             if ($serviceId && $serviceId !== 'all') {
-                $dentQuery->whereHas('appointment', fn($q) => $q->where('service_id', $serviceId));
+                // match the service saved on the record, or the one of the linked appointment
+                $svcName = (string) ClinicService::whereKey($serviceId)->value('name');
+                $dentQuery->where(fn($sq) => $sq
+                    ->whereHas('appointment', fn($a) => $a->where('service_id', $serviceId))
+                    ->orWhere('service_name', $svcName));
             }
             if ($staffId && $staffId !== 'all') {
                 $dentQuery->where('created_by', $staffId);
             }
 
-            $dentRecords = $dentQuery->get()->map(function ($c) {
-                $u = $c->patient?->user;
-                $vDate = $c->consultation_date ? Carbon::parse($c->consultation_date)->toDateString() : ($c->created_at ? $c->created_at->toDateString() : '');
-                $formattedDate = $vDate ? Carbon::parse($vDate)->format('M j, Y') : '—';
-                $complaintText = $c->complaint_category ?: ($c->reason_for_visit ?: ($c->diagnosis ?: 'Dental Examination'));
-
-                return [
-                    'id'                  => "dent-{$c->id}",
-                    'record_id'           => $c->id,
-                    'type'                => 'dental',
-                    'patient_id'          => $c->patient_id,
-                    'patient_name'        => $u?->name ?? 'Dental Patient',
-                    'student_id'          => $u?->student_id ?? ($u?->employee_id ?? '—'),
-                    'role'                => $u?->role ?? 'student',
-                    'service'             => $c->appointment?->service?->name ?? ($c->diagnosis ?: 'Dental Consultation'),
-                    'complaint_category'  => $c->complaint_category ?: 'Dental Examination',
-                    'complaint_diagnosis' => $complaintText,
-                    'diagnosis'           => $c->diagnosis ?: '—',
-                    'treatment'           => $c->treatment_performed ?: '—',
-                    'status'              => 'Completed',
-                    'attending_staff'     => $c->dentist?->name ?? 'Dentist',
-                    'date'                => $formattedDate,
-                    'raw_date'            => $vDate,
-                    'created_at'          => $c->created_at?->toISOString(),
-                ];
-            });
+            $dentRecords = $dentQuery->get()->map(fn ($c) => ConsultationRow::dental($c));
 
             $consultations = $consultations->merge($dentRecords);
         }
@@ -362,7 +322,7 @@ class ReportController extends Controller
         // Service/Type breakdown
         $serviceCounts = [];
         foreach ($sorted as $c) {
-            $srv = $c['service'] ?: 'General Consultation';
+            $srv = $c['service'] ?: 'Not specified';
             $serviceCounts[$srv] = ($serviceCounts[$srv] ?? 0) + 1;
         }
         arsort($serviceCounts);
@@ -488,7 +448,7 @@ class ReportController extends Controller
                 'item_name'   => $b->item->name ?? 'Unknown',
                 'category'    => $b->item->category ?? 'General',
                 'batch_no'    => $b->batch_no,
-                'supplier'    => $b->supplier ?: '—',
+                'supplier'    => $b->supplier ?: Placeholder::EMPTY,
                 'expiry_date' => $b->expiry_date->toDateString(),
                 'remaining'   => max(0, $b->quantity_in - $b->quantity_used),
                 'is_expired'  => $b->expiry_date->toDateString() <= $today,
@@ -509,14 +469,14 @@ class ReportController extends Controller
                 'id'               => $t->id,
                 'item_name'        => $t->item->name ?? 'Unknown Item',
                 'category'         => $t->item->category ?? 'General',
-                'batch_no'         => $t->batch->batch_no ?? '—',
+                'batch_no'         => $t->batch->batch_no ?? Placeholder::EMPTY,
                 'type'             => $t->type,
                 'quantity'         => $t->quantity,
                 'reason'           => $t->reason ?: 'Usage / Dispensed',
                 'recorded_by'      => $staff?->name ?? 'Staff',
-                'patient_name'     => $u?->name ?? '—',
-                'student_id'       => $u?->student_id ?? ($u?->employee_id ?? '—'),
-                'transaction_date' => $t->transaction_date ? Carbon::parse($t->transaction_date)->format('M j, Y') : ($t->created_at ? $t->created_at->format('M j, Y') : '—'),
+                'patient_name'     => $u?->name ?? Placeholder::EMPTY,
+                'student_id'       => $u?->student_id ?? ($u?->employee_id ?? Placeholder::EMPTY),
+                'transaction_date' => $t->transaction_date ? Carbon::parse($t->transaction_date)->format('M j, Y') : ($t->created_at ? $t->created_at->format('M j, Y') : Placeholder::EMPTY),
                 'raw_date'         => $t->transaction_date ? Carbon::parse($t->transaction_date)->toDateString() : ($t->created_at ? $t->created_at->toDateString() : ''),
             ];
         });
@@ -612,7 +572,11 @@ class ReportController extends Controller
                 });
 
             if ($serviceId && $serviceId !== 'all') {
-                $medQuery->whereHas('appointment', fn($q) => $q->where('service_id', $serviceId));
+                // match the service saved on the record, or the one of the linked appointment
+                $svcName = (string) ClinicService::whereKey($serviceId)->value('name');
+                $medQuery->where(fn($sq) => $sq
+                    ->whereHas('appointment', fn($a) => $a->where('service_id', $serviceId))
+                    ->orWhere('service_name', $svcName));
             }
             if ($staffId && $staffId !== 'all') {
                 $medQuery->where('created_by', $staffId);
@@ -625,19 +589,19 @@ class ReportController extends Controller
                 $totalSymptomsCount++;
 
                 $u = $r->patient?->user;
-                $vDate = $r->visit_date ? Carbon::parse($r->visit_date)->toDateString() : ($r->created_at ? $r->created_at->toDateString() : '');
+                $vDate = ConsultationRow::day($r);
                 $consultationLogs[] = [
                     'id'               => "med-{$r->id}",
                     'type'             => 'medical',
                     'category'         => $cat,
                     'patient_name'     => $u?->name ?? 'Walk-in Patient',
-                    'student_id'       => $u?->student_id ?? ($u?->employee_id ?? '—'),
+                    'student_id'       => $u?->student_id ?? ($u?->employee_id ?? Placeholder::EMPTY),
                     'role'             => $u?->role ?? 'student',
-                    'service'          => $r->appointment?->service?->name ?? 'Medical Consultation',
-                    'chief_complaint'  => $r->chief_complaint ?: '—',
-                    'diagnosis'        => $r->diagnosis ?: '—',
+                    'service'          => ConsultationRow::serviceName($r),
+                    'chief_complaint'  => $r->chief_complaint ?: Placeholder::EMPTY,
+                    'diagnosis'        => $r->diagnosis ?: Placeholder::EMPTY,
                     'attending_staff'  => $r->createdBy?->name ?? 'Clinic Nurse',
-                    'date'             => $vDate ? Carbon::parse($vDate)->format('M j, Y') : '—',
+                    'date'             => ConsultationRow::displayDate($vDate),
                     'raw_date'         => $vDate,
                 ];
             }
@@ -654,7 +618,11 @@ class ReportController extends Controller
                 });
 
             if ($serviceId && $serviceId !== 'all') {
-                $dentQuery->whereHas('appointment', fn($q) => $q->where('service_id', $serviceId));
+                // match the service saved on the record, or the one of the linked appointment
+                $svcName = (string) ClinicService::whereKey($serviceId)->value('name');
+                $dentQuery->where(fn($sq) => $sq
+                    ->whereHas('appointment', fn($a) => $a->where('service_id', $serviceId))
+                    ->orWhere('service_name', $svcName));
             }
             if ($staffId && $staffId !== 'all') {
                 $dentQuery->where('created_by', $staffId);
@@ -667,19 +635,19 @@ class ReportController extends Controller
                 $totalSymptomsCount++;
 
                 $u = $d->patient?->user;
-                $vDate = $d->consultation_date ? Carbon::parse($d->consultation_date)->toDateString() : ($d->created_at ? $d->created_at->toDateString() : '');
+                $vDate = ConsultationRow::day($d);
                 $consultationLogs[] = [
                     'id'               => "dent-{$d->id}",
                     'type'             => 'dental',
                     'category'         => $cat,
                     'patient_name'     => $u?->name ?? 'Dental Patient',
-                    'student_id'       => $u?->student_id ?? ($u?->employee_id ?? '—'),
+                    'student_id'       => $u?->student_id ?? ($u?->employee_id ?? Placeholder::EMPTY),
                     'role'             => $u?->role ?? 'student',
-                    'service'          => $d->appointment?->service?->name ?? ($d->diagnosis ?: 'Dental Consultation'),
-                    'chief_complaint'  => $d->reason_for_visit ?: '—',
-                    'diagnosis'        => $d->diagnosis ?: '—',
+                    'service'          => ConsultationRow::serviceName($d),
+                    'chief_complaint'  => $d->reason_for_visit ?: Placeholder::EMPTY,
+                    'diagnosis'        => $d->diagnosis ?: Placeholder::EMPTY,
                     'attending_staff'  => $d->dentist?->name ?? 'Dentist',
-                    'date'             => $vDate ? Carbon::parse($vDate)->format('M j, Y') : '—',
+                    'date'             => $vDate ? Carbon::parse($vDate)->format('M j, Y') : Placeholder::EMPTY,
                     'raw_date'         => $vDate,
                 ];
             }
@@ -845,7 +813,7 @@ class ReportController extends Controller
                 return [
                     'id'              => $c->id,
                     'student_name'    => $c->student?->name ?? 'Unknown',
-                    'student_id'      => $c->student?->id_number ?? '—',
+                    'student_id'      => $c->student?->id_number ?? Placeholder::EMPTY,
                     'role'            => $c->role,
                     'status'          => $c->status,
                     'created_at'      => $c->created_at?->format('Y-m-d H:i'),

@@ -9,7 +9,8 @@ import DeleteMessageModal from './DeleteMessageModal'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { chatbotApi } from '../api/chatbot'
 import { chatApi } from '../api/chat'
-import { adminApi } from '../api/admin'
+import { useCounters } from '../hooks/useCounters'
+import { poll } from '../utils/polling'
 import { useChatbot } from '../context/ChatbotContext'
 import { useAuth } from '../context/AuthContext'
 import Avatar from './Avatar'
@@ -658,25 +659,10 @@ export default function ChatbotWidget() {
     const parts = (user?.name || '').split(' ').filter(Boolean)
     return parts.find(p => !/\.$/.test(p)) || 'there'
   })()
-  const [chatEnabled, setChatEnabled] = useState(true)
-
-  // Fetch whether live chat is enabled
-  useEffect(() => {
-    if (!canUseChat) return
-    let active = true
-    const checkEnabled = async () => {
-      try {
-        const { data } = await adminApi.getSetting('chat_enabled')
-        if (active) {
-          setChatEnabled(data.value !== '0')
-        }
-      } catch {
-        // keep default true
-      }
-    }
-    checkEnabled()
-    return () => { active = false }
-  }, [canUseChat, open])
+  // Unread count and "live chat enabled" come from the shared header counters (one request
+  // for the whole page, polled every 45 s while the tab is visible), not from requests of their own.
+  const counters = useCounters(canUseChat && !!user?.id)
+  const chatEnabled = !canUseChat || counters.chat.enabled !== false
 
   // Open live chat from URL query parameter e.g. ?chat=nurse
   useEffect(() => {
@@ -688,38 +674,19 @@ export default function ChatbotWidget() {
     }
   }, [location.search, canUseChat, chatEnabled, setChatRole, setOpen])
 
-  // ── Poll student/faculty unread count for FAB badge ───────────────────
+  // Badge on the chat bubble (hidden while the chat is open, where it is cleared)
   useEffect(() => {
-    if (!canUseChat) return
-    let mounted = true
-    const fetchUnread = async () => {
-      if (open) return
-      try {
-        const { data } = await chatApi.getStudentUnreadCount()
-        if (mounted && !open) {
-          setUnreadCount(data.unread_count || 0)
-        }
-      } catch {
-        // silently ignore
-      }
-    }
-    fetchUnread()
-    const interval = setInterval(fetchUnread, 5000)
-    const handleUpdate = () => fetchUnread()
-    window.addEventListener('messages-updated', handleUpdate)
-
-    return () => {
-      mounted = false
-      clearInterval(interval)
-      window.removeEventListener('messages-updated', handleUpdate)
-    }
-  }, [canUseChat, open])
+    if (canUseChat && !open) setUnreadCount(counters.chat.unread_count || 0)
+  }, [canUseChat, open, counters.chat.unread_count])
 
   // Clear badge when chat opens & mark replies read on server
   useEffect(() => {
     if (open && canUseChat) {
       setUnreadCount(0)
-      chatApi.markStudentAllRead().catch(() => {})
+      // the replies are now read: refresh the shared counters so the bubble badge stays at 0
+      chatApi.markStudentAllRead()
+        .then(() => window.dispatchEvent(new Event('messages-updated')))
+        .catch(() => {})
     }
   }, [open, canUseChat])
 
@@ -764,7 +731,7 @@ export default function ChatbotWidget() {
     }
   }, [])
 
-  // ── Live Chat Polling (Every 4 seconds, paused when hidden or offline) ──
+  // ── Live Chat Polling (every 7 seconds while the panel is open; paused when hidden or offline) ──
   useEffect(() => {
     if (!open || !chatRole || !canUseChat) return
 
@@ -807,27 +774,13 @@ export default function ChatbotWidget() {
       }
     }
 
-    // Immediate fetch when open and online
-    if (isOnline) {
-      fetchChatData()
-    }
-
-    // 4 second polling (only runs when online)
-    const interval = setInterval(() => {
-      if (isOnline) fetchChatData()
-    }, 4000)
-
-    const handleVisibilityChange = () => {
-      if (!document.hidden && isOnline) {
-        fetchChatData()
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
+    // Poll every 7 s, only while this chat panel is open (the effect only exists then), the tab
+    // is visible and the browser is online. Fetches at once on open and when the tab returns.
+    const stopPolling = poll(fetchChatData, 7000)
 
     return () => {
       isMounted = false
-      clearInterval(interval)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      stopPolling()
     }
   }, [open, chatRole, canUseChat, user?.id, isOnline])
 

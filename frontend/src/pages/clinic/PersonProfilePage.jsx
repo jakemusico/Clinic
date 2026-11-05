@@ -3,8 +3,9 @@ import { useParams, Link } from 'react-router-dom'
 import DashboardLayout from '../../components/DashboardLayout'
 import api from '../../api/axios'
 import { useAuth } from '../../context/AuthContext'
-import { formatAppointmentDate } from '../../utils/dateUtils'
+import { formatAppointmentDate, formatDate } from '../../utils/dateUtils'
 import Avatar from '../../components/Avatar'
+import { EMPTY } from '../../utils/emptyValue'
 
 export default function PersonProfilePage() {
   const { id } = useParams()
@@ -94,28 +95,28 @@ export default function PersonProfilePage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>{isStudent ? 'Student ID' : 'Employee ID'}</span>
-                <span style={{ fontWeight: 600 }}>{profileUser.student_id || '—'}</span>
+                <span style={{ fontWeight: 600 }}>{profileUser.student_id || EMPTY}</span>
               </div>
               {isStudent ? (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: 'var(--text-muted)' }}>Grade Level</span>
-                    <span style={{ fontWeight: 600 }}>{profileUser.grade_level || '—'}</span>
+                    <span style={{ fontWeight: 600 }}>{profileUser.grade_level || EMPTY}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: 'var(--text-muted)' }}>Section</span>
-                    <span style={{ fontWeight: 600 }}>{profileUser.section || '—'}</span>
+                    <span style={{ fontWeight: 600 }}>{profileUser.section || EMPTY}</span>
                   </div>
                 </>
               ) : (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: 'var(--text-muted)' }}>Department</span>
-                    <span style={{ fontWeight: 600 }}>{profileUser.department || '—'}</span>
+                    <span style={{ fontWeight: 600 }}>{profileUser.department || EMPTY}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: 'var(--text-muted)' }}>Position</span>
-                    <span style={{ fontWeight: 600 }}>{profileUser.grade_level || '—'}</span>
+                    <span style={{ fontWeight: 600 }}>{profileUser.grade_level || EMPTY}</span>
                   </div>
                 </>
               )}
@@ -127,19 +128,19 @@ export default function PersonProfilePage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.85rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Contact No.</span>
-                <span style={{ fontWeight: 600 }}>{profileUser.contact_no || '—'}</span>
+                <span style={{ fontWeight: 600 }}>{profileUser.contact_no || EMPTY}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Date of Birth</span>
-                <span style={{ fontWeight: 600 }}>{p.date_of_birth ? new Date(p.date_of_birth).toLocaleDateString() : '—'}</span>
+                <span style={{ fontWeight: 600 }}>{formatDate(p.date_of_birth)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Age</span>
-                <span style={{ fontWeight: 600 }}>{p.age || profileUser.age || '—'}</span>
+                <span style={{ fontWeight: 600 }}>{p.age || profileUser.age || EMPTY}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Sex</span>
-                <span style={{ fontWeight: 600 }}>{p.gender ? (p.gender.charAt(0).toUpperCase() + p.gender.slice(1)) : '—'}</span>
+                <span style={{ fontWeight: 600 }}>{p.gender ? (p.gender.charAt(0).toUpperCase() + p.gender.slice(1)) : EMPTY}</span>
               </div>
             </div>
           </div>
@@ -157,15 +158,15 @@ export default function PersonProfilePage() {
               {isStudent && (
                 <div style={{ marginBottom: '1rem' }}>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Parent / Guardian</div>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{p.guardian_name || '—'} {p.guardian_relationship ? `(${p.guardian_relationship})` : ''}</div>
-                  <div style={{ fontSize: '0.85rem' }}>{p.guardian_contact || '—'}</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{p.guardian_name || EMPTY} {p.guardian_relationship ? `(${p.guardian_relationship})` : ''}</div>
+                  <div style={{ fontSize: '0.85rem' }}>{p.guardian_contact || EMPTY}</div>
                   {p.guardian_email && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{p.guardian_email}</div>}
                 </div>
               )}
               <div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Emergency Contact</div>
-                <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{p.emergency_name || p.guardian_name || '—'} {p.emergency_relationship ? `(${p.emergency_relationship})` : ''}</div>
-                <div style={{ fontSize: '0.85rem' }}>{p.emergency_contact_no || p.emergency_contact || p.guardian_contact || '—'}</div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{p.emergency_name || p.guardian_name || EMPTY} {p.emergency_relationship ? `(${p.emergency_relationship})` : ''}</div>
+                <div style={{ fontSize: '0.85rem' }}>{p.emergency_contact_no || p.emergency_contact || p.guardian_contact || EMPTY}</div>
                 {p.emergency_alt_contact && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Alt: {p.emergency_alt_contact}</div>}
               </div>
             </div>
@@ -177,7 +178,7 @@ export default function PersonProfilePage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.85rem' }}>
                 <div>
                   <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem' }}>Blood Type</span>
-                  <span style={{ fontWeight: 600, color: 'var(--text)' }}>{p.blood_type || '—'}</span>
+                  <span style={{ fontWeight: 600, color: 'var(--text)' }}>{p.blood_type || EMPTY}</span>
                 </div>
                 <div>
                   <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem' }}>Allergies</span>
@@ -259,9 +260,9 @@ export default function PersonProfilePage() {
                             </span>
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem 1rem', fontSize: '0.82rem', marginBottom: '0.5rem' }}>
-                            <div><strong>Chief Complaint:</strong> {c.chief_complaint || '—'}</div>
-                            <div><strong>Diagnosis:</strong> <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{c.diagnosis || c.assessment || 'General Check-up'}</span></div>
-                            <div><strong>Treatment:</strong> {c.treatment || c.recommendation || '—'}</div>
+                            <div><strong>Chief Complaint:</strong> {c.chief_complaint || EMPTY}</div>
+                            <div><strong>Diagnosis:</strong> <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{c.diagnosis || c.assessment || EMPTY}</span></div>
+                            <div><strong>Treatment:</strong> {c.treatment || c.recommendation || EMPTY}</div>
                           </div>
                           {c.prescription && (
                             <div style={{ fontSize: '0.8rem', background: '#F8FAFC', padding: '0.45rem 0.65rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', marginTop: '0.35rem' }}>
@@ -287,10 +288,10 @@ export default function PersonProfilePage() {
                         <div key={c.id} style={{ padding: '1rem', borderRadius: 'var(--radius-sm)', background: '#FFFFFF', border: '1px solid var(--border)', boxShadow: 'var(--shadow-xs)' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
                             <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--accent)' }}>
-                              {c.diagnosis || 'Dental Checkup'}
+                              {c.diagnosis || EMPTY}
                             </span>
                             <span className="status-badge completed" style={{ fontSize: '0.7rem' }}>
-                              {new Date(c.consultation_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              {formatDate(c.consultation_date)}
                             </span>
                           </div>
                           {c.affected_teeth && c.affected_teeth.length > 0 && (
@@ -342,7 +343,7 @@ export default function PersonProfilePage() {
                   <td style={{ fontSize: '0.8rem' }}>
                     {formatAppointmentDate(a)}
                   </td>
-                  <td>{a.service?.name || a.clinic_service?.name || '—'}</td>
+                  <td>{a.service?.name || a.clinic_service?.name || EMPTY}</td>
                   <td>
                     <span style={{ fontSize: '0.75rem', padding: '0.15rem 0.5rem', borderRadius: '4px', background: a.appointment_type === 'dental' ? '#E0F2FE' : '#F1F5F9', color: a.appointment_type === 'dental' ? '#0369A1' : '#475569' }}>
                       {a.appointment_type === 'dental' ? 'Dental' : 'Medical'}

@@ -996,10 +996,14 @@ class InventoryController extends Controller
                 ->where('is_active', true)
                 ->get();
 
+            // Stock of every item from ONE grouped query (was two queries per item)
+            $stockByItem = InventoryTransaction::query()
+                ->selectRaw("item_id, SUM(CASE WHEN type = 'IN' THEN quantity WHEN type = 'OUT' THEN -quantity ELSE 0 END) AS stock")
+                ->groupBy('item_id')
+                ->pluck('stock', 'item_id');
+
             foreach ($items as $item) {
-                $inQty  = InventoryTransaction::where('item_id', $item->id)->where('type', 'IN')->sum('quantity');
-                $outQty = InventoryTransaction::where('item_id', $item->id)->where('type', 'OUT')->sum('quantity');
-                $stock  = max(0, $inQty - $outQty);
+                $stock = max(0, (int) ($stockByItem[$item->id] ?? 0));
 
                 if ($stock <= $item->reorder_level) {
                     foreach ($admins as $admin) {

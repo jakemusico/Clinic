@@ -2,6 +2,8 @@ import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import EmptyState from './EmptyState'
 import Pagination from '../Pagination'
+import { EMPTY, serviceLabel } from '../../utils/emptyValue'
+import { formatDate } from '../../utils/dateUtils'
 
 export default function RecentVisitsTable({
   visits = [],
@@ -72,11 +74,11 @@ export default function RecentVisitsTable({
                           )}
                         </div>
                         <div className="dash-patient-meta">
-                          {v.student_id !== '—' ? `${v.student_id} · ` : ''}
+                          {v.student_id !== EMPTY ? `${v.student_id} · ` : ''}
                           {v.role === 'student' ? 'Student' : (v.role === 'faculty_staff' ? 'Faculty/Staff' : 'Patient')}
                         </div>
                       </td>
-                      <td className="dash-td-service">{v.service}</td>
+                      <td className="dash-td-service">{serviceLabel({ service_name: v.service })}</td>
                       <td className="dash-td-diagnosis">
                         <span className="dash-diagnosis-text">{v.complaint_diagnosis}</span>
                       </td>
@@ -87,7 +89,7 @@ export default function RecentVisitsTable({
                       </td>
                       <td className="dash-td-staff">{v.attending_staff}</td>
                       <td className="dash-td-date">
-                        <span className="dash-date-text">{v.date}</span>
+                        <span className="dash-date-text">{formatDate(v.raw_date || v.date)}</span>
                       </td>
                     </tr>
                   )

@@ -7,11 +7,14 @@ import { usePagination } from '../../hooks/usePagination'
 import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/ConfirmModal'
 import { GRADE_LEVELS, STRANDS } from '../../constants/schoolData'
+import { EMPTY } from '../../utils/emptyValue'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 
 export default function SectionsPage() {
   const [sections, setSections] = useState([])
   const [loading, setLoading]   = useState(true)
   const [search, setSearch]     = useState('')
+  const debouncedSearch = useDebouncedValue(search)
   const [gradeFilter, setGradeFilter] = useState('all')
   const [formData, setFormData] = useState({ id: null, grade_level: '', name: '', strand: '' })
   const [isEditing, setIsEditing] = useState(false)
@@ -85,7 +88,7 @@ export default function SectionsPage() {
   }
 
   const filtered = sections.filter(s => {
-    const q = search.toLowerCase()
+    const q = debouncedSearch.toLowerCase()
     const matchSearch = !q ||
       s.name.toLowerCase().includes(q) ||
       s.grade_level.toLowerCase().includes(q) ||
@@ -176,7 +179,7 @@ export default function SectionsPage() {
                   <td style={{ fontWeight: 600 }}>{s.grade_level}</td>
                   <td className="td-name">{s.name}</td>
                   <td style={{ fontSize: '0.85rem', color: s.strand ? 'var(--text)' : 'var(--text-muted)' }}>
-                    {s.strand || '—'}
+                    {s.strand || EMPTY}
                   </td>
                   <td>
                     <div className="action-btns" style={{ justifyContent: 'flex-end' }}>

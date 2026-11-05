@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast'
 import DashboardLayout from '../../components/DashboardLayout'
 import ConfirmModal from '../../components/ConfirmModal'
 import { inventoryApi } from '../../api/inventory'
+import { EMPTY } from '../../utils/emptyValue'
 
 const Icon = ({ d, size = 16 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
@@ -22,7 +23,7 @@ const ICONS = {
 }
 
 const fmt = (d) => {
-  if (!d) return '—'
+  if (!d) return EMPTY
   return new Date(d + 'T00:00:00').toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
@@ -191,7 +192,7 @@ export default function InventoryDashboardPage() {
                               Write off
                             </button>
                           ) : (
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>—</span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{EMPTY}</span>
                           )}
                         </td>
                       </tr>
@@ -228,7 +229,7 @@ export default function InventoryDashboardPage() {
                   {data?.recent_transactions?.map(tx => (
                     <tr key={tx.id}>
                       <td style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{fmt(tx.transaction_date)}</td>
-                      <td style={{ fontWeight: 600, fontSize: '0.83rem' }}>{tx.item?.name || '—'}</td>
+                      <td style={{ fontWeight: 600, fontSize: '0.83rem' }}>{tx.item?.name || EMPTY}</td>
                       <td style={{ textAlign: 'center' }}>
                         <span className={`status-badge ${tx.type === 'IN' ? 'confirmed' : 'cancelled'}`}
                           style={{ fontSize: '0.72rem' }}>
@@ -237,7 +238,7 @@ export default function InventoryDashboardPage() {
                       </td>
                       <td style={{ textAlign: 'center', fontSize: '0.82rem' }}>{tx.quantity}</td>
                       <td style={{ fontSize: '0.82rem' }}>{tx.reason}</td>
-                      <td style={{ fontSize: '0.82rem' }}>{tx.recorded_by?.name || '—'}</td>
+                      <td style={{ fontSize: '0.82rem' }}>{tx.recorded_by?.name || EMPTY}</td>
                     </tr>
                   ))}
                 </tbody>

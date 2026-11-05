@@ -1,12 +1,17 @@
-import { useEffect, useState, useCallback } from 'react'
+import { lazy, Suspense, useEffect, useState, useCallback } from 'react'
 import DashboardLayout from '../../components/DashboardLayout'
-import CalendarWidget from '../../components/CalendarWidget'
 import { dashboardApi } from '../../api/dashboard'
 import PeriodFilter from '../../components/dashboard/PeriodFilter'
-import VisitTrendsChart from '../../components/dashboard/VisitTrendsChart'
-import FrequentSymptomsChart from '../../components/dashboard/FrequentSymptomsChart'
 import RecentVisitsTable from '../../components/dashboard/RecentVisitsTable'
 import InventoryAlertBanner from '../../components/dashboard/InventoryAlertBanner'
+import { EMPTY } from '../../utils/emptyValue'
+import { CardFallback, ChartsFallback } from '../../components/dashboard/Fallbacks'
+
+// The charts (recharts) and the calendar are the heaviest parts of the page: load them as
+// separate chunks so the stat cards and the table can appear first.
+const VisitTrendsChart = lazy(() => import('../../components/dashboard/VisitTrendsChart'))
+const FrequentSymptomsChart = lazy(() => import('../../components/dashboard/FrequentSymptomsChart'))
+const CalendarWidget = lazy(() => import('../../components/CalendarWidget'))
 
 export default function AdminDashboard() {
   const [data, setData] = useState(null)
@@ -39,11 +44,11 @@ export default function AdminDashboard() {
 
   // 5 Stat cards at the top
   const statCards = [
-    { value: loading ? '—' : stats.today_appointments ?? 0, label: "Today's Appointments", icon: 'appointments' },
-    { value: loading ? '—' : stats.consultations_today ?? 0, label: 'Consultations Today', icon: 'records' },
-    { value: loading ? '—' : stats.registered_students ?? 0, label: 'Registered Students', icon: 'users' },
-    { value: loading ? '—' : stats.inventory_alerts ?? 0, label: 'Inventory Alerts', icon: 'inventory' },
-    { value: loading ? '—' : stats.unanswered_conversations ?? 0, label: 'Unanswered Conversations', icon: 'chatbot', to: '/chatbot/support?tab=stats' },
+    { value: loading ? EMPTY : stats.today_appointments ?? 0, label: "Today's Appointments", icon: 'appointments' },
+    { value: loading ? EMPTY : stats.consultations_today ?? 0, label: 'Consultations Today', icon: 'records' },
+    { value: loading ? EMPTY : stats.registered_students ?? 0, label: 'Registered Students', icon: 'users' },
+    { value: loading ? EMPTY : stats.inventory_alerts ?? 0, label: 'Inventory Alerts', icon: 'inventory' },
+    { value: loading ? EMPTY : stats.unanswered_conversations ?? 0, label: 'Unanswered Conversations', icon: 'chatbot', to: '/chatbot/support?tab=stats' },
   ]
 
   return (
@@ -71,22 +76,28 @@ export default function AdminDashboard() {
             />
 
             {/* Equal-height charts row */}
-            <div className="dash-grid-2col">
-              <VisitTrendsChart
-                data={chartData.visit_trends || []}
-                loading={loading}
-                period={period}
-              />
-              <FrequentSymptomsChart
-                data={chartData.frequent_symptoms || []}
-                loading={loading}
-              />
-            </div>
+            <Suspense fallback={<ChartsFallback />}>
+              <div className="dash-grid-2col">
+                <VisitTrendsChart
+                  data={chartData.visit_trends || []}
+                  loading={loading}
+                  period={period}
+                />
+                <FrequentSymptomsChart
+                  data={chartData.frequent_symptoms || []}
+                  categorized={chartData.categorized_consultations}
+                  total={chartData.total_consultations}
+                  loading={loading}
+                />
+              </div>
+            </Suspense>
           </div>
 
           {/* Right of Charts: Calendar Widget */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            <CalendarWidget userRole="admin" />
+            <Suspense fallback={<CardFallback />}>
+              <CalendarWidget userRole="admin" events={data?.calendar_events ?? []} />
+            </Suspense>
           </div>
         </div>
 
