@@ -21,6 +21,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // Register custom role middleware alias
         $middleware->alias([
             'role' => \App\Http\Middleware\EnsureRole::class,
+            // Rejects (and signs out) requests from deactivated accounts
+            'active' => \App\Http\Middleware\EnsureUserIsActive::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

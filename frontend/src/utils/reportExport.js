@@ -7,6 +7,7 @@ import { toast } from 'react-hot-toast'
 import { reportsApi } from '../api/reports'
 import { EMPTY, NO_SERVICE } from './emptyValue'
 import { toDateKey, toDateTimeKey } from './dateUtils'
+import { escapeHtml } from './escapeHtml'
 
 // Absolute URL so the logo loads correctly inside the hidden print iframe
 const LOGO_PATH = `${window.location.origin}/fsuu_logo.png`
@@ -51,15 +52,15 @@ function generateSVGChart(tab, data, width = 680, height = 120) {
       return `
         <g>
           <rect x="${x}" y="${y}" width="${barW}" height="${barHeight}" fill="#2563EB" rx="2" />
-          <text x="${x + barW / 2}" y="${y - 4}" text-anchor="middle" font-size="8.5" fill="#1E293B" font-weight="bold">${item.count}</text>
-          <text x="${x + barW / 2}" y="${height - 6}" text-anchor="middle" font-size="8" fill="#64748B">${label}</text>
+          <text x="${x + barW / 2}" y="${y - 4}" text-anchor="middle" font-size="8.5" fill="#1E293B" font-weight="bold">${escapeHtml(item.count)}</text>
+          <text x="${x + barW / 2}" y="${height - 6}" text-anchor="middle" font-size="8" fill="#64748B">${escapeHtml(label)}</text>
         </g>
       `
     }).join('')
 
     return `
       <div class="report-chart-box">
-        <div class="chart-caption">${tab === 'appointments' ? 'Appointment Volume Over Time' : 'Consultation Encounters Over Time'}</div>
+        <div class="chart-caption">${escapeHtml(tab === 'appointments' ? 'Appointment Volume Over Time' : 'Consultation Encounters Over Time')}</div>
         <svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" style="overflow: visible;">
           <line x1="${padding}" y1="${height - 20}" x2="${width - padding}" y2="${height - 20}" stroke="#CBD5E1" stroke-width="1" />
           ${bars}
@@ -80,9 +81,9 @@ function generateSVGChart(tab, data, width = 680, height = 120) {
       const barW = Math.max(4, ((cat.stock || 0) / maxStock) * (width - 170))
       return `
         <g>
-          <text x="5" y="${y + 13}" font-size="9" fill="#1E293B" font-weight="500">${cat.name}</text>
+          <text x="5" y="${y + 13}" font-size="9" fill="#1E293B" font-weight="500">${escapeHtml(cat.name)}</text>
           <rect x="110" y="${y + 2}" width="${barW}" height="${rowH}" fill="#2563EB" rx="2" />
-          <text x="${110 + barW + 8}" y="${y + 14}" font-size="8.5" fill="#1E293B" font-weight="bold">${cat.stock} units</text>
+          <text x="${110 + barW + 8}" y="${y + 14}" font-size="8.5" fill="#1E293B" font-weight="bold">${escapeHtml(cat.stock)} units</text>
         </g>
       `
     }).join('')
@@ -109,9 +110,9 @@ function generateSVGChart(tab, data, width = 680, height = 120) {
       const barW = Math.max(4, ((cat.count || 0) / maxVal) * (width - 180))
       return `
         <g>
-          <text x="5" y="${y + 13}" font-size="9" fill="#1E293B" font-weight="500">${cat.name}</text>
+          <text x="5" y="${y + 13}" font-size="9" fill="#1E293B" font-weight="500">${escapeHtml(cat.name)}</text>
           <rect x="120" y="${y + 2}" width="${barW}" height="${rowH}" fill="#2563EB" rx="2" />
-          <text x="${120 + barW + 8}" y="${y + 14}" font-size="8.5" fill="#1E293B" font-weight="bold">${cat.count} (${cat.percentage}%)</text>
+          <text x="${120 + barW + 8}" y="${y + 14}" font-size="8.5" fill="#1E293B" font-weight="bold">${escapeHtml(cat.count)} (${escapeHtml(cat.percentage)}%)</text>
         </g>
       `
     }).join('')
@@ -182,43 +183,43 @@ export function buildReportHTML(options) {
     const s = data.appSummary || {}
     summaryRows = `
       <tr>
-        <td><strong>Total Bookings:</strong> ${s.total ?? 0}</td>
-        <td><strong>Completed:</strong> ${s.completed ?? 0} (${s.completed_pct ?? 0}%)</td>
-        <td><strong>Confirmed:</strong> ${s.confirmed ?? 0}</td>
-        <td><strong>Pending:</strong> ${s.pending ?? 0}</td>
-        <td><strong>Cancelled:</strong> ${s.cancelled ?? 0} (${s.cancelled_pct ?? 0}%)</td>
+        <td><strong>Total Bookings:</strong> ${escapeHtml(s.total ?? 0)}</td>
+        <td><strong>Completed:</strong> ${escapeHtml(s.completed ?? 0)} (${escapeHtml(s.completed_pct ?? 0)}%)</td>
+        <td><strong>Confirmed:</strong> ${escapeHtml(s.confirmed ?? 0)}</td>
+        <td><strong>Pending:</strong> ${escapeHtml(s.pending ?? 0)}</td>
+        <td><strong>Cancelled:</strong> ${escapeHtml(s.cancelled ?? 0)} (${escapeHtml(s.cancelled_pct ?? 0)}%)</td>
       </tr>
     `
   } else if (activeTab === 'consultations') {
     const s = data.consSummary || {}
     summaryRows = `
       <tr>
-        <td><strong>Total Consultations:</strong> ${s.total ?? 0}</td>
-        <td><strong>Medical Encounters:</strong> ${s.medical_count ?? 0}</td>
-        <td><strong>Dental Encounters:</strong> ${s.dental_count ?? 0}</td>
-        <td><strong>Student Patients:</strong> ${s.student_count ?? 0}</td>
-        <td><strong>Faculty & Staff:</strong> ${s.staff_count ?? 0}</td>
+        <td><strong>Total Consultations:</strong> ${escapeHtml(s.total ?? 0)}</td>
+        <td><strong>Medical Encounters:</strong> ${escapeHtml(s.medical_count ?? 0)}</td>
+        <td><strong>Dental Encounters:</strong> ${escapeHtml(s.dental_count ?? 0)}</td>
+        <td><strong>Student Patients:</strong> ${escapeHtml(s.student_count ?? 0)}</td>
+        <td><strong>Faculty & Staff:</strong> ${escapeHtml(s.staff_count ?? 0)}</td>
       </tr>
     `
   } else if (activeTab === 'inventory') {
     const s = data.invSummary || {}
     summaryRows = `
       <tr>
-        <td><strong>Total Items:</strong> ${s.total_items ?? 0}</td>
-        <td><strong>Total Units in Stock:</strong> ${s.total_stock ?? 0}</td>
-        <td><strong>Low / Out of Stock:</strong> ${s.low_stock_count ?? 0}</td>
-        <td><strong>Expiring / Expired:</strong> ${(s.expiring_soon_count ?? 0) + (s.expired_count ?? 0)}</td>
-        <td><strong>Units Dispensed:</strong> ${s.total_dispensed ?? 0}</td>
+        <td><strong>Total Items:</strong> ${escapeHtml(s.total_items ?? 0)}</td>
+        <td><strong>Total Units in Stock:</strong> ${escapeHtml(s.total_stock ?? 0)}</td>
+        <td><strong>Low / Out of Stock:</strong> ${escapeHtml(s.low_stock_count ?? 0)}</td>
+        <td><strong>Expiring / Expired:</strong> ${escapeHtml((s.expiring_soon_count ?? 0) + (s.expired_count ?? 0))}</td>
+        <td><strong>Units Dispensed:</strong> ${escapeHtml(s.total_dispensed ?? 0)}</td>
       </tr>
     `
   } else if (activeTab === 'symptoms') {
     const topCat = (data.allSymptomCategories || [])[0]
     summaryRows = `
       <tr>
-        <td><strong>Total Logs:</strong> ${data.symptomTotalLogs ?? 0}</td>
-        <td><strong>Top Reported:</strong> ${topCat ? `${topCat.name} (${topCat.count} cases)` : 'None'}</td>
-        <td><strong>Distinct Categories:</strong> ${(data.allSymptomCategories || []).length}</td>
-        <td colspan="2"><strong>Reporting Window:</strong> ${dateFrom} to ${dateTo}</td>
+        <td><strong>Total Logs:</strong> ${escapeHtml(data.symptomTotalLogs ?? 0)}</td>
+        <td><strong>Top Reported:</strong> ${escapeHtml(topCat ? `${topCat.name} (${topCat.count} cases)` : 'None')}</td>
+        <td><strong>Distinct Categories:</strong> ${escapeHtml((data.allSymptomCategories || []).length)}</td>
+        <td colspan="2"><strong>Reporting Window:</strong> ${escapeHtml(dateFrom)} to ${escapeHtml(dateTo)}</td>
       </tr>
     `
   }
@@ -253,14 +254,14 @@ export function buildReportHTML(options) {
         const details = [consult?.diagnosis ? `Dx: ${consult.diagnosis}` : '', (consult?.treatment || consult?.treatment_performed) ? `Tx: ${consult.treatment || consult.treatment_performed}` : ''].filter(Boolean).join(' · ') || EMPTY
         return `
           <tr>
-            <td>${toISODateTime(app.scheduled_at)}</td>
-            <td><strong>${u?.name || 'N/A'}</strong></td>
-            <td>${u?.student_id || u?.employee_id || EMPTY}</td>
-            <td>${app.service?.name || EMPTY}</td>
-            <td>${app.staff?.name || EMPTY}</td>
-            <td style="text-transform: capitalize;">${app.appointment_type || 'General'}</td>
-            <td><strong>${(app.status || 'pending').toUpperCase()}</strong></td>
-            <td>${details}</td>
+            <td>${escapeHtml(toISODateTime(app.scheduled_at))}</td>
+            <td><strong>${escapeHtml(u?.name || 'N/A')}</strong></td>
+            <td>${escapeHtml(u?.student_id || u?.employee_id || EMPTY)}</td>
+            <td>${escapeHtml(app.service?.name || EMPTY)}</td>
+            <td>${escapeHtml(app.staff?.name || EMPTY)}</td>
+            <td style="text-transform: capitalize;">${escapeHtml(app.appointment_type || 'General')}</td>
+            <td><strong>${escapeHtml((app.status || 'pending').toUpperCase())}</strong></td>
+            <td>${escapeHtml(details)}</td>
           </tr>
         `
       }).join('')
@@ -286,14 +287,14 @@ export function buildReportHTML(options) {
         const diagTx = [c.diagnosis !== EMPTY ? c.diagnosis : '', c.treatment !== EMPTY ? c.treatment : ''].filter(Boolean).join(' · ') || EMPTY
         return `
           <tr>
-            <td>${c.raw_date || c.date}</td>
-            <td><strong>${c.patient_name}</strong></td>
-            <td>${c.student_id || EMPTY}</td>
-            <td style="text-transform: capitalize;">${c.type}</td>
-            <td>${c.service || NO_SERVICE}</td>
-            <td>${c.attending_staff}</td>
-            <td>${c.complaint_category || c.complaint_diagnosis}</td>
-            <td>${diagTx}</td>
+            <td>${escapeHtml(c.raw_date || c.date)}</td>
+            <td><strong>${escapeHtml(c.patient_name)}</strong></td>
+            <td>${escapeHtml(c.student_id || EMPTY)}</td>
+            <td style="text-transform: capitalize;">${escapeHtml(c.type)}</td>
+            <td>${escapeHtml(c.service || NO_SERVICE)}</td>
+            <td>${escapeHtml(c.attending_staff)}</td>
+            <td>${escapeHtml(c.complaint_category || c.complaint_diagnosis)}</td>
+            <td>${escapeHtml(diagTx)}</td>
           </tr>
         `
       }).join('')
@@ -318,14 +319,14 @@ export function buildReportHTML(options) {
       } else {
         tbodyHtml = list.map(t => `
           <tr>
-            <td>${t.raw_date || t.transaction_date}</td>
-            <td><strong>${t.item_name}</strong></td>
-            <td>${t.category}</td>
-            <td style="font-family: monospace;">${t.batch_no}</td>
-            <td><strong>${t.type}</strong></td>
-            <td class="text-right"><strong>${t.quantity}</strong></td>
-            <td>${t.reason}</td>
-            <td>${t.recorded_by}</td>
+            <td>${escapeHtml(t.raw_date || t.transaction_date)}</td>
+            <td><strong>${escapeHtml(t.item_name)}</strong></td>
+            <td>${escapeHtml(t.category)}</td>
+            <td style="font-family: monospace;">${escapeHtml(t.batch_no)}</td>
+            <td><strong>${escapeHtml(t.type)}</strong></td>
+            <td class="text-right"><strong>${escapeHtml(t.quantity)}</strong></td>
+            <td>${escapeHtml(t.reason)}</td>
+            <td>${escapeHtml(t.recorded_by)}</td>
           </tr>
         `).join('')
       }
@@ -347,13 +348,13 @@ export function buildReportHTML(options) {
       } else {
         tbodyHtml = list.map(b => `
           <tr>
-            <td><strong>${b.item_name}</strong></td>
-            <td>${b.category}</td>
-            <td style="font-family: monospace;">${b.batch_no}</td>
-            <td>${b.supplier}</td>
-            <td>${b.expiry_date}</td>
-            <td class="text-right"><strong>${b.remaining}</strong></td>
-            <td><strong>${b.status}</strong></td>
+            <td><strong>${escapeHtml(b.item_name)}</strong></td>
+            <td>${escapeHtml(b.category)}</td>
+            <td style="font-family: monospace;">${escapeHtml(b.batch_no)}</td>
+            <td>${escapeHtml(b.supplier)}</td>
+            <td>${escapeHtml(b.expiry_date)}</td>
+            <td class="text-right"><strong>${escapeHtml(b.remaining)}</strong></td>
+            <td><strong>${escapeHtml(b.status)}</strong></td>
           </tr>
         `).join('')
       }
@@ -375,13 +376,13 @@ export function buildReportHTML(options) {
       } else {
         tbodyHtml = list.map(item => `
           <tr>
-            <td><strong>${item.name}</strong></td>
-            <td>${item.category}</td>
-            <td class="text-right"><strong>${item.current_stock ?? EMPTY}</strong></td>
-            <td>${item.unit || 'pcs'}</td>
-            <td class="text-right">${item.reorder_level}</td>
-            <td>${item.location}</td>
-            <td>${item.status.replace(/_/g, ' ').toUpperCase()}</td>
+            <td><strong>${escapeHtml(item.name)}</strong></td>
+            <td>${escapeHtml(item.category)}</td>
+            <td class="text-right"><strong>${escapeHtml(item.current_stock ?? EMPTY)}</strong></td>
+            <td>${escapeHtml(item.unit || 'pcs')}</td>
+            <td class="text-right">${escapeHtml(item.reorder_level)}</td>
+            <td>${escapeHtml(item.location)}</td>
+            <td>${escapeHtml(item.status.replace(/_/g, ' ').toUpperCase())}</td>
           </tr>
         `).join('')
       }
@@ -401,10 +402,10 @@ export function buildReportHTML(options) {
     } else {
       tbodyHtml = list.map((c, i) => `
         <tr>
-          <td><strong>#${i + 1}</strong></td>
-          <td><strong>${c.name}</strong></td>
-          <td class="text-right"><strong>${c.count}</strong></td>
-          <td class="text-right">${c.percentage}%</td>
+          <td><strong>#${escapeHtml(i + 1)}</strong></td>
+          <td><strong>${escapeHtml(c.name)}</strong></td>
+          <td class="text-right"><strong>${escapeHtml(c.count)}</strong></td>
+          <td class="text-right">${escapeHtml(c.percentage)}%</td>
         </tr>
       `).join('')
     }
@@ -415,10 +416,10 @@ export function buildReportHTML(options) {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>FSUU Clinic - ${reportTitle}</title>
+  <title>FSUU Clinic - ${escapeHtml(reportTitle)}</title>
   <style>
     @page {
-      size: A4 ${orientation};
+      size: A4 ${escapeHtml(orientation)};
       margin: 20mm;
       @bottom-left {
         content: "Confidential: contains student health information";
@@ -427,7 +428,7 @@ export function buildReportHTML(options) {
         font-family: Arial, sans-serif;
       }
       @bottom-center {
-        content: "Generated on ${genDate}";
+        content: "Generated on ${escapeHtml(genDate)}";
         font-size: 8pt;
         color: #475569;
         font-family: Arial, sans-serif;
@@ -674,13 +675,13 @@ export function buildReportHTML(options) {
   <table class="header-table">
     <tr>
       <td class="header-logo">
-        <img src="${LOGO_PATH}" alt="FSUU Seal" onerror="this.style.display='none'">
+        <img src="${escapeHtml(LOGO_PATH)}" alt="FSUU Seal" onerror="this.style.display='none'">
       </td>
       <td class="header-center">
         <h1 class="header-school">Fr. Saturnino Urios University</h1>
         <div class="header-clinic">FSUU Clinic · Medical &amp; Dental Health Services</div>
-        <div class="header-title">${reportTitle}</div>
-        <div class="header-period">Reporting Period: ${formatDisplayDate(dateFrom)} to ${formatDisplayDate(dateTo)}</div>
+        <div class="header-title">${escapeHtml(reportTitle)}</div>
+        <div class="header-period">Reporting Period: ${escapeHtml(formatDisplayDate(dateFrom))} to ${escapeHtml(formatDisplayDate(dateTo))}</div>
       </td>
     </tr>
   </table>
@@ -690,21 +691,21 @@ export function buildReportHTML(options) {
   <table class="info-table">
     <tr>
       <td class="info-label">Date Generated:</td>
-      <td class="info-value">${genDate}</td>
+      <td class="info-value">${escapeHtml(genDate)}</td>
       <td class="info-label">Reporting Type:</td>
-      <td class="info-value">${typeLabel}</td>
+      <td class="info-value">${escapeHtml(typeLabel)}</td>
     </tr>
     <tr>
       <td class="info-label">Generated By:</td>
-      <td class="info-value">${userName} (${userRole})</td>
+      <td class="info-value">${escapeHtml(userName)} (${escapeHtml(userRole)})</td>
       <td class="info-label">Status Filter:</td>
-      <td class="info-value">${statusLabel}</td>
+      <td class="info-value">${escapeHtml(statusLabel)}</td>
     </tr>
     <tr>
       <td class="info-label">Clinic Service:</td>
-      <td class="info-value">${serviceName}</td>
+      <td class="info-value">${escapeHtml(serviceName)}</td>
       <td class="info-label">Attending Staff:</td>
-      <td class="info-value">${staffName}</td>
+      <td class="info-value">${escapeHtml(staffName)}</td>
     </tr>
   </table>
 
@@ -733,8 +734,8 @@ export function buildReportHTML(options) {
         <td class="signature-col">
           <div class="signature-role-title">Prepared by:</div>
           <div class="signature-line">
-            <span class="signature-name">${userName}</span>
-            <span class="signature-position">${userRole}</span>
+            <span class="signature-name">${escapeHtml(userName)}</span>
+            <span class="signature-position">${escapeHtml(userRole)}</span>
           </div>
         </td>
         <td class="signature-gap"></td>
@@ -752,7 +753,7 @@ export function buildReportHTML(options) {
   <!-- Document Footer -->
   <div class="document-footer">
     <span>Confidential: contains student health information</span>
-    <span>Generated on ${genDate}</span>
+    <span>Generated on ${escapeHtml(genDate)}</span>
     <span>FSUU Clinic Services</span>
   </div>
 
@@ -879,7 +880,7 @@ export async function exportReportToCSV(options) {
         c?.treatment || c?.treatment_performed || EMPTY,
       ]
     })
-    filename = `Appointments_Report_${dateFrom}_to_${dateTo}.csv`
+    filename = `Appointments_Report_${escapeHtml(dateFrom)}_to_${escapeHtml(dateTo)}.csv`
   } else if (activeTab === 'consultations') {
     const list = data.consultations || []
     if (list.length === 0) {
@@ -900,7 +901,7 @@ export async function exportReportToCSV(options) {
       c.diagnosis || EMPTY,
       c.treatment || EMPTY,
     ])
-    filename = `Consultations_Report_${dateFrom}_to_${dateTo}.csv`
+    filename = `Consultations_Report_${escapeHtml(dateFrom)}_to_${escapeHtml(dateTo)}.csv`
   } else if (activeTab === 'inventory') {
     if (invSubView === 'usage') {
       const list = data.invTransactions || []
@@ -916,7 +917,7 @@ export async function exportReportToCSV(options) {
         t.reason || EMPTY,
         t.recorded_by || EMPTY,
       ])
-      filename = `Inventory_Usage_Report_${dateFrom}_to_${dateTo}.csv`
+      filename = `Inventory_Usage_Report_${escapeHtml(dateFrom)}_to_${escapeHtml(dateTo)}.csv`
     } else if (invSubView === 'expiring') {
       const list = data.expiringBatches || []
       if (list.length === 0) { toast.error('No expiring batch records to export.'); return }
@@ -930,7 +931,7 @@ export async function exportReportToCSV(options) {
         b.remaining ?? 0,
         b.status || EMPTY,
       ])
-      filename = `Inventory_Expiring_Batches_Report_${dateFrom}_to_${dateTo}.csv`
+      filename = `Inventory_Expiring_Batches_Report_${escapeHtml(dateFrom)}_to_${escapeHtml(dateTo)}.csv`
     } else {
       const list = (invSubView === 'low_stock' ? data.lowStockItems : data.invItems) || []
       if (list.length === 0) { toast.error('No inventory records to export.'); return }
@@ -944,7 +945,7 @@ export async function exportReportToCSV(options) {
         i.location || EMPTY,
         i.status || 'normal',
       ])
-      filename = `Inventory_Stock_Report_${dateFrom}_to_${dateTo}.csv`
+      filename = `Inventory_Stock_Report_${escapeHtml(dateFrom)}_to_${escapeHtml(dateTo)}.csv`
     }
   } else if (activeTab === 'symptoms') {
     const list = data.allSymptomCategories || []
@@ -957,9 +958,9 @@ export async function exportReportToCSV(options) {
       i + 1,
       c.name,
       c.count,
-      `${c.percentage}%`,
+      `${escapeHtml(c.percentage)}%`,
     ])
-    filename = `Frequent_Symptoms_Report_${dateFrom}_to_${dateTo}.csv`
+    filename = `Frequent_Symptoms_Report_${escapeHtml(dateFrom)}_to_${escapeHtml(dateTo)}.csv`
   }
 
   // Construct CSV: one header row, UTF-8 with BOM

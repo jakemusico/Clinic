@@ -17,6 +17,7 @@ import { useRef } from 'react'
 import { toast } from 'react-hot-toast'
 import { EMPTY, NO_SERVICE, serviceNameOf } from '../utils/emptyValue'
 import { formatDateLong } from '../utils/dateUtils'
+import { escapeHtml } from '../utils/escapeHtml'
 
 /* ── Helpers ────────────────────────────────────────────────── */
 const fmtDate = (value) => formatDateLong(value, { weekday: 'long', month: 'long' })
@@ -79,10 +80,10 @@ body{font-family:'Inter',Arial,sans-serif;font-size:11pt;color:#0F172A;backgroun
 function patientRows(pu) {
   return `
     <div class="grid2">
-      <div class="field"><div class="flabel">Full Name</div><div class="fval accent">${pu.name || EMPTY}</div></div>
-      <div class="field"><div class="flabel">Student / Employee ID</div><div class="fval">${pu.student_id || EMPTY}</div></div>
-      <div class="field"><div class="flabel">Email</div><div class="fval">${pu.email || EMPTY}</div></div>
-      <div class="field"><div class="flabel">Department / Course</div><div class="fval">${pu.department || EMPTY}</div></div>
+      <div class="field"><div class="flabel">Full Name</div><div class="fval accent">${escapeHtml(pu.name || EMPTY)}</div></div>
+      <div class="field"><div class="flabel">Student / Employee ID</div><div class="fval">${escapeHtml(pu.student_id || EMPTY)}</div></div>
+      <div class="field"><div class="flabel">Email</div><div class="fval">${escapeHtml(pu.email || EMPTY)}</div></div>
+      <div class="field"><div class="flabel">Department / Course</div><div class="fval">${escapeHtml(pu.department || EMPTY)}</div></div>
     </div>`
 }
 
@@ -94,29 +95,29 @@ function vitalsRows(v, showBMI = true) {
   return `
     <div class="vbox">
       <div class="grid3">
-        <div class="field"><div class="flabel">Blood Pressure</div><div class="fval">${v.blood_pressure || v.bp || EMPTY}</div></div>
-        <div class="field"><div class="flabel">Temperature</div><div class="fval">${v.temperature ? v.temperature + ' °C' : EMPTY}</div></div>
-        <div class="field"><div class="flabel">Pulse Rate</div><div class="fval">${v.pulse_rate ? v.pulse_rate + ' bpm' : EMPTY}</div></div>
-        <div class="field"><div class="flabel">Weight</div><div class="fval">${v.weight ? v.weight + ' kg' : EMPTY}</div></div>
-        <div class="field"><div class="flabel">Height</div><div class="fval">${v.height ? v.height + ' cm' : EMPTY}</div></div>
-        <div class="field"><div class="flabel">BMI</div><div class="fval accent">${bmiDisplay}</div></div>
+        <div class="field"><div class="flabel">Blood Pressure</div><div class="fval">${escapeHtml(v.blood_pressure || v.bp || EMPTY)}</div></div>
+        <div class="field"><div class="flabel">Temperature</div><div class="fval">${escapeHtml(v.temperature ? v.temperature + ' °C' : EMPTY)}</div></div>
+        <div class="field"><div class="flabel">Pulse Rate</div><div class="fval">${escapeHtml(v.pulse_rate ? v.pulse_rate + ' bpm' : EMPTY)}</div></div>
+        <div class="field"><div class="flabel">Weight</div><div class="fval">${escapeHtml(v.weight ? v.weight + ' kg' : EMPTY)}</div></div>
+        <div class="field"><div class="flabel">Height</div><div class="fval">${escapeHtml(v.height ? v.height + ' cm' : EMPTY)}</div></div>
+        <div class="field"><div class="flabel">BMI</div><div class="fval accent">${escapeHtml(bmiDisplay)}</div></div>
       </div>
-      ${v.respiratory_rate ? `<div class="field" style="margin-top:6px"><div class="flabel">Respiratory Rate</div><div class="fval">${v.respiratory_rate} breaths/min</div></div>` : ''}
+      ${v.respiratory_rate ? `<div class="field" style="margin-top:6px"><div class="flabel">Respiratory Rate</div><div class="fval">${escapeHtml(v.respiratory_rate)} breaths/min</div></div>` : ''}
     </div>`
 }
 
 function textBlock(label, value) {
   const empty = !value || String(value).trim() === ''
   return `<div class="tblock">
-    <div class="tlabel">${label}</div>
-    <div class="tval${empty ? ' empty' : ''}">${empty ? EMPTY : String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+    <div class="tlabel">${escapeHtml(label)}</div>
+    <div class="tval${empty ? ' empty' : ''}">${escapeHtml(empty ? EMPTY : value)}</div>
   </div>`
 }
 
 function sigRow(staffName, staffTitle, showStudent, studentName) {
   return `<div class="sig-row">
-    ${showStudent ? `<div class="sig-block"><div class="sig-line"></div><div class="sig-name">${studentName || 'Patient'}</div><div class="sig-title">Patient Signature</div></div>` : ''}
-    <div class="sig-block"><div class="sig-line"></div><div class="sig-name">${staffName || 'Clinic Staff'}</div><div class="sig-title">${staffTitle || 'Clinic Nurse / Medical Staff'}</div></div>
+    ${showStudent ? `<div class="sig-block"><div class="sig-line"></div><div class="sig-name">${escapeHtml(studentName || 'Patient')}</div><div class="sig-title">Patient Signature</div></div>` : ''}
+    <div class="sig-block"><div class="sig-line"></div><div class="sig-name">${escapeHtml(staffName || 'Clinic Staff')}</div><div class="sig-title">${escapeHtml(staffTitle || 'Clinic Nurse / Medical Staff')}</div></div>
   </div>`
 }
 
@@ -125,9 +126,9 @@ function buildConsultation(record, vitals, pu) {
     <div class="doc-section"><div class="sec-title">Patient Information</div>${patientRows(pu)}</div>
     <div class="doc-section"><div class="sec-title">Consultation Overview</div>
       <div class="grid2">
-        <div class="field"><div class="flabel">Date</div><div class="fval">${fmtDate(record.visit_date)}</div></div>
-        <div class="field"><div class="flabel">Clinic Service</div><div class="fval">${serviceNameOf(record) || NO_SERVICE}</div></div>
-        <div class="field"><div class="flabel">Attending Staff</div><div class="fval">${record.created_by?.name || 'Clinic Staff'}</div></div>
+        <div class="field"><div class="flabel">Date</div><div class="fval">${escapeHtml(fmtDate(record.visit_date))}</div></div>
+        <div class="field"><div class="flabel">Clinic Service</div><div class="fval">${escapeHtml(serviceNameOf(record) || NO_SERVICE)}</div></div>
+        <div class="field"><div class="flabel">Attending Staff</div><div class="fval">${escapeHtml(record.created_by?.name || 'Clinic Staff')}</div></div>
         <div class="field"><div class="flabel">Status</div><div class="fval">Completed</div></div>
       </div>
     </div>
@@ -150,8 +151,8 @@ function buildPhysical(record, vitals, pu) {
     <div class="doc-section"><div class="sec-title">Patient Information</div>${patientRows(pu)}</div>
     <div class="doc-section"><div class="sec-title">Examination Details</div>
       <div class="grid2">
-        <div class="field"><div class="flabel">Date of Examination</div><div class="fval">${fmtDate(record.visit_date)}</div></div>
-        <div class="field"><div class="flabel">Attending Staff</div><div class="fval">${record.created_by?.name || 'Clinic Staff'}</div></div>
+        <div class="field"><div class="flabel">Date of Examination</div><div class="fval">${escapeHtml(fmtDate(record.visit_date))}</div></div>
+        <div class="field"><div class="flabel">Attending Staff</div><div class="fval">${escapeHtml(record.created_by?.name || 'Clinic Staff')}</div></div>
       </div>
     </div>
     <div class="doc-section"><div class="sec-title">Vital Signs & Anthropometric Data</div>${vitalsRows(vitals, true)}</div>
@@ -171,25 +172,25 @@ function buildCertificate(record, vitals, pu) {
     <div class="doc-section"><div class="sec-title">Patient Information</div>${patientRows(pu)}</div>
     <div class="doc-section"><div class="sec-title">Assessment Details</div>
       <div class="grid2">
-        <div class="field"><div class="flabel">Date of Examination</div><div class="fval">${fmtDate(record.visit_date)}</div></div>
-        <div class="field"><div class="flabel">Purpose</div><div class="fval">${purpose}</div></div>
+        <div class="field"><div class="flabel">Date of Examination</div><div class="fval">${escapeHtml(fmtDate(record.visit_date))}</div></div>
+        <div class="field"><div class="flabel">Purpose</div><div class="fval">${escapeHtml(purpose)}</div></div>
       </div>
     </div>
     <div class="doc-section"><div class="sec-title">Physical Assessment — Vital Signs & Anthropometric Data</div>${vitalsRows(vitals, true)}</div>
     <div class="cert-box">
-      This is to certify that <strong>${pu.name || '______________________'}</strong>,
-      Student / Employee ID No. <strong>${pu.student_id || '______________________'}</strong>,
-      of <strong>${pu.department || '______________________'}</strong>,
-      has been examined on <strong>${fmtDate(record.visit_date)}</strong>.
+      This is to certify that <strong>${escapeHtml(pu.name || '______________________')}</strong>,
+      Student / Employee ID No. <strong>${escapeHtml(pu.student_id || '______________________')}</strong>,
+      of <strong>${escapeHtml(pu.department || '______________________')}</strong>,
+      has been examined on <strong>${escapeHtml(fmtDate(record.visit_date))}</strong>.
       Based on the medical assessment, the patient is found to be
-      <strong>${fitness}</strong> for the stated purpose.
+      <strong>${escapeHtml(fitness)}</strong> for the stated purpose.
     </div>
     <div class="doc-section"><div class="sec-title">Medical Findings & Remarks</div>
       ${textBlock('Medical Findings / Clinical Findings', record.assessment || record.diagnosis)}
       ${(record.notes || record.remarks) ? textBlock('Additional Remarks', record.notes || record.remarks) : ''}
     </div>
     <div class="doc-section"><div class="sec-title">Fitness / Assessment Result</div>
-      <div class="flabel">Result</div><div class="fval highlight">${fitness}</div>
+      <div class="flabel">Result</div><div class="fval highlight">${escapeHtml(fitness)}</div>
     </div>
     ${sigRow(record.created_by?.name, 'Attending Nurse / Medical Officer', true, pu.name)}`
 }
@@ -200,8 +201,8 @@ function buildTreatment(record, vitals, pu) {
     <div class="doc-section"><div class="sec-title">Patient Information</div>${patientRows(pu)}</div>
     <div class="doc-section"><div class="sec-title">Incident & Treatment Details</div>
       <div class="grid2">
-        <div class="field"><div class="flabel">Date of Treatment</div><div class="fval">${fmtDate(record.visit_date)}</div></div>
-        <div class="field"><div class="flabel">Attending Staff</div><div class="fval">${record.created_by?.name || 'Clinic Staff'}</div></div>
+        <div class="field"><div class="flabel">Date of Treatment</div><div class="fval">${escapeHtml(fmtDate(record.visit_date))}</div></div>
+        <div class="field"><div class="flabel">Attending Staff</div><div class="fval">${escapeHtml(record.created_by?.name || 'Clinic Staff')}</div></div>
       </div>
     </div>
     ${hasVitals ? `<div class="doc-section"><div class="sec-title">Vital Signs at Time of Treatment</div>${vitalsRows(vitals, true)}</div>` : ''}
@@ -221,8 +222,8 @@ function buildVitals(record, vitals, pu) {
     <div class="doc-section"><div class="sec-title">Patient Information</div>${patientRows(pu)}</div>
     <div class="doc-section"><div class="sec-title">Monitoring Details</div>
       <div class="grid2">
-        <div class="field"><div class="flabel">Date of Monitoring</div><div class="fval">${fmtDate(record.visit_date)}</div></div>
-        <div class="field"><div class="flabel">Attending Staff</div><div class="fval">${record.created_by?.name || 'Clinic Staff'}</div></div>
+        <div class="field"><div class="flabel">Date of Monitoring</div><div class="fval">${escapeHtml(fmtDate(record.visit_date))}</div></div>
+        <div class="field"><div class="flabel">Attending Staff</div><div class="fval">${escapeHtml(record.created_by?.name || 'Clinic Staff')}</div></div>
       </div>
     </div>
     <div class="doc-section"><div class="sec-title">Blood Pressure & Vital Signs Monitoring</div>${vitalsRows(vitals, true)}</div>
@@ -236,14 +237,14 @@ function buildVitals(record, vitals, pu) {
 }
 
 function buildDental(record, pu) {
-  const teethTags = (record.affected_teeth || []).map(t => `<span class="tooth-tag">#${t}</span>`).join('')
+  const teethTags = (record.affected_teeth || []).map(t => `<span class="tooth-tag">#${escapeHtml(t)}</span>`).join('')
   return `
     <div class="doc-section"><div class="sec-title">Patient Information</div>${patientRows(pu)}</div>
     <div class="doc-section"><div class="sec-title">Consultation Overview</div>
       <div class="grid2">
-        <div class="field"><div class="flabel">Date of Consultation</div><div class="fval">${fmtDate(record.consultation_date)}</div></div>
-        <div class="field"><div class="flabel">Service</div><div class="fval">${serviceNameOf(record) || NO_SERVICE}</div></div>
-        <div class="field"><div class="flabel">Attending Dentist</div><div class="fval">${record.dentist?.name || 'Dentist'}</div></div>
+        <div class="field"><div class="flabel">Date of Consultation</div><div class="fval">${escapeHtml(fmtDate(record.consultation_date))}</div></div>
+        <div class="field"><div class="flabel">Service</div><div class="fval">${escapeHtml(serviceNameOf(record) || NO_SERVICE)}</div></div>
+        <div class="field"><div class="flabel">Attending Dentist</div><div class="fval">${escapeHtml(record.dentist?.name || 'Dentist')}</div></div>
         <div class="field"><div class="flabel">Status</div><div class="fval">Completed</div></div>
       </div>
     </div>
@@ -328,22 +329,22 @@ export default function PrintableRecord({
     const footer = `
       <div class="doc-footer">
         <span>FSUU University Clinic — Official Record</span>
-        <span>Record #${record?.id || EMPTY} &nbsp;|&nbsp; Printed: ${new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+        <span>Record #${escapeHtml(record?.id || EMPTY)} &nbsp;|&nbsp; Printed: ${escapeHtml(new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }))}</span>
       </div>`
 
     const header = `
       <div class="doc-header">
         <div class="school">Father Saturnino Urios University</div>
         <div class="clinic">University Clinic &amp; Health Services</div>
-        <div class="doc-title">${docTitle}</div>
-        <div class="doc-num">Record No. ${record?.id || 'N/A'} &nbsp;|&nbsp; Generated: ${new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+        <div class="doc-title">${escapeHtml(docTitle)}</div>
+        <div class="doc-num">Record No. ${escapeHtml(record?.id || 'N/A')} &nbsp;|&nbsp; Generated: ${escapeHtml(new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }))}</div>
       </div>`
 
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
-  <title>${docTitle} — FSUU Clinic</title>
+  <title>${escapeHtml(docTitle)} — FSUU Clinic</title>
   <style>${PRINT_CSS}</style>
 </head>
 <body>
@@ -365,6 +366,7 @@ export default function PrintableRecord({
       toast.error('Pop-up blocked! Please allow pop-ups for this site to enable printing.')
       return
     }
+    pw.opener = null // the print window gets no reference back to this page
     pw.document.write(html)
     pw.document.close()
   }

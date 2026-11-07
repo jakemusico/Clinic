@@ -5,10 +5,39 @@ namespace Database\Seeders;
 use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
     use WithoutModelEvents;
+
+    /** Passwords generated for newly created accounts outside local: email => password. */
+    private array $issuedPasswords = [];
+
+    /**
+     * Create a demo account unless it already exists.
+     *
+     * Local/testing: the well-known demo password. Anywhere else: a random password per account,
+     * printed once at the end of the run, and the account must change it at first login.
+     */
+    private function seedUser(string $email, array $attributes): User
+    {
+        $password = SeedPassword::generate();
+
+        $user = User::firstOrCreate(
+            ['email' => $email],
+            $attributes + [
+                'password' => Hash::make($password),
+                'must_change_password' => ! SeedPassword::isLocal(),
+            ]
+        );
+
+        if ($user->wasRecentlyCreated && ! SeedPassword::isLocal()) {
+            $this->issuedPasswords[$email] = $password;
+        }
+
+        return $user;
+    }
 
     /**
      * Seed the application's database.
@@ -29,42 +58,30 @@ class DatabaseSeeder extends Seeder
         }
 
         // Admin
-        User::firstOrCreate(
-            ['email' => 'admin@clinic.local'],
-            [
-                'first_name' => 'System',
-                'last_name' => 'Administrator',
-                'password' => \Illuminate\Support\Facades\Hash::make('password123'),
-                'role_id' => 1,
-                'role' => 'admin',
-            ]
-        );
+        $this->seedUser('admin@clinic.local', [
+            'first_name' => 'System',
+            'last_name' => 'Administrator',
+            'role_id' => 1,
+            'role' => 'admin',
+        ]);
 
         // Clinic Staff (Nurse)
-        $nurse = User::firstOrCreate(
-            ['email' => 'nurse@clinic.local'],
-            [
-                'title' => 'Nurse',
-                'first_name' => 'Nurse',
-                'last_name' => 'Joy',
-                'password' => \Illuminate\Support\Facades\Hash::make('password123'),
-                'role_id' => 2,
-                'role' => 'clinic_staff',
-            ]
-        );
+        $nurse = $this->seedUser('nurse@clinic.local', [
+            'title' => 'Nurse',
+            'first_name' => 'Nurse',
+            'last_name' => 'Joy',
+            'role_id' => 2,
+            'role' => 'clinic_staff',
+        ]);
 
         // Dentist
-        $dentist = User::firstOrCreate(
-            ['email' => 'dentist@clinic.local'],
-            [
-                'title' => 'Dr.',
-                'first_name' => 'Arthur',
-                'last_name' => 'Dent',
-                'password' => \Illuminate\Support\Facades\Hash::make('password123'),
-                'role_id' => 3,
-                'role' => 'dentist',
-            ]
-        );
+        $dentist = $this->seedUser('dentist@clinic.local', [
+            'title' => 'Dr.',
+            'first_name' => 'Arthur',
+            'last_name' => 'Dent',
+            'role_id' => 3,
+            'role' => 'dentist',
+        ]);
 
         // Seed default working schedules (Mon-Fri 08:00-12:00, 13:00-17:00)
         $days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
@@ -98,32 +115,24 @@ class DatabaseSeeder extends Seeder
         }
 
         // Sample Student
-        User::firstOrCreate(
-            ['email' => 'student@clinic.local'],
-            [
-                'first_name' => 'Juan',
-                'last_name' => 'Dela Cruz',
-                'password' => \Illuminate\Support\Facades\Hash::make('password123'),
-                'role_id' => 4,
-                'role' => 'student',
-                'student_id' => '2024-0001',
-                'department' => 'College of Engineering',
-            ]
-        );
+        $this->seedUser('student@clinic.local', [
+            'first_name' => 'Juan',
+            'last_name' => 'Dela Cruz',
+            'role_id' => 4,
+            'role' => 'student',
+            'student_id' => '2024-0001',
+            'department' => 'College of Engineering',
+        ]);
 
         // Sample Faculty
-        User::firstOrCreate(
-            ['email' => 'faculty@clinic.local'],
-            [
-                'title' => 'Prof.',
-                'first_name' => 'Maria',
-                'last_name' => 'Santos',
-                'password' => \Illuminate\Support\Facades\Hash::make('password123'),
-                'role_id' => 5,
-                'role' => 'faculty_staff',
-                'department' => 'College of Science',
-            ]
-        );
+        $this->seedUser('faculty@clinic.local', [
+            'title' => 'Prof.',
+            'first_name' => 'Maria',
+            'last_name' => 'Santos',
+            'role_id' => 5,
+            'role' => 'faculty_staff',
+            'department' => 'College of Science',
+        ]);
 
         // Clinic Services
         $services = [
@@ -203,6 +212,23 @@ class DatabaseSeeder extends Seeder
         }
 
         $this->call(InventorySeeder::class);
+
+        $this->reportIssuedPasswords();
+    }
+
+    /** Show the generated passwords once. They are stored hashed, so they cannot be shown again. */
+    private function reportIssuedPasswords(): void
+    {
+        if (! $this->issuedPasswords || ! $this->command) {
+            return;
+        }
+
+        $this->command->warn('Demo accounts were created with RANDOM passwords (not password123). Save them now, they are not stored anywhere:');
+        $this->command->table(
+            ['Email', 'Password'],
+            array_map(fn ($email, $password) => [$email, $password], array_keys($this->issuedPasswords), $this->issuedPasswords)
+        );
+        $this->command->warn('Each account must change its password at first login. Consider deleting these demo accounts in production.');
     }
 
 

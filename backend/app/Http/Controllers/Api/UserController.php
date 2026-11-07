@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Role;
 use App\Services\AuditLogger;
+use App\Support\NameRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -83,7 +84,7 @@ class UserController extends Controller
         $rules = $this->baseRules($role);
         $rules['password'] = ['required', 'string', 'min:8'];
 
-        $validated = $request->validate($rules);
+        $validated = $request->validate($rules, NameRules::messages(['title', 'first_name', 'middle_name', 'last_name']));
 
         $userData = $this->buildUserData($validated, $role);
         $userData['is_active']            = true;
@@ -125,7 +126,7 @@ class UserController extends Controller
             $rules['password'] = ['string', 'min:8'];
         }
 
-        $validated = $request->validate($rules);
+        $validated = $request->validate($rules, NameRules::messages(['title', 'first_name', 'middle_name', 'last_name']));
 
         $oldValues = $user->toArray();
         $oldRole   = $user->role_slug;
@@ -138,6 +139,11 @@ class UserController extends Controller
         }
 
         $user->update($userData);
+
+        // The password was reset by an admin: every existing session of that user is revoked.
+        if ($request->filled('password')) {
+            $user->tokens()->delete();
+        }
 
         $newValues = $user->getChanges();
 
@@ -174,6 +180,11 @@ class UserController extends Controller
         $oldValues = ['is_active' => $user->is_active];
         $user->update(['is_active' => ! $user->is_active]);
         $newValues = ['is_active' => $user->is_active];
+
+        // A deactivated account is signed out everywhere at once.
+        if (! $user->is_active) {
+            $user->tokens()->delete();
+        }
 
         AuditLogger::log(
             'user_status_toggled',
@@ -335,11 +346,11 @@ class UserController extends Controller
         }
 
         $rules = [
-            'title'       => ['nullable', 'string', 'max:50'],
-            'first_name'  => ['required', 'string', 'max:100'],
-            'middle_name' => ['nullable', 'string', 'max:100'],
-            'last_name'   => ['required', 'string', 'max:100'],
-            'suffix'      => ['nullable', 'string', 'max:50'],
+            'title'       => ['nullable', 'string', 'max:50', ...NameRules::person()],
+            'first_name'  => ['required', 'string', 'max:100', ...NameRules::person()],
+            'middle_name' => ['nullable', 'string', 'max:100', ...NameRules::person()],
+            'last_name'   => ['required', 'string', 'max:100', ...NameRules::person()],
+            'suffix'      => ['nullable', 'string', 'max:50', ...NameRules::suffix()],
             'email'       => ['required', 'string', 'email', 'max:255', $uniqueEmail],
             'role'        => ['nullable', 'string'],
             'role_id'     => ['nullable', 'integer', 'exists:roles,id'],

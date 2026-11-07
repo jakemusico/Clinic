@@ -7,6 +7,8 @@ use App\Models\Notification;
 use App\Models\User;
 use App\Models\Role;
 use App\Services\AuditLogger;
+use App\Support\NameRules;
+use Laravel\Sanctum\PersonalAccessToken;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -23,10 +25,10 @@ class AuthController extends Controller
     public function register(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'first_name'            => ['required', 'string', 'max:100'],
-            'middle_name'           => ['nullable', 'string', 'max:100'],
-            'last_name'             => ['required', 'string', 'max:100'],
-            'suffix'                => ['nullable', 'string', 'max:50'],
+            'first_name'            => ['required', 'string', 'max:100', ...NameRules::person()],
+            'middle_name'           => ['nullable', 'string', 'max:100', ...NameRules::person()],
+            'last_name'             => ['required', 'string', 'max:100', ...NameRules::person()],
+            'suffix'                => ['nullable', 'string', 'max:50', ...NameRules::suffix()],
             'email'                 => ['required', 'string', 'email', 'max:255', 'unique:users'],
             'password'              => ['required', 'confirmed', Password::min(8)],
             'role'                  => ['required', 'string', 'in:student,faculty_staff'],
@@ -51,7 +53,7 @@ class AuthController extends Controller
             'guardian_contact'      => ['nullable', 'string', 'max:50'],
             // Faculty-only fields
             'department'            => ['nullable', 'string', 'max:255'],
-        ]);
+        ], NameRules::messages());
 
         // Extra required validation for student role
         if ($validated['role'] === 'student') {
@@ -330,11 +332,11 @@ class AuthController extends Controller
         // through POST /api/profile/photo, and only its path is stored.
         $validated = $request->validate([
             // User identification & Name fields
-            'name'                  => ['nullable', 'string', 'max:255'],
-            'first_name'            => ['nullable', 'string', 'max:100'],
-            'middle_name'           => ['nullable', 'string', 'max:100'],
-            'last_name'             => ['nullable', 'string', 'max:100'],
-            'suffix'                => ['nullable', 'string', 'max:50'],
+            'name'                  => ['nullable', 'string', 'max:255', ...NameRules::person()],
+            'first_name'            => ['nullable', 'string', 'max:100', ...NameRules::person()],
+            'middle_name'           => ['nullable', 'string', 'max:100', ...NameRules::person()],
+            'last_name'             => ['nullable', 'string', 'max:100', ...NameRules::person()],
+            'suffix'                => ['nullable', 'string', 'max:50', ...NameRules::suffix()],
             'email'                 => ['nullable', 'string', 'email', 'max:255'],
             'current_password'      => ['nullable', 'string'],
             'student_id'            => ['nullable', 'string', 'max:50', \Illuminate\Validation\Rule::unique('users', 'student_id')->ignore($user->id)],
@@ -369,7 +371,7 @@ class AuthController extends Controller
             'emergency_relationship'=> ['nullable', 'string', 'max:100'],
             'emergency_contact_no'  => ['nullable', 'string', 'max:50'],
             'emergency_alt_contact' => ['nullable', 'string', 'max:50'],
-        ], [
+        ], NameRules::messages(['name', 'first_name', 'middle_name', 'last_name']) + [
             'student_id.unique'            => 'This ID is already used by another account.',
             'student_id.max'               => 'The ID must not be longer than 50 characters.',
             'license_no.max'               => 'The PRC license number must not be longer than 100 characters.',
@@ -587,6 +589,13 @@ class AuthController extends Controller
             'password'             => Hash::make($validated['password']),
             'must_change_password' => false,
         ]);
+
+        // A new password signs out every other session (a stolen token stops working). The token
+        // making this request is kept, so the user stays signed in on this device.
+        $current = $user->currentAccessToken();
+        $user->tokens()
+            ->when($current instanceof PersonalAccessToken, fn ($q) => $q->where('id', '!=', $current->id))
+            ->delete();
 
         AuditLogger::log(
             'password_changed',
