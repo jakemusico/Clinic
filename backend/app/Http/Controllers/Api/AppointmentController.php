@@ -14,6 +14,7 @@ use Carbon\Carbon;
 use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 
 class AppointmentController extends Controller
@@ -256,23 +257,34 @@ class AppointmentController extends Controller
             return response()->json(['message' => 'Selected staff member is not part of the clinic crew.'], 422);
         }
 
-        // Validate Slot Availability
-        $err = $this->validateSlot($staffId, $dateStr, $timeStr);
-        if ($err) {
-            return response()->json(['message' => $err], 422);
+        // Check the slot and create the appointment in ONE transaction. The staff member's row is locked
+        // first, so two people booking the same staff member at the same moment are handled one after
+        // the other: the second one finds the first booking and is refused.
+        $result = DB::transaction(function () use ($staffId, $dateStr, $timeStr, $service, $patient, $serviceId, $scheduledAt, $validated) {
+            User::whereKey($staffId)->lockForUpdate()->first();
+
+            $err = $this->validateSlot($staffId, $dateStr, $timeStr, null, $this->serviceMinutes($service));
+            if ($err) {
+                return $err;
+            }
+
+            return Appointment::create([
+                'patient_id'       => $patient->id,
+                'service_id'       => $serviceId,
+                'staff_id'         => $staffId,
+                'scheduled_at'     => $scheduledAt,
+                'appointment_type' => $validated['appointment_type'],
+                'status'           => 'pending',
+                'is_read'          => false,
+                'notes'            => $validated['notes'] ?? null,
+            ]);
+        }, 3);
+
+        if (is_string($result)) {
+            return response()->json(['message' => $result], 422);
         }
 
-        // Create the appointment
-        $appointment = Appointment::create([
-            'patient_id'       => $patient->id,
-            'service_id'       => $serviceId,
-            'staff_id'         => $staffId,
-            'scheduled_at'     => $scheduledAt,
-            'appointment_type' => $validated['appointment_type'],
-            'status'           => 'pending',
-            'is_read'          => false,
-            'notes'            => $validated['notes'] ?? null,
-        ]);
+        $appointment = $result;
 
         // Notify attending staff
         $isDental = $service->care_type === ClinicService::CARE_DENTAL;
@@ -322,17 +334,29 @@ class AppointmentController extends Controller
         $dateStr     = $newSchedule->format('Y-m-d');
         $timeStr     = $newSchedule->format('H:i');
 
-        // Validate Slot
-        $err = $this->validateSlot($appointment->staff_id, $dateStr, $timeStr, $appointment->id);
+        $oldValues = $appointment->toArray();
+
+        // Same rule as booking: lock the staff member, check the new time, then move the appointment
+        $err = DB::transaction(function () use ($appointment, $dateStr, $timeStr, $newSchedule) {
+            User::whereKey($appointment->staff_id)->lockForUpdate()->first();
+
+            $err = $this->validateSlot($appointment->staff_id, $dateStr, $timeStr, $appointment->id, $this->serviceMinutes($appointment->service));
+            if ($err) {
+                return $err;
+            }
+
+            $appointment->update([
+                'scheduled_at' => $newSchedule,
+                'status'       => 'pending', // reset to pending on reschedule
+            ]);
+
+            return null;
+        }, 3);
+
         if ($err) {
             return response()->json(['message' => $err], 422);
         }
 
-        $oldValues = $appointment->toArray();
-        $appointment->update([
-            'scheduled_at' => $newSchedule,
-            'status'       => 'pending', // reset to pending on reschedule
-        ]);
         $newValues = $appointment->getChanges();
 
         AuditLogger::log('appointment_rescheduled', Appointment::class, $appointment->id, $oldValues, $newValues);
@@ -451,7 +475,19 @@ class AppointmentController extends Controller
 
     // ── Helper Slot Validator ──────────────────────────────────────────
 
-    private function validateSlot(int $staffId, string $dateStr, string $timeStr, ?int $excludeAppointmentId = null): ?string
+    /** How long an appointment for this service lasts (minutes); 30 when the service has no duration. */
+    private function serviceMinutes(?ClinicService $service): int
+    {
+        $minutes = (int) ($service?->duration_minutes ?? 0);
+
+        return $minutes > 0 ? $minutes : 30;
+    }
+
+    /**
+     * Returns an error message, or null when the staff member can take the appointment.
+     * Call inside the transaction that holds the staff member's row lock.
+     */
+    private function validateSlot(int $staffId, string $dateStr, string $timeStr, ?int $excludeAppointmentId = null, int $durationMinutes = 30): ?string
     {
         $date      = Carbon::parse($dateStr);
         $dayOfWeek = strtolower($date->format('l'));
@@ -476,15 +512,27 @@ class AppointmentController extends Controller
             return 'Selected time is outside the staff member\'s working hours.';
         }
 
-        // 3. Double Booking Check
-        $isBooked = Appointment::where('staff_id', $staffId)
-            ->whereDate('scheduled_at', $date)
-            ->whereTime('scheduled_at', $timeStr)
+        // 3. Double Booking Check: the new appointment runs from $start to $end (service duration) and must
+        //    not overlap ANY active appointment of this staff member, whatever its own duration is.
+        $start = Carbon::parse("{$dateStr} {$timeStr}");
+        $end   = $start->copy()->addMinutes($durationMinutes);
+
+        $sameDay = Appointment::with('service:id,duration_minutes')
+            ->where('staff_id', $staffId)
+            ->whereBetween('scheduled_at', [$start->copy()->startOfDay(), $start->copy()->endOfDay()])
             ->whereIn('status', ['pending', 'confirmed'])
             ->when($excludeAppointmentId, fn($q) => $q->where('id', '!=', $excludeAppointmentId))
-            ->exists();
-        if ($isBooked) {
-            return 'This slot is already booked.';
+            ->get();
+
+        foreach ($sameDay as $other) {
+            $otherStart = Carbon::parse($other->scheduled_at);
+            $otherEnd   = $otherStart->copy()->addMinutes($this->serviceMinutes($other->service));
+
+            if ($otherStart->lt($end) && $otherEnd->gt($start)) {
+                return $otherStart->equalTo($start)
+                    ? 'This slot is already booked.'
+                    : 'This time overlaps another booking for this staff member (' . $otherStart->format('g:i A') . ' to ' . $otherEnd->format('g:i A') . ').';
+            }
         }
 
         return null;

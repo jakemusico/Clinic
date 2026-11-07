@@ -11,6 +11,7 @@ use App\Support\NameRules;
 use Laravel\Sanctum\PersonalAccessToken;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rules\Password;
@@ -76,39 +77,49 @@ class AuthController extends Controller
         $roleModel = Role::where('slug', $roleSlug)->first();
         $roleId = $roleModel?->id ?? ($roleSlug === 'student' ? 4 : 5);
 
-        $user = User::create([
-            'first_name'            => $validated['first_name'],
-            'middle_name'           => $validated['middle_name'] ?? null,
-            'last_name'             => $validated['last_name'],
-            'suffix'                => $validated['suffix'] ?? null,
-            'email'                 => $validated['email'],
-            'password'              => $validated['password'],
-            'role_id'               => $roleId,
-            'role'                  => $roleSlug,
-            'date_of_birth'         => $validated['date_of_birth'],
-            'sex'                   => $validated['sex'],
-            'age'                   => $age,
-            'student_id'            => $validated['student_id'] ?? null,
-            'department'            => $validated['department'] ?? null,
-            'contact_no'            => $validated['contact_no'] ?? null,
-            'grade_level'           => $validated['grade_level'] ?? null,
-            'section'               => $validated['section'] ?? null,
-            'guardian_relationship' => $validated['guardian_relationship'] ?? null,
-            'address'               => $validated['address'] ?? null,
-            'terms_accepted_at'     => now(),
-        ]);
-
-        // Seed patient record for students (guardian info + DOB/sex/age)
-        if ($validated['role'] === 'student') {
-            $user->patient()->create([
-                'guardian_name'         => $validated['guardian_name'] ?? null,
-                'guardian_relationship' => $validated['guardian_relationship'] ?? null,
-                'guardian_contact'      => $validated['guardian_contact'] ?? null,
+        // The account and its patient profile are created together: if either fails, neither is kept.
+        // Students and faculty/staff both get a patient row (guardian details are for students only).
+        $user = DB::transaction(function () use ($validated, $roleId, $roleSlug, $age) {
+            $user = User::create([
+                'first_name'            => $validated['first_name'],
+                'middle_name'           => $validated['middle_name'] ?? null,
+                'last_name'             => $validated['last_name'],
+                'suffix'                => $validated['suffix'] ?? null,
+                'email'                 => $validated['email'],
+                'password'              => $validated['password'],
+                'role_id'               => $roleId,
+                'role'                  => $roleSlug,
                 'date_of_birth'         => $validated['date_of_birth'],
-                'gender'                => $validated['sex'],
+                'sex'                   => $validated['sex'],
                 'age'                   => $age,
+                'student_id'            => $validated['student_id'] ?? null,
+                'department'            => $validated['department'] ?? null,
+                'contact_no'            => $validated['contact_no'] ?? null,
+                'grade_level'           => $validated['grade_level'] ?? null,
+                'section'               => $validated['section'] ?? null,
+                'guardian_relationship' => $validated['guardian_relationship'] ?? null,
+                'address'               => $validated['address'] ?? null,
+                'terms_accepted_at'     => now(),
             ]);
-        }
+
+            $patientData = [
+                'date_of_birth' => $validated['date_of_birth'],
+                'gender'        => $validated['sex'],
+                'age'           => $age,
+            ];
+
+            if ($validated['role'] === 'student') {
+                $patientData += [
+                    'guardian_name'         => $validated['guardian_name'] ?? null,
+                    'guardian_relationship' => $validated['guardian_relationship'] ?? null,
+                    'guardian_contact'      => $validated['guardian_contact'] ?? null,
+                ];
+            }
+
+            $user->patient()->create($patientData);
+
+            return $user;
+        });
 
         AuditLogger::log(
             'registered',

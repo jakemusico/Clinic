@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\InsufficientStockException;
 use App\Http\Controllers\Controller;
 use App\Models\InventoryItem;
 use App\Models\InventoryBatch;
@@ -729,6 +730,119 @@ class InventoryController extends Controller
         return response()->json($transactions);
     }
 
+    // ── Stock deduction ───────────────────────────────────────────────────
+    //
+    // Manual stock-out and consultation dispensing share the helpers below. Rules:
+    //   * Always run inside DB::transaction(). The item rows are locked first (lowest id first), so two
+    //     requests that touch the same item run one after the other and the second sees the first one's
+    //     result. Stock is then read with a locking read, which always sees the latest committed rows.
+    //   * Stock is taken from batches, earliest expiry first, and ONE OUT transaction is written for
+    //     every batch it was taken from. A batch's quantity_used therefore always matches its rows,
+    //     and reversing a row gives back exactly what that row took.
+    //   * If the batches cannot cover the quantity, InsufficientStockException is thrown and the whole
+    //     transaction rolls back.
+
+    /**
+     * Lock the given item rows, lowest id first so two requests can never wait on each other in a circle.
+     * Call inside DB::transaction(). While the locks are held, nobody else can change these items' stock.
+     *
+     * @param  int[]  $itemIds
+     * @return \Illuminate\Support\Collection<int,InventoryItem>  keyed by item id
+     */
+    public static function lockItems(array $itemIds)
+    {
+        $ids = array_values(array_unique(array_map('intval', $itemIds)));
+        sort($ids);
+
+        if (! $ids) {
+            return collect();
+        }
+
+        return InventoryItem::whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+    }
+
+    /**
+     * Current stock of an item (IN minus OUT), read with a locking read so it always sees the latest
+     * committed ledger rows (a plain SELECT inside a transaction can read an older snapshot).
+     */
+    private static function stockLocked(int $itemId): int
+    {
+        $row = InventoryTransaction::where('item_id', $itemId)
+            ->lockForUpdate()
+            ->selectRaw("COALESCE(SUM(CASE WHEN type = 'IN' THEN quantity WHEN type = 'OUT' THEN -quantity ELSE 0 END), 0) AS stock")
+            ->first();
+
+        return max(0, (int) $row->stock);
+    }
+
+    /**
+     * Take $quantity of an item from its batches and record ONE OUT transaction per batch slice.
+     *
+     * @param  array        $txAttributes     columns shared by every row (reason, recorded_by, transaction_date, notes, consultation_*)
+     * @param  int|null     $preferredBatchId taken first, even if expired (manual stock-out of a chosen batch)
+     * @param  bool         $includeExpired   medicines past their expiry date are skipped unless true (write-offs)
+     * @return InventoryTransaction[]
+     *
+     * @throws InsufficientStockException when the batches cannot cover the quantity
+     */
+    private static function deductFromBatches(InventoryItem $item, int $quantity, array $txAttributes, ?int $preferredBatchId = null, bool $includeExpired = false): array
+    {
+        $batches = InventoryBatch::where('item_id', $item->id)
+            ->where('quantity_in', '>', DB::raw('quantity_used'))
+            ->when($item->category === 'Medicine' && ! $includeExpired, fn ($q) => $q->where('expiry_date', '>=', now()->toDateString()))
+            ->orderBy('expiry_date')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+
+        if ($preferredBatchId) {
+            $preferred = InventoryBatch::where('id', $preferredBatchId)
+                ->where('item_id', $item->id)
+                ->where('quantity_in', '>', DB::raw('quantity_used'))
+                ->lockForUpdate()
+                ->first();
+
+            if ($preferred) {
+                $batches = $batches->reject(fn ($b) => $b->id === $preferred->id)->prepend($preferred)->values();
+            }
+        }
+
+        $remaining = $quantity;
+        $created   = [];
+
+        foreach ($batches as $batch) {
+            if ($remaining <= 0) {
+                break;
+            }
+
+            $take = min($remaining, $batch->quantity_in - $batch->quantity_used);
+            if ($take <= 0) {
+                continue;
+            }
+
+            $batch->increment('quantity_used', $take);
+
+            $created[] = InventoryTransaction::create($txAttributes + [
+                'item_id'  => $item->id,
+                'batch_id' => $batch->id,
+                'type'     => 'OUT',
+                'quantity' => $take,
+            ]);
+
+            $remaining -= $take;
+        }
+
+        if ($remaining > 0) {
+            $usable = $quantity - $remaining;
+            throw new InsufficientStockException([
+                "Insufficient usable stock for \"{$item->name}\" (available in batches that can be used: {$usable} {$item->unit}, requested: {$quantity})."
+                . ($item->category === 'Medicine' ? ' Expired medicine cannot be dispensed.' : ''),
+            ]);
+        }
+
+        return $created;
+    }
+
     /**
      * Manual OUT transaction (stock out / write-off / adjustment).
      */
@@ -743,77 +857,53 @@ class InventoryController extends Controller
             'transaction_date' => ['nullable', 'date'],
         ]);
 
-        $user  = $request->user();
-        $item  = InventoryItem::findOrFail($validated['item_id']);
-        $stock = $this->getStock($item->id);
+        $user   = $request->user();
+        $txDate = $validated['transaction_date'] ?? now()->toDateString();
 
-        if ($validated['quantity'] > $stock) {
-            return response()->json([
-                'message' => "Insufficient stock. Current stock: {$stock} {$item->unit}.",
-            ], 422);
-        }
+        $transactions = DB::transaction(function () use ($validated, $user, $txDate) {
+            $item  = self::lockItems([(int) $validated['item_id']])->get((int) $validated['item_id']);
+            $stock = self::stockLocked($item->id);
 
-        $txDate    = $validated['transaction_date'] ?? now()->toDateString();
-        $remaining = $validated['quantity'];
-        $usedBatchId = null;
-
-        if (!empty($validated['batch_id'])) {
-            $targetBatch = InventoryBatch::where('id', $validated['batch_id'])->where('item_id', $item->id)->first();
-            if ($targetBatch) {
-                $available = max(0, $targetBatch->quantity_in - $targetBatch->quantity_used);
-                $deduct    = min($remaining, $available);
-                $targetBatch->increment('quantity_used', $deduct);
-                $remaining  -= $deduct;
-                $usedBatchId = $targetBatch->id;
+            if ($validated['quantity'] > $stock) {
+                throw new InsufficientStockException(["Insufficient stock. Current stock: {$stock} {$item->unit}."]);
             }
+
+            return self::deductFromBatches(
+                $item,
+                (int) $validated['quantity'],
+                [
+                    'reason'           => $validated['reason'],
+                    'recorded_by'      => $user->id,
+                    'transaction_date' => $txDate,
+                    'notes'            => $validated['notes'] ?? null,
+                ],
+                ! empty($validated['batch_id']) ? (int) $validated['batch_id'] : null,
+                $validated['reason'] === 'Expired'
+            );
+        }, 3);
+
+        foreach ($transactions as $tx) {
+            AuditLogger::log('inventory_stock_out', InventoryTransaction::class, $tx->id, null, $tx->toArray());
         }
-
-        // Deduct remaining from earliest-expiry-first batches
-        if ($remaining > 0) {
-            $batches = InventoryBatch::where('item_id', $item->id)
-                ->where('quantity_in', '>', DB::raw('quantity_used'))
-                ->when($item->category === 'Medicine' && $validated['reason'] !== 'Expired', fn($q) => $q->where('expiry_date', '>=', now()->toDateString()))
-                ->orderBy('expiry_date')
-                ->orderBy('id')
-                ->get();
-
-            foreach ($batches as $batch) {
-                if ($remaining <= 0) break;
-                $available   = $batch->quantity_in - $batch->quantity_used;
-                $deduct      = min($remaining, $available);
-                $batch->increment('quantity_used', $deduct);
-                $remaining  -= $deduct;
-                $usedBatchId = $batch->id;
-            }
-        }
-
-        $tx = InventoryTransaction::create([
-            'item_id'          => $item->id,
-            'batch_id'         => $usedBatchId,
-            'type'             => 'OUT',
-            'quantity'         => $validated['quantity'],
-            'reason'           => $validated['reason'],
-            'recorded_by'      => $user->id,
-            'transaction_date' => $txDate,
-            'notes'            => $validated['notes'] ?? null,
-        ]);
-
-        AuditLogger::log('inventory_stock_out', InventoryTransaction::class, $tx->id, null, $tx->toArray());
 
         return response()->json([
-            'transaction' => $tx->load(['item', 'batch', 'recordedBy']),
-            'message'     => 'Stock out recorded successfully.',
+            'transaction'  => $transactions[0]->load(['item', 'batch', 'recordedBy']),   // first batch slice (kept for older callers)
+            'transactions' => collect($transactions)->each->load(['item', 'batch', 'recordedBy'])->values(),
+            'message'      => 'Stock out recorded successfully.',
         ], 201);
     }
 
     // ── Consultation Dispense ─────────────────────────────────────────────
 
     /**
-     * Create OUT transactions for items dispensed during a consultation.
-     * Called automatically from ClinicRecordController / DentalConsultationController.
+     * Dispense the items of a consultation: checks the stock under lock and writes the OUT transactions
+     * (one per batch slice, see deductFromBatches). Call it inside the DB::transaction() that saves the
+     * consultation, so that if any item cannot be covered the consultation is not saved either.
      *
-     * $items = [['item_id' => x, 'quantity' => y], ...]
-     * Returns error array if any item can't be dispensed, or empty array on success.
+     * $items = [['item_id' => x, 'quantity' => y, 'dosage_note' => '...'], ...]
+     *
+     * @return InventoryTransaction[]
+     * @throws InsufficientStockException listing every item that cannot be covered
      */
     public static function dispenseForConsultation(
         array  $items,
@@ -823,88 +913,106 @@ class InventoryController extends Controller
         int    $recordedByUserId,
         string $txDate
     ): array {
-        $errors = [];
-
+        // One entry per item (the same item listed twice is added up)
+        $wanted = [];
         foreach ($items as $row) {
-            $item  = InventoryItem::find($row['item_id'] ?? null);
-            $qty   = (int) ($row['quantity'] ?? 0);
-            $dosageNote = $row['dosage_note'] ?? null;
+            $itemId = (int) ($row['item_id'] ?? 0);
+            $qty    = (int) ($row['quantity'] ?? 0);
+            if ($itemId <= 0 || $qty <= 0) {
+                continue;
+            }
+            $wanted[$itemId]['quantity']    = ($wanted[$itemId]['quantity'] ?? 0) + $qty;
+            $wanted[$itemId]['dosage_note'] = $wanted[$itemId]['dosage_note'] ?? (trim((string) ($row['dosage_note'] ?? '')) ?: null);
+        }
 
-            if (!$item || $qty <= 0) {
+        if (! $wanted) {
+            return [];
+        }
+
+        $locked = self::lockItems(array_keys($wanted));
+
+        // 1. Check everything first, so the message lists every item that is short
+        $errors = [];
+        foreach ($wanted as $itemId => $w) {
+            $item = $locked->get($itemId);
+            if (! $item) {
+                continue;
+            }
+            $stock = self::stockLocked($itemId);
+            if ($w['quantity'] > $stock) {
+                $errors[] = "Insufficient stock for \"{$item->name}\" (available: {$stock} {$item->unit}, requested: {$w['quantity']}).";
+            }
+        }
+        if ($errors) {
+            throw new InsufficientStockException($errors);
+        }
+
+        // 2. Take the stock, one OUT row per batch
+        $created = [];
+        foreach ($wanted as $itemId => $w) {
+            $item = $locked->get($itemId);
+            if (! $item) {
                 continue;
             }
 
-            $stock = (new self)->getStock($item->id);
-
-            if ($qty > $stock) {
-                $errors[] = "Insufficient stock for \"{$item->name}\" (available: {$stock} {$item->unit}, requested: {$qty}).";
-                continue;
-            }
-
-            // Deduct earliest-expiry-first (FEFO)
-            $remaining = $qty;
-            $batches = InventoryBatch::where('item_id', $item->id)
-                ->where('quantity_in', '>', DB::raw('quantity_used'))
-                ->when($item->category === 'Medicine', fn($q) => $q->where('expiry_date', '>=', now()->toDateString()))
-                ->orderBy('expiry_date')
-                ->orderBy('id')
-                ->get();
-
-            $usedBatchId = null;
-            foreach ($batches as $batch) {
-                if ($remaining <= 0) break;
-                $available  = $batch->quantity_in - $batch->quantity_used;
-                $deduct     = min($remaining, $available);
-                $batch->increment('quantity_used', $deduct);
-                $remaining -= $deduct;
-                $usedBatchId = $batch->id;
-            }
-
-            // Create transaction record with dosage note
-            $tx = InventoryTransaction::create([
-                'item_id'           => $item->id,
-                'batch_id'          => $usedBatchId,
-                'type'              => 'OUT',
-                'quantity'          => $qty,
+            $rows = self::deductFromBatches($item, $w['quantity'], [
                 'reason'            => 'Dispensed',
                 'consultation_type' => $consultationType,
                 'consultation_id'   => $consultationId,
                 'patient_user_id'   => $patientUserId,
                 'recorded_by'       => $recordedByUserId,
                 'transaction_date'  => $txDate,
-                'notes'             => $dosageNote,
+                'notes'             => $w['dosage_note'],
             ]);
 
-            AuditLogger::log('inventory_dispensed', InventoryTransaction::class, $tx->id, null, [
+            AuditLogger::log('inventory_dispensed', InventoryTransaction::class, $rows[0]->id, null, [
                 'item_id'           => $item->id,
                 'item_name'         => $item->name,
-                'quantity'          => $qty,
+                'quantity'          => $w['quantity'],
+                'batches'           => collect($rows)->map(fn ($r) => ['batch_id' => $r->batch_id, 'quantity' => $r->quantity])->all(),
                 'consultation_type' => $consultationType,
                 'consultation_id'   => $consultationId,
-                'dosage_note'       => $dosageNote,
+                'dosage_note'       => $w['dosage_note'],
             ]);
+
+            $created = array_merge($created, $rows);
         }
 
-        return $errors;
+        return $created;
     }
 
     /**
-     * Reverse (delete) OUT transactions for a given consultation.
-     * Restores quantity_used on the respective batches.
+     * Lock the items a consultation already dispensed plus the items it is about to dispense.
+     * An edit calls this first, so every lock is taken in one sorted pass before anything is reversed.
+     */
+    public static function lockConsultationItems(string $consultationType, int $consultationId, array $newItems): void
+    {
+        $oldIds = InventoryTransaction::where('consultation_type', $consultationType)
+            ->where('consultation_id', $consultationId)
+            ->where('type', 'OUT')
+            ->pluck('item_id')
+            ->all();
+
+        self::lockItems(array_merge($oldIds, array_map(fn ($r) => (int) ($r['item_id'] ?? 0), $newItems)));
+    }
+
+    /**
+     * Reverse (delete) the OUT transactions of a consultation and give each batch back exactly what
+     * its own row took. Call inside DB::transaction().
      */
     public static function reverseConsultationTransactions(string $consultationType, int $consultationId): void
     {
-        $txns = InventoryTransaction::where('consultation_type', $consultationType)
+        $query = fn () => InventoryTransaction::where('consultation_type', $consultationType)
             ->where('consultation_id', $consultationId)
-            ->where('type', 'OUT')
-            ->get();
+            ->where('type', 'OUT');
 
-        foreach ($txns as $tx) {
+        self::lockItems($query()->pluck('item_id')->all());
+
+        foreach ($query()->lockForUpdate()->get() as $tx) {
             if ($tx->batch_id) {
-                $batch = InventoryBatch::find($tx->batch_id);
-                if ($batch) {
-                    $batch->decrement('quantity_used', $tx->quantity);
-                }
+                // never below zero, even for older rows that were written for several batches at once
+                InventoryBatch::where('id', $tx->batch_id)
+                    ->update(['quantity_used' => DB::raw('GREATEST(quantity_used - ' . (int) $tx->quantity . ', 0)')]);
             }
             $tx->delete();
         }
@@ -912,6 +1020,7 @@ class InventoryController extends Controller
 
     /**
      * Get dispensed items for a consultation (for display in the form).
+     * An item taken from several batches has several rows; the form shows it once with the total.
      */
     public function consultationItems(Request $request): JsonResponse
     {
@@ -923,14 +1032,17 @@ class InventoryController extends Controller
             ->where('consultation_id', $id)
             ->where('type', 'OUT')
             ->where('reason', 'Dispensed')
+            ->orderBy('id')
             ->get()
-            ->map(fn($tx) => [
-                'item_id'     => $tx->item_id,
-                'item_name'   => $tx->item->name ?? '',
-                'unit'        => $tx->item->unit ?? '',
-                'quantity'    => $tx->quantity,
-                'dosage_note' => $tx->notes,
-            ]);
+            ->groupBy('item_id')
+            ->map(fn ($rows) => [
+                'item_id'     => $rows->first()->item_id,
+                'item_name'   => $rows->first()->item->name ?? '',
+                'unit'        => $rows->first()->item->unit ?? '',
+                'quantity'    => $rows->sum('quantity'),
+                'dosage_note' => $rows->pluck('notes')->filter()->first(),
+            ])
+            ->values();
 
         return response()->json(['items' => $txns]);
     }

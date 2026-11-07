@@ -10,6 +10,7 @@ use App\Models\Patient;
 use App\Models\Appointment;
 use App\Services\AuditLogger;
 use App\Services\ConsultationServiceName;
+use App\Support\AppointmentLink;
 use App\Support\VitalsRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -136,7 +137,7 @@ class DentalConsultationController extends Controller
         // Required: patient, date, service, reason for the visit. Everything else is optional.
         $validated = $request->validate(array_merge([
             'patient_id'          => ['required', 'integer', 'exists:patients,id'],
-            'appointment_id'      => ['nullable', 'integer', Rule::exists('appointments', 'id')->where('appointment_type', 'dental')],
+            'appointment_id'      => ['nullable', 'integer', Rule::exists('appointments', 'id')->where('appointment_type', 'dental'), Rule::unique('dental_consultations', 'appointment_id')],
             'service_name'        => ConsultationServiceName::rules('dental', locked: (bool) $appointmentId),
             'consultation_date'   => ['required', 'date', 'date_format:Y-m-d'],
             'status'              => ['nullable', 'string', 'in:completed,pending,cancelled'],
@@ -153,112 +154,115 @@ class DentalConsultationController extends Controller
             'tooth_conditions'    => ['nullable', 'array'],
             'tooth_conditions.*'  => ['string', 'in:healthy,cavity,filled,extracted,missing,treated'],
             'inventory_items'     => ['nullable', 'array'],
-            'inventory_items.*.item_id'  => ['required_with:inventory_items', 'integer', 'exists:inventory_items,id'],
+            'inventory_items.*.item_id'  => ['required_with:inventory_items', 'integer', 'distinct', 'exists:inventory_items,id'],
             'inventory_items.*.quantity' => ['required_with:inventory_items', 'integer', 'min:1'],
+            'inventory_items.*.dosage_note' => ['nullable', 'string', 'max:255'],
         ], VitalsRules::rules()), [
             'service_name.required'      => 'Please select the dental service for this consultation.',
             'service_name.exists'        => 'The selected service is not an available dental service.',
             'appointment_id.exists'      => 'That appointment is not a dental appointment.',
+            'appointment_id.unique'      => 'That appointment already has a consultation record.',
+            'inventory_items.*.item_id.distinct' => 'Each medicine or supply can only be listed once.',
             'reason_for_visit.required'  => 'Please enter the reason for the visit / chief complaint.',
         ]);
 
-        // Pre-validate inventory stock
         $inventoryItems = $validated['inventory_items'] ?? [];
-        if (!empty($inventoryItems)) {
-            $stockErrors = InventoryController::preValidateStock($inventoryItems);
-            if (!empty($stockErrors)) {
-                return response()->json(['message' => implode(' ', $stockErrors)], 422);
-            }
-        }
 
-        $consultation = DentalConsultation::create([
-            'patient_id'          => $validated['patient_id'],
-            'appointment_id'      => $validated['appointment_id'] ?? null,
-            'service_name'        => $validated['service_name'],
-            'created_by'          => $user->id,
-            'consultation_date'   => $validated['consultation_date'],
-            'status'              => $validated['status'] ?? 'completed',
-            'reason_for_visit'    => $validated['reason_for_visit'],
-            'vitals'              => $this->cleanVitals($validated['vitals'] ?? null),
-            'complaint_category'  => $validated['complaint_category'] ?? null,
-            'affected_teeth'      => $validated['affected_teeth'] ?? [],
-            'dental_findings'     => $validated['dental_findings'] ?? null,
-            'diagnosis'           => $validated['diagnosis'] ?? null,
-            'treatment_performed' => $validated['treatment_performed'] ?? null,
-            'recommendations'     => $validated['recommendations'] ?? null,
-            'notes'               => $validated['notes'] ?? null,
-            'staff_notes'         => $validated['staff_notes'] ?? null,
-        ]);
-
-        // Auto-complete appointment if linked
-        if ($consultation->appointment_id) {
-            $appointment = Appointment::find($consultation->appointment_id);
-            if ($appointment) {
-                $appointment->update(['status' => 'completed']);
-            }
-        }
-
-        // ── Auto-update Dental Chart ──────────────────────────────────────────
-        // Map service/treatment to a chart condition. Dentist can also send
-        // explicit per-tooth overrides via tooth_conditions[tooth_number] = condition.
-        $affectedTeeth    = $validated['affected_teeth'] ?? [];
-        $toothConditions  = $validated['tooth_conditions'] ?? [];
-
-        if (! empty($affectedTeeth)) {
-            // Derive a default condition from the service name or treatment performed
-            $serviceName      = $request->input('service_name', '');
-            $treatmentText    = $validated['treatment_performed'] ?? '';
-
-            $defaultCondition = $this->deriveCondition($serviceName, $treatmentText);
-
-            // Only write chart entries if a meaningful condition is mapped
-            // (null means "no auto-mapping" — dentist must have sent explicit tooth_conditions)
-            $chart = DentalChart::firstOrCreate(['patient_id' => $validated['patient_id']]);
-
-            foreach ($affectedTeeth as $toothNumber) {
-                // Dentist-confirmed per-tooth override takes priority
-                $condition = $toothConditions[(string) $toothNumber] ?? $defaultCondition;
-
-                if ($condition === null) {
-                    // No mapping and no override — skip this tooth
-                    continue;
-                }
-
-                // Build clinical notes from diagnosis/findings for the chart log
-                $chartNotes = implode(' | ', array_filter([
-                    $validated['diagnosis'] ?? null,
-                    $validated['dental_findings'] ?? null,
-                    $validated['notes'] ?? null,
-                ]));
-
-                $entry = DentalChartTooth::create([
-                    'dental_chart_id' => $chart->id,
-                    'tooth_number'    => $toothNumber,
-                    'condition'       => $condition,
-                    'notes'           => $chartNotes ?: null,
-                    'recorded_by'     => $user->id,
-                ]);
-
-                AuditLogger::log('dental_tooth_updated_via_consultation', DentalChartTooth::class, $entry->id, null, $entry->toArray());
-            }
-        }
-        // ─────────────────────────────────────────────────────────────────────
-
-        AuditLogger::log('dental_consultation_created', DentalConsultation::class, $consultation->id, null, $consultation->toArray());
-
-        // Dispense inventory items
-        if (!empty($inventoryItems)) {
-            $patient = Patient::find($validated['patient_id']);
-            $patientUserId = $patient?->user_id ?? 0;
-            InventoryController::dispenseForConsultation(
-                $inventoryItems,
-                'dental',
-                $consultation->id,
-                $patientUserId,
-                $user->id,
-                $validated['consultation_date']
+        // ONE transaction: the consultation, the appointment, the dental chart and the dispensed stock are
+        // saved together. If stock is short or anything fails, none of it is kept and the API says so.
+        $consultation = DB::transaction(function () use ($validated, $user, $request, $inventoryItems) {
+            // Locks the appointment, so a double click or retry cannot save a second consultation for it
+            $appointment = AppointmentLink::claim(
+                isset($validated['appointment_id']) ? (int) $validated['appointment_id'] : null,
+                (int) $validated['patient_id'],
+                DentalConsultation::class
             );
-        }
+
+            $consultation = DentalConsultation::create([
+                'patient_id'          => $validated['patient_id'],
+                'appointment_id'      => $validated['appointment_id'] ?? null,
+                'service_name'        => $validated['service_name'],
+                'created_by'          => $user->id,
+                'consultation_date'   => $validated['consultation_date'],
+                'status'              => $validated['status'] ?? 'completed',
+                'reason_for_visit'    => $validated['reason_for_visit'],
+                'vitals'              => $this->cleanVitals($validated['vitals'] ?? null),
+                'complaint_category'  => $validated['complaint_category'] ?? null,
+                'affected_teeth'      => $validated['affected_teeth'] ?? [],
+                'dental_findings'     => $validated['dental_findings'] ?? null,
+                'diagnosis'           => $validated['diagnosis'] ?? null,
+                'treatment_performed' => $validated['treatment_performed'] ?? null,
+                'recommendations'     => $validated['recommendations'] ?? null,
+                'notes'               => $validated['notes'] ?? null,
+                'staff_notes'         => $validated['staff_notes'] ?? null,
+            ]);
+
+            // Auto-complete appointment if linked
+            $appointment?->update(['status' => 'completed']);
+
+            // ── Auto-update Dental Chart ──────────────────────────────────────────
+            // Map service/treatment to a chart condition. Dentist can also send
+            // explicit per-tooth overrides via tooth_conditions[tooth_number] = condition.
+            $affectedTeeth   = $validated['affected_teeth'] ?? [];
+            $toothConditions = $validated['tooth_conditions'] ?? [];
+
+            if (! empty($affectedTeeth)) {
+                // Derive a default condition from the service name or treatment performed
+                $serviceName   = $request->input('service_name', '');
+                $treatmentText = $validated['treatment_performed'] ?? '';
+
+                $defaultCondition = $this->deriveCondition($serviceName, $treatmentText);
+
+                // Only write chart entries if a meaningful condition is mapped
+                // (null means "no auto-mapping" — dentist must have sent explicit tooth_conditions)
+                $chart = DentalChart::firstOrCreate(['patient_id' => $validated['patient_id']]);
+
+                foreach ($affectedTeeth as $toothNumber) {
+                    // Dentist-confirmed per-tooth override takes priority
+                    $condition = $toothConditions[(string) $toothNumber] ?? $defaultCondition;
+
+                    if ($condition === null) {
+                        // No mapping and no override — skip this tooth
+                        continue;
+                    }
+
+                    // Build clinical notes from diagnosis/findings for the chart log
+                    $chartNotes = implode(' | ', array_filter([
+                        $validated['diagnosis'] ?? null,
+                        $validated['dental_findings'] ?? null,
+                        $validated['notes'] ?? null,
+                    ]));
+
+                    $entry = DentalChartTooth::create([
+                        'dental_chart_id' => $chart->id,
+                        'tooth_number'    => $toothNumber,
+                        'condition'       => $condition,
+                        'notes'           => $chartNotes ?: null,
+                        'recorded_by'     => $user->id,
+                    ]);
+
+                    AuditLogger::log('dental_tooth_updated_via_consultation', DentalChartTooth::class, $entry->id, null, $entry->toArray());
+                }
+            }
+            // ─────────────────────────────────────────────────────────────────────
+
+            AuditLogger::log('dental_consultation_created', DentalConsultation::class, $consultation->id, null, $consultation->toArray());
+
+            // Dispense inventory items (throws InsufficientStockException -> everything above is rolled back)
+            if (!empty($inventoryItems)) {
+                $patient = Patient::find($validated['patient_id']);
+                InventoryController::dispenseForConsultation(
+                    $inventoryItems,
+                    'dental',
+                    $consultation->id,
+                    $patient?->user_id ?? 0,
+                    $user->id,
+                    $validated['consultation_date']
+                );
+            }
+
+            return $consultation;
+        }, 3);
 
         return response()->json([
             'message'      => 'Dental consultation record created successfully.',
@@ -335,46 +339,48 @@ class DentalConsultationController extends Controller
             'notes'               => ['nullable', 'string'],
             'staff_notes'         => ['nullable', 'string'],
             'inventory_items'     => ['nullable', 'array'],
-            'inventory_items.*.item_id'  => ['required_with:inventory_items', 'integer', 'exists:inventory_items,id'],
+            'inventory_items.*.item_id'  => ['required_with:inventory_items', 'integer', 'distinct', 'exists:inventory_items,id'],
             'inventory_items.*.quantity' => ['required_with:inventory_items', 'integer', 'min:1'],
+            'inventory_items.*.dosage_note' => ['nullable', 'string', 'max:255'],
         ], VitalsRules::rules()), [
             'service_name.exists'       => 'The selected service is not an available dental service.',
             'reason_for_visit.required' => 'Please enter the reason for the visit / chief complaint.',
+            'inventory_items.*.item_id.distinct' => 'Each medicine or supply can only be listed once.',
         ]);
 
         if (array_key_exists('vitals', $validated)) {
             $validated['vitals'] = $this->cleanVitals($validated['vitals']);
         }
 
-        // Pre-validate inventory stock
         $inventoryItems = $validated['inventory_items'] ?? [];
-        if (!empty($inventoryItems)) {
-            $stockErrors = InventoryController::preValidateStock($inventoryItems);
-            if (!empty($stockErrors)) {
-                return response()->json(['message' => implode(' ', $stockErrors)], 422);
+
+        DB::transaction(function () use ($validated, $user, $dentalConsultation, $inventoryItems) {
+            // Lock the record, and every item it dispensed before or will dispense now (sorted, once)
+            DentalConsultation::whereKey($dentalConsultation->id)->lockForUpdate()->first(['id']);
+            InventoryController::lockConsultationItems('dental', $dentalConsultation->id, $inventoryItems);
+
+            $oldValues = $dentalConsultation->toArray();
+            $dentalConsultation->update($validated);
+            $newValues = $dentalConsultation->getChanges();
+
+            // Give back what this record dispensed, then check the stock and dispense again.
+            // The stock check happens AFTER the reversal, so re-saving a record never fails
+            // because of its own earlier dispense.
+            InventoryController::reverseConsultationTransactions('dental', $dentalConsultation->id);
+            if (!empty($inventoryItems)) {
+                $patient = Patient::find($dentalConsultation->patient_id);
+                InventoryController::dispenseForConsultation(
+                    $inventoryItems,
+                    'dental',
+                    $dentalConsultation->id,
+                    $patient?->user_id ?? 0,
+                    $user->id,
+                    $validated['consultation_date']
+                );
             }
-        }
 
-        $oldValues = $dentalConsultation->toArray();
-        $dentalConsultation->update($validated);
-        $newValues = $dentalConsultation->getChanges();
-
-        // Reverse old inventory transactions and re-dispense
-        InventoryController::reverseConsultationTransactions('dental', $dentalConsultation->id);
-        if (!empty($inventoryItems)) {
-            $patient = Patient::find($dentalConsultation->patient_id);
-            $patientUserId = $patient?->user_id ?? 0;
-            InventoryController::dispenseForConsultation(
-                $inventoryItems,
-                'dental',
-                $dentalConsultation->id,
-                $patientUserId,
-                $user->id,
-                $validated['consultation_date']
-            );
-        }
-
-        AuditLogger::log('dental_consultation_updated', DentalConsultation::class, $dentalConsultation->id, $oldValues, $newValues);
+            AuditLogger::log('dental_consultation_updated', DentalConsultation::class, $dentalConsultation->id, $oldValues, $newValues);
+        }, 3);
 
         return response()->json([
             'message'      => 'Dental consultation record updated successfully.',

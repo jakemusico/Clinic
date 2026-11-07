@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\Appointment;
 use App\Services\AuditLogger;
 use App\Services\ConsultationServiceName;
+use App\Support\AppointmentLink;
 use App\Support\VitalsRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -134,7 +135,7 @@ class ClinicRecordController extends Controller
         // Required: patient, date, service, reason for the visit. Everything else is optional.
         $validated = $request->validate(array_merge([
             'patient_id'       => ['required', 'integer', 'exists:patients,id'],
-            'appointment_id'   => ['nullable', 'integer', Rule::exists('appointments', 'id')->where('appointment_type', 'medical')],
+            'appointment_id'   => ['nullable', 'integer', Rule::exists('appointments', 'id')->where('appointment_type', 'medical'), Rule::unique('clinic_records', 'appointment_id')],
             'service_name'     => ConsultationServiceName::rules('medical', locked: (bool) $appointmentId),
             'visit_date'       => ['required', 'date', 'date_format:Y-m-d'],
             'chief_complaint'  => ['required', 'string'],
@@ -148,77 +149,79 @@ class ClinicRecordController extends Controller
             'notes'            => ['nullable', 'string'],
             'remarks'          => ['nullable', 'string'],
             'inventory_items'  => ['nullable', 'array'],
-            'inventory_items.*.item_id'  => ['required_with:inventory_items', 'integer', 'exists:inventory_items,id'],
+            'inventory_items.*.item_id'  => ['required_with:inventory_items', 'integer', 'distinct', 'exists:inventory_items,id'],
             'inventory_items.*.quantity' => ['required_with:inventory_items', 'integer', 'min:1'],
+            'inventory_items.*.dosage_note' => ['nullable', 'string', 'max:255'],
         ], VitalsRules::rules()), [
             'service_name.required'   => 'Please select the clinic service for this consultation.',
             'service_name.exists'     => 'The selected service is not an available medical service.',
             'appointment_id.exists'   => 'That appointment is not a medical appointment.',
+            'appointment_id.unique'   => 'That appointment already has a consultation record.',
+            'inventory_items.*.item_id.distinct' => 'Each medicine or supply can only be listed once.',
             'chief_complaint.required' => 'Please enter the reason for the visit / chief complaint.',
         ]);
 
-        // Pre-validate stock before creating the record
         $inventoryItems = $validated['inventory_items'] ?? [];
-        if (!empty($inventoryItems)) {
-            $stockErrors = InventoryController::preValidateStock($inventoryItems);
-            if (!empty($stockErrors)) {
-                return response()->json(['message' => implode(' ', $stockErrors)], 422);
-            }
-        }
 
-        $record = ClinicRecord::create([
-            'patient_id'         => $validated['patient_id'],
-            'appointment_id'     => $validated['appointment_id'] ?? null,
-            'service_name'       => $validated['service_name'],
-            'created_by'         => $user->id,
-            'diagnosis'          => $validated['diagnosis'] ?? null,
-            'assessment'         => $validated['assessment'] ?? null,
-            'chief_complaint'    => $validated['chief_complaint'],
-            'complaint_category' => $validated['complaint_category'] ?? null,
-            'symptoms'           => $validated['symptoms'] ?? null,
-            'prescription'       => $validated['prescription'] ?? null,
-            'remarks'            => $validated['remarks'] ?? null,
-            'treatment'          => $validated['treatment'] ?? $validated['recommendation'] ?? null,
-            'recommendation'     => $validated['recommendation'] ?? null,
-            'notes'              => $validated['notes'] ?? null,
-            'vitals'             => $this->cleanVitals($validated['vitals'] ?? null),
-            'visit_date'         => $validated['visit_date'],
-        ]);
-
-        if ($record->appointment_id) {
-            $appointment = Appointment::find($record->appointment_id);
-            if ($appointment) {
-                $appointment->update(['status' => 'completed']);
-            }
-        }
-
-        // Automatically update patient medical history
-        $patient = Patient::find($record->patient_id);
-        if ($patient) {
-            $diagText = $record->diagnosis ?: ($record->assessment ?: ($record->chief_complaint ?: 'Consultation'));
-            $entry = "[" . date('Y-m-d', strtotime($validated['visit_date'])) . "] " . $diagText;
-            if ($record->treatment) {
-                $entry .= " - Treatment: " . $record->treatment;
-            }
-            $history = $patient->medical_history ? ($patient->medical_history . "\n" . $entry) : $entry;
-            $patient->update(['medical_history' => $history]);
-        }
-
-        AuditLogger::log('record_created', ClinicRecord::class, $record->id, null, $record->toArray());
-
-        // Dispense inventory items
-        if (!empty($inventoryItems)) {
-            $patient = Patient::find($record->patient_id);
-            $patientUserId = $patient?->user_id ?? 0;
-            InventoryController::dispenseForConsultation(
-                $inventoryItems,
-                'medical',
-                $record->id,
-                $patientUserId,
-                $user->id,
-                $validated['visit_date']
+        // ONE transaction: the record, the appointment, the patient history and the dispensed stock are
+        // saved together. If stock is short or anything fails, none of it is kept and the API says so.
+        $record = DB::transaction(function () use ($validated, $user, $inventoryItems) {
+            // Locks the appointment, so a double click or retry cannot save a second record for it
+            $appointment = AppointmentLink::claim(
+                isset($validated['appointment_id']) ? (int) $validated['appointment_id'] : null,
+                (int) $validated['patient_id'],
+                ClinicRecord::class
             );
-        }
+
+            $record = ClinicRecord::create([
+                'patient_id'         => $validated['patient_id'],
+                'appointment_id'     => $validated['appointment_id'] ?? null,
+                'service_name'       => $validated['service_name'],
+                'created_by'         => $user->id,
+                'diagnosis'          => $validated['diagnosis'] ?? null,
+                'assessment'         => $validated['assessment'] ?? null,
+                'chief_complaint'    => $validated['chief_complaint'],
+                'complaint_category' => $validated['complaint_category'] ?? null,
+                'symptoms'           => $validated['symptoms'] ?? null,
+                'prescription'       => $validated['prescription'] ?? null,
+                'remarks'            => $validated['remarks'] ?? null,
+                'treatment'          => $validated['treatment'] ?? $validated['recommendation'] ?? null,
+                'recommendation'     => $validated['recommendation'] ?? null,
+                'notes'              => $validated['notes'] ?? null,
+                'vitals'             => $this->cleanVitals($validated['vitals'] ?? null),
+                'visit_date'         => $validated['visit_date'],
+            ]);
+
+            $appointment?->update(['status' => 'completed']);
+
+            // Automatically update patient medical history
+            $patient = Patient::find($record->patient_id);
+            if ($patient) {
+                $diagText = $record->diagnosis ?: ($record->assessment ?: ($record->chief_complaint ?: 'Consultation'));
+                $entry = "[" . date('Y-m-d', strtotime($validated['visit_date'])) . "] " . $diagText;
+                if ($record->treatment) {
+                    $entry .= " - Treatment: " . $record->treatment;
+                }
+                $history = $patient->medical_history ? ($patient->medical_history . "\n" . $entry) : $entry;
+                $patient->update(['medical_history' => $history]);
+            }
+
+            AuditLogger::log('record_created', ClinicRecord::class, $record->id, null, $record->toArray());
+
+            // Dispense inventory items (throws InsufficientStockException -> everything above is rolled back)
+            if (!empty($inventoryItems)) {
+                InventoryController::dispenseForConsultation(
+                    $inventoryItems,
+                    'medical',
+                    $record->id,
+                    $patient?->user_id ?? 0,
+                    $user->id,
+                    $validated['visit_date']
+                );
+            }
+
+            return $record;
+        }, 3);
 
         return response()->json([
             'message' => 'Consultation record saved to patient medical record successfully.',
@@ -241,7 +244,7 @@ class ClinicRecordController extends Controller
         $request->merge(['service_name' => $given ?? $clinicRecord->service_name]);
 
         $validated = $request->validate(array_merge([
-            'appointment_id'   => ['nullable', 'integer', Rule::exists('appointments', 'id')->where('appointment_type', 'medical')],
+            'appointment_id'   => ['nullable', 'integer', Rule::exists('appointments', 'id')->where('appointment_type', 'medical'), Rule::unique('clinic_records', 'appointment_id')->ignore($clinicRecord->id)],
             'service_name'     => ConsultationServiceName::rules('medical', locked: (bool) $appointmentId || ! $serviceChanged, required: false),
             'visit_date'       => ['required', 'date', 'date_format:Y-m-d'],
             'chief_complaint'  => ['required', 'string'],
@@ -255,11 +258,14 @@ class ClinicRecordController extends Controller
             'notes'            => ['nullable', 'string'],
             'remarks'          => ['nullable', 'string'],
             'inventory_items'  => ['nullable', 'array'],
-            'inventory_items.*.item_id'  => ['required_with:inventory_items', 'integer', 'exists:inventory_items,id'],
+            'inventory_items.*.item_id'  => ['required_with:inventory_items', 'integer', 'distinct', 'exists:inventory_items,id'],
             'inventory_items.*.quantity' => ['required_with:inventory_items', 'integer', 'min:1'],
+            'inventory_items.*.dosage_note' => ['nullable', 'string', 'max:255'],
         ], VitalsRules::rules()), [
             'service_name.exists'      => 'The selected service is not an available medical service.',
             'appointment_id.exists'    => 'That appointment is not a medical appointment.',
+            'appointment_id.unique'    => 'That appointment already has a consultation record.',
+            'inventory_items.*.item_id.distinct' => 'Each medicine or supply can only be listed once.',
             'chief_complaint.required' => 'Please enter the reason for the visit / chief complaint.',
         ]);
 
@@ -267,35 +273,42 @@ class ClinicRecordController extends Controller
             $validated['vitals'] = $this->cleanVitals($validated['vitals']);
         }
 
-        // Pre-validate stock before saving
         $inventoryItems = $validated['inventory_items'] ?? [];
-        if (!empty($inventoryItems)) {
-            $stockErrors = InventoryController::preValidateStock($inventoryItems);
-            if (!empty($stockErrors)) {
-                return response()->json(['message' => implode(' ', $stockErrors)], 422);
+
+        DB::transaction(function () use ($validated, $user, $clinicRecord, $inventoryItems) {
+            // Lock the record, and every item it dispensed before or will dispense now (sorted, once)
+            ClinicRecord::whereKey($clinicRecord->id)->lockForUpdate()->first(['id']);
+            InventoryController::lockConsultationItems('medical', $clinicRecord->id, $inventoryItems);
+
+            // A different appointment may only be linked if it is the same patient's, still open and unused
+            if (array_key_exists('appointment_id', $validated)
+                && ! empty($validated['appointment_id'])
+                && (int) $validated['appointment_id'] !== (int) $clinicRecord->appointment_id) {
+                AppointmentLink::claim((int) $validated['appointment_id'], (int) $clinicRecord->patient_id, ClinicRecord::class, $clinicRecord->id);
             }
-        }
 
-        $oldValues = $clinicRecord->toArray();
-        $clinicRecord->update($validated);
-        $newValues = $clinicRecord->getChanges();
+            $oldValues = $clinicRecord->toArray();
+            $clinicRecord->update($validated);
+            $newValues = $clinicRecord->getChanges();
 
-        // Reverse old inventory transactions and re-dispense
-        InventoryController::reverseConsultationTransactions('medical', $clinicRecord->id);
-        if (!empty($inventoryItems)) {
-            $patient = Patient::find($clinicRecord->patient_id);
-            $patientUserId = $patient?->user_id ?? 0;
-            InventoryController::dispenseForConsultation(
-                $inventoryItems,
-                'medical',
-                $clinicRecord->id,
-                $patientUserId,
-                $user->id,
-                $validated['visit_date']
-            );
-        }
+            // Give back what this record dispensed, then check the stock and dispense again.
+            // The stock check happens AFTER the reversal, so re-saving a record never fails
+            // because of its own earlier dispense.
+            InventoryController::reverseConsultationTransactions('medical', $clinicRecord->id);
+            if (!empty($inventoryItems)) {
+                $patient = Patient::find($clinicRecord->patient_id);
+                InventoryController::dispenseForConsultation(
+                    $inventoryItems,
+                    'medical',
+                    $clinicRecord->id,
+                    $patient?->user_id ?? 0,
+                    $user->id,
+                    $validated['visit_date']
+                );
+            }
 
-        AuditLogger::log('record_updated', ClinicRecord::class, $clinicRecord->id, $oldValues, $newValues);
+            AuditLogger::log('record_updated', ClinicRecord::class, $clinicRecord->id, $oldValues, $newValues);
+        }, 3);
 
         return response()->json([
             'message' => 'Patient medical record updated successfully.',
