@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\Notification;
 use Carbon\Carbon;
 use App\Services\AuditLogger;
+use App\Support\Roles;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -27,41 +28,15 @@ class AppointmentController extends Controller
     {
         $user = $request->user();
 
-        if (! in_array($user->role, ['clinic_staff', 'dentist', 'admin'])) {
-            return response()->json([
-                'unread_count'         => 0,
-                'medical_unread_count' => 0,
-                'dental_unread_count'  => 0,
-            ]);
-        }
+        // Only the kinds of care the user manages are counted (nurse: medical, dentist: dental, admin: both).
+        $types = Roles::careTypes($user);
 
-        $medicalQuery = Appointment::where('appointment_type', 'medical')
-            ->where('is_read', false);
-
-        $dentalQuery = Appointment::where('appointment_type', 'dental')
-            ->where('is_read', false);
-
-        if ($user->role === 'clinic_staff') {
-            $medicalCount = $medicalQuery->count();
-            return response()->json([
-                'unread_count'         => $medicalCount,
-                'medical_unread_count' => $medicalCount,
-                'dental_unread_count'  => 0,
-            ]);
-        }
-
-        if ($user->role === 'dentist') {
-            $dentalCount = $dentalQuery->count();
-            return response()->json([
-                'unread_count'         => $dentalCount,
-                'medical_unread_count' => 0,
-                'dental_unread_count'  => $dentalCount,
-            ]);
-        }
-
-        // Admin role: authorized for all
-        $medicalCount = $medicalQuery->count();
-        $dentalCount  = $dentalQuery->count();
+        $medicalCount = in_array(Roles::MEDICAL, $types, true)
+            ? Appointment::where('appointment_type', 'medical')->where('is_read', false)->count()
+            : 0;
+        $dentalCount = in_array(Roles::DENTAL, $types, true)
+            ? Appointment::where('appointment_type', 'dental')->where('is_read', false)->count()
+            : 0;
 
         return response()->json([
             'unread_count'         => $medicalCount + $dentalCount,
@@ -78,20 +53,18 @@ class AppointmentController extends Controller
     {
         $user = $request->user();
 
-        if (! in_array($user->role, ['clinic_staff', 'dentist', 'admin'])) {
+        $types = Roles::careTypes($user);
+        if (! $types) {
             return response()->json(['message' => 'Forbidden.'], 403);
         }
 
-        $type = $request->input('appointment_type');
-        $query = Appointment::where('is_read', false);
-
-        if ($user->role === 'clinic_staff') {
-            $query->where('appointment_type', 'medical');
-        } elseif ($user->role === 'dentist') {
-            $query->where('appointment_type', 'dental');
-        } elseif ($user->role === 'admin' && $type) {
-            $query->where('appointment_type', $type);
+        // Never more than the user's own kinds of care; admin may narrow it to one with appointment_type.
+        $requested = $request->input('appointment_type');
+        if (is_string($requested) && in_array($requested, $types, true)) {
+            $types = [$requested];
         }
+
+        $query = Appointment::where('is_read', false)->whereIn('appointment_type', $types);
 
         $affected = $query->update(['is_read' => true]);
 
@@ -109,7 +82,7 @@ class AppointmentController extends Controller
     {
         $user = $request->user();
 
-        if (! in_array($user->role, ['clinic_staff', 'dentist', 'admin'])) {
+        if (! Roles::canAccessCare($user, $appointment->appointment_type)) {
             return response()->json(['message' => 'Forbidden.'], 403);
         }
 
@@ -130,9 +103,24 @@ class AppointmentController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
-        $query = Appointment::with(['patient.user', 'service', 'staff', 'clinicRecord', 'dentalConsultation']);
+        // Allow-list: a patient (own appointments only) or clinic staff (their own kind of care). Nobody else.
+        $types = Roles::careTypes($user);
+        if (! Roles::isPatient($user) && ! $types) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
 
-        if (in_array($user->role, ['student', 'faculty_staff'])) {
+        // Explicit columns for the patient and the staff member (no full user rows). The nurse is only
+        // given the medical consultation of an appointment, the dentist only the dental one.
+        $relations = ['clinicRecord', 'dentalConsultation'];
+        if (! Roles::isPatient($user)) {
+            $relations = array_values(array_filter([
+                in_array(Roles::MEDICAL, $types, true) ? 'clinicRecord' : null,
+                in_array(Roles::DENTAL, $types, true) ? 'dentalConsultation' : null,
+            ]));
+        }
+        $query = Appointment::with(Appointment::safeRelations($relations));
+
+        if (Roles::isPatient($user)) {
             $query->whereHas('patient', function ($q) use ($user) {
                 $q->where('user_id', $user->id);
             });
@@ -155,11 +143,7 @@ class AppointmentController extends Controller
             }
             // The nurse only ever sees medical appointments and the dentist only dental ones,
             // whatever the request asks for. Admin sees both.
-            if ($user->role === 'clinic_staff') {
-                $query->where('appointment_type', 'medical');
-            } elseif ($user->role === 'dentist') {
-                $query->where('appointment_type', 'dental');
-            }
+            $query->whereIn('appointment_type', $types);
             // ?care_type=medical|dental -> only appointments whose service is of that kind of care
             if (in_array($request->query('care_type'), ClinicService::CARE_TYPES, true)) {
                 $query->whereHas('service', fn ($q) => $q->where('care_type', $request->query('care_type')));
@@ -217,7 +201,7 @@ class AppointmentController extends Controller
         $user = $request->user();
 
         // Only students and faculty/staff can book appointments as patients
-        if (!in_array($user->role, ['student', 'faculty_staff'])) {
+        if (! Roles::isPatient($user)) {
             return response()->json(['message' => 'Only students and faculty/staff members can book appointments.'], 403);
         }
 
@@ -304,7 +288,7 @@ class AppointmentController extends Controller
 
         return response()->json([
             'message'     => 'Appointment booked successfully.',
-            'appointment' => $appointment->load(['service', 'staff']),
+            'appointment' => $appointment->load(['service', Appointment::staffRelation()]),
         ], 201);
     }
 
@@ -316,14 +300,17 @@ class AppointmentController extends Controller
     {
         $user = $request->user();
 
-        // Authorization check
-        if (in_array($user->role, ['student', 'faculty_staff'])) {
+        // Authorization (allow-list): a patient for their own appointment, or the staff member whose
+        // kind of care it is (nurse: medical, dentist: dental, admin: both). Everybody else is refused.
+        if (Roles::isPatient($user)) {
             if ($appointment->patient->user_id !== $user->id) {
                 return response()->json(['message' => 'Forbidden.'], 403);
             }
             if ($appointment->status === 'completed' || $appointment->status === 'cancelled') {
                 return response()->json(['message' => 'Cannot reschedule completed or cancelled appointments.'], 422);
             }
+        } elseif (! Roles::canAccessCare($user, $appointment->appointment_type)) {
+            return response()->json(['message' => 'Forbidden.'], 403);
         }
 
         $validated = $request->validate([
@@ -362,12 +349,12 @@ class AppointmentController extends Controller
         AuditLogger::log('appointment_rescheduled', Appointment::class, $appointment->id, $oldValues, $newValues);
 
         // Notify the counterpart
-        $targetUserId = (in_array($user->role, ['clinic_staff', 'dentist']))
+        $targetUserId = Roles::isClinicStaff($user)
             ? $appointment->patient->user_id
             : $appointment->staff_id;
 
         $isDental = in_array(strtolower($appointment->service->category ?? ''), ['dental']);
-        $targetActionUrl = in_array($user->role, ['clinic_staff', 'dentist'])
+        $targetActionUrl = Roles::isClinicStaff($user)
             ? "/appointments?status=pending&highlight={$appointment->id}"
             : ($isDental
                 ? "/dental/appointments?status=pending&highlight={$appointment->id}"
@@ -383,7 +370,7 @@ class AppointmentController extends Controller
 
         return response()->json([
             'message'     => 'Appointment rescheduled successfully.',
-            'appointment' => $appointment->load(['service', 'staff']),
+            'appointment' => $appointment->load(['service', Appointment::staffRelation()]),
         ]);
     }
 
@@ -402,8 +389,8 @@ class AppointmentController extends Controller
 
         $newStatus = $validated['status'];
 
-        // Authorization rules:
-        if (in_array($user->role, ['student', 'faculty_staff'])) {
+        // Authorization rules (allow-list):
+        if (Roles::isPatient($user)) {
             // Patient can only cancel their own appointments
             if ($appointment->patient->user_id !== $user->id) {
                 return response()->json(['message' => 'Forbidden.'], 403);
@@ -411,11 +398,9 @@ class AppointmentController extends Controller
             if ($newStatus !== 'cancelled') {
                 return response()->json(['message' => 'Patients can only cancel their own appointments.'], 403);
             }
-        } else {
-            // Clinic Staff / Dentist can do confirm, complete, cancel
-            if (! in_array($user->role, ['clinic_staff', 'dentist', 'admin'])) {
-                return response()->json(['message' => 'Forbidden.'], 403);
-            }
+        } elseif (! Roles::canAccessCare($user, $appointment->appointment_type)) {
+            // Staff confirm, complete or cancel only appointments of their own kind of care
+            return response()->json(['message' => 'Forbidden.'], 403);
         }
 
         $oldValues = $appointment->toArray();
@@ -428,14 +413,14 @@ class AppointmentController extends Controller
         AuditLogger::log('appointment_status_changed', Appointment::class, $appointment->id, $oldValues, $newValues);
 
         // Notify patient or staff of status change
-        $targetUserId = (in_array($user->role, ['clinic_staff', 'dentist', 'admin']))
+        $targetUserId = Roles::isClinicStaff($user)
             ? $appointment->patient->user_id
             : $appointment->staff_id;
 
         $badgeType = $newStatus === 'cancelled' ? 'error' : ($newStatus === 'confirmed' ? 'success' : 'info');
 
         $isDental = in_array(strtolower($appointment->service->category ?? ''), ['dental']);
-        $statusActionUrl = in_array($user->role, ['clinic_staff', 'dentist', 'admin'])
+        $statusActionUrl = Roles::isClinicStaff($user)
             ? "/appointments?status={$newStatus}&highlight={$appointment->id}"
             : ($isDental
                 ? "/dental/appointments?status={$newStatus}&highlight={$appointment->id}"
@@ -451,7 +436,7 @@ class AppointmentController extends Controller
 
         return response()->json([
             'message'     => "Appointment marked as {$newStatus}.",
-            'appointment' => $appointment->load(['service', 'staff']),
+            'appointment' => $appointment->load(['service', Appointment::staffRelation()]),
         ]);
 
     }
@@ -467,7 +452,7 @@ class AppointmentController extends Controller
                   ->orWhereHas('roleRelation', fn($rq) => $rq->whereIn('slug', ['clinic_staff', 'nurse', 'dentist']));
             })
             ->where('is_active', true)
-            ->select('id', 'name', 'title', 'first_name', 'middle_name', 'last_name', 'suffix', 'email', 'role', 'role_id', 'avatar')
+            ->select(Appointment::STAFF_COLUMNS)
             ->get();
 
         return response()->json(['staff' => $staff]);

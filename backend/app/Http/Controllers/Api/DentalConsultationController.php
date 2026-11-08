@@ -11,6 +11,7 @@ use App\Models\Appointment;
 use App\Services\AuditLogger;
 use App\Services\ConsultationServiceName;
 use App\Support\AppointmentLink;
+use App\Support\Roles;
 use App\Support\VitalsRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,13 +24,14 @@ class DentalConsultationController extends Controller
     {
         $user = $request->user();
 
-        if ($user->role === 'clinic_staff') {
-            return response()->json(['message' => 'Forbidden. Nurse role cannot access dental consultations.'], 403);
+        // Allow-list: dentist and admin (dental care), or a patient looking at their own records.
+        if (! Roles::canAccessCare($user, Roles::DENTAL) && ! Roles::isPatient($user)) {
+            return response()->json(['message' => 'Forbidden. Only the dentist, an administrator or the patient can access dental consultations.'], 403);
         }
 
         $query = DentalConsultation::with(['patient.user', 'appointment.service', 'dentist']);
 
-        if (in_array($user->role, ['student', 'faculty_staff'])) {
+        if (Roles::isPatient($user)) {
             $query->whereHas('patient', function ($q) use ($user) {
                 $q->where('user_id', $user->id);
             })->where('status', 'completed');
@@ -57,7 +59,7 @@ class DentalConsultationController extends Controller
 
         if ($request->boolean('all') || $request->get('paginate') === 'false') {
             $consultations = $query->get();
-            if (in_array($user->role, ['student', 'faculty_staff'])) {
+            if (Roles::isPatient($user)) {
                 $consultations->makeHidden(['staff_notes']);
             }
             return response()->json([
@@ -73,7 +75,7 @@ class DentalConsultationController extends Controller
         $perPage = (int) $request->get('per_page', 10);
         $paginated = $query->paginate($perPage);
 
-        if (in_array($user->role, ['student', 'faculty_staff'])) {
+        if (Roles::isPatient($user)) {
             $paginated->getCollection()->makeHidden(['staff_notes']);
         }
 
@@ -93,11 +95,12 @@ class DentalConsultationController extends Controller
     {
         $user = $request->user();
 
-        if ($user->role === 'clinic_staff') {
-            return response()->json(['message' => 'Forbidden. Nurse role cannot access dental consultations.'], 403);
+        // Allow-list: dentist and admin (dental care), or a patient looking at their own records.
+        if (! Roles::canAccessCare($user, Roles::DENTAL) && ! Roles::isPatient($user)) {
+            return response()->json(['message' => 'Forbidden. Only the dentist, an administrator or the patient can access dental consultations.'], 403);
         }
 
-        if (in_array($user->role, ['student', 'faculty_staff'])) {
+        if (Roles::isPatient($user)) {
             $patient = Patient::where('user_id', $user->id)->first();
             if (! $patient || $dentalConsultation->patient_id !== $patient->id) {
                 return response()->json(['message' => 'Forbidden. You can only view your own dental records.'], 403);
@@ -107,7 +110,7 @@ class DentalConsultationController extends Controller
 
         $dentalConsultation->load(['patient.user', 'appointment.service', 'dentist']);
 
-        if ($user->role === 'admin') {
+        if (Roles::isAdmin($user)) {
             AuditLogger::log('admin_viewed_dental_consultation', DentalConsultation::class, $dentalConsultation->id, null, [
                 'patient_id'   => $dentalConsultation->patient_id,
                 'patient_name' => $dentalConsultation->patient?->user?->name,
@@ -124,7 +127,7 @@ class DentalConsultationController extends Controller
     {
         $user = $request->user();
 
-        if ($user->role !== 'dentist') {
+        if (! Roles::is($user, Roles::DENTIST)) {
             return response()->json(['message' => 'Only dentists can create dental consultation records.'], 403);
         }
 
@@ -316,7 +319,7 @@ class DentalConsultationController extends Controller
     {
         $user = $request->user();
 
-        if ($user->role !== 'dentist') {
+        if (! Roles::is($user, Roles::DENTIST)) {
             return response()->json(['message' => 'Only dentists can modify dental consultation records.'], 403);
         }
 

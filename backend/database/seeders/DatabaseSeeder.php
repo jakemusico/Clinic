@@ -24,13 +24,20 @@ class DatabaseSeeder extends Seeder
     {
         $password = SeedPassword::generate();
 
-        $user = User::firstOrCreate(
-            ['email' => $email],
-            $attributes + [
-                'password' => Hash::make($password),
-                'must_change_password' => ! SeedPassword::isLocal(),
-            ]
-        );
+        $user = User::where('email', $email)->first();
+
+        if (! $user) {
+            // `role` and `must_change_password` are not mass-assignable: they are set one by one.
+            $role = $attributes['role'] ?? null;
+            unset($attributes['role']);
+
+            $user = new User($attributes + ['email' => $email, 'password' => Hash::make($password)]);
+            if ($role !== null) {
+                $user->role = $role;
+            }
+            $user->must_change_password = ! SeedPassword::isLocal();
+            $user->save();   // a freshly created model has wasRecentlyCreated = true
+        }
 
         if ($user->wasRecentlyCreated && ! SeedPassword::isLocal()) {
             $this->issuedPasswords[$email] = $password;

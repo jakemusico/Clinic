@@ -23,6 +23,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \App\Http\Middleware\EnsureRole::class,
             // Rejects (and signs out) requests from deactivated accounts
             'active' => \App\Http\Middleware\EnsureUserIsActive::class,
+            // Blocks everything except change-password and logout while must_change_password is set
+            'password.changed' => \App\Http\Middleware\EnsurePasswordIsChanged::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

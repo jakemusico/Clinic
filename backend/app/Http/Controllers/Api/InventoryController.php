@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Exceptions\InsufficientStockException;
+use App\Support\Roles;
 use App\Http\Controllers\Controller;
 use App\Models\InventoryItem;
 use App\Models\InventoryBatch;
@@ -661,6 +662,11 @@ class InventoryController extends Controller
 
         $q = InventoryTransaction::with(['item', 'batch', 'recordedBy', 'patientUser']);
 
+        // Stock movements that are not tied to a consultation (stock in, manual stock out) are shared.
+        // Dispensing for a consultation is shown only for the user's own kind of care: the nurse sees
+        // medical dispensing, the dentist dental dispensing, admin both.
+        Roles::limitToCare($q, $request->user(), 'consultation_type', includeNull: true);
+
         if ($request->has('item_id') && $request->item_id) {
             $q->where('item_id', $request->item_id);
         }
@@ -1026,6 +1032,11 @@ class InventoryController extends Controller
     {
         $type = $request->query('consultation_type');
         $id   = $request->query('consultation_id');
+
+        // Allow-list: only the kind of care the user manages (nurse: medical, dentist: dental, admin: both)
+        if (! Roles::canAccessCare($request->user(), is_string($type) ? $type : null)) {
+            return response()->json(['message' => 'Forbidden. You cannot view the dispensed items of this kind of consultation.'], 403);
+        }
 
         $txns = InventoryTransaction::with(['item'])
             ->where('consultation_type', $type)

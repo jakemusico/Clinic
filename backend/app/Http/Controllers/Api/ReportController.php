@@ -18,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Support\ConsultationRow;
 use App\Support\Placeholder;
+use App\Support\Roles;
 
 class ReportController extends Controller
 {
@@ -77,6 +78,21 @@ class ReportController extends Controller
     }
 
     /**
+     * The one kind of care a report is limited to: 'medical' for the nurse, 'dental' for the dentist.
+     * Admin sees both (null), or narrows it to one with ?type=medical|dental.
+     */
+    private function careTypeFor(?User $user, mixed $requested): ?string
+    {
+        $types = Roles::careTypes($user);
+
+        if (count($types) === 1) {
+            return $types[0];
+        }
+
+        return is_string($requested) && in_array($requested, $types, true) ? $requested : null;
+    }
+
+    /**
      * Calculate current stock for an item from transactions.
      */
     private function getStock(int $itemId): int
@@ -92,23 +108,17 @@ class ReportController extends Controller
     public function appointmentSummary(Request $request): JsonResponse
     {
         $user = $request->user();
-        if (!in_array($user->role, ['clinic_staff', 'dentist', 'admin'])) {
+        if (! Roles::isClinicStaff($user)) {
             return response()->json(['message' => 'Forbidden.'], 403);
         }
 
-        $roleType = match ($user->role) {
-            'dentist'      => 'dental',
-            'clinic_staff' => 'medical',
-            default        => in_array($request->query('type'), ['medical', 'dental']) ? $request->query('type') : null,
-        };
+        // nurse: medical only, dentist: dental only, admin: both (or the one asked for with ?type=)
+        $roleType = $this->careTypeFor($user, $request->query('type'));
 
-        $query = Appointment::with([
-            'patient.user',
-            'service',
-            'staff',
-            'clinicRecord',
-            'dentalConsultation',
-        ]);
+        $query = Appointment::with(Appointment::safeRelations(array_values(array_filter([
+            $roleType !== 'dental' ? 'clinicRecord' : null,
+            $roleType !== 'medical' ? 'dentalConsultation' : null,
+        ]))));
 
         if ($roleType) {
             $query->where('appointment_type', $roleType);
@@ -230,15 +240,12 @@ class ReportController extends Controller
     public function consultationSummary(Request $request): JsonResponse
     {
         $user = $request->user();
-        if (!in_array($user->role, ['clinic_staff', 'dentist', 'admin'])) {
+        if (! Roles::isClinicStaff($user)) {
             return response()->json(['message' => 'Forbidden.'], 403);
         }
 
-        $roleType = match ($user->role) {
-            'dentist'      => 'dental',
-            'clinic_staff' => 'medical',
-            default        => in_array($request->query('type'), ['medical', 'dental']) ? $request->query('type') : null,
-        };
+        // nurse: medical only, dentist: dental only, admin: both (or the one asked for with ?type=)
+        $roleType = $this->careTypeFor($user, $request->query('type'));
 
         $dateFrom = $request->query('date_from', Carbon::now()->startOfMonth()->toDateString());
         $dateTo   = $request->query('date_to', Carbon::now()->endOfMonth()->toDateString());
@@ -374,7 +381,7 @@ class ReportController extends Controller
     public function inventorySummary(Request $request): JsonResponse
     {
         $user = $request->user();
-        if (!in_array($user->role, ['clinic_staff', 'dentist', 'admin'])) {
+        if (! Roles::isClinicStaff($user)) {
             return response()->json(['message' => 'Forbidden.'], 403);
         }
 
@@ -462,6 +469,10 @@ class ReportController extends Controller
         $txQuery = InventoryTransaction::with(['item', 'batch', 'recordedBy', 'patientUser'])
             ->whereBetween('transaction_date', [$dateFrom, $dateTo]);
 
+        // Stock in and manual stock out are shared. Dispensing for a consultation (which names the
+        // patient) is shown only for the user's own kind of care: nurse medical, dentist dental, admin both.
+        Roles::limitToCare($txQuery, $user, 'consultation_type', includeNull: true);
+
         $transactions = $txQuery->orderByDesc('created_at')->get()->map(function ($t) {
             $u = $t->patientUser;
             $staff = $t->recordedBy;
@@ -542,15 +553,12 @@ class ReportController extends Controller
     public function symptomsSummary(Request $request): JsonResponse
     {
         $user = $request->user();
-        if (!in_array($user->role, ['clinic_staff', 'dentist', 'admin'])) {
+        if (! Roles::isClinicStaff($user)) {
             return response()->json(['message' => 'Forbidden.'], 403);
         }
 
-        $roleType = match ($user->role) {
-            'dentist'      => 'dental',
-            'clinic_staff' => 'medical',
-            default        => in_array($request->query('type'), ['medical', 'dental']) ? $request->query('type') : null,
-        };
+        // nurse: medical only, dentist: dental only, admin: both (or the one asked for with ?type=)
+        $roleType = $this->careTypeFor($user, $request->query('type'));
 
         $dateFrom = $request->query('date_from', Carbon::now()->startOfMonth()->toDateString());
         $dateTo   = $request->query('date_to', Carbon::now()->endOfMonth()->toDateString());
@@ -751,16 +759,29 @@ class ReportController extends Controller
      */
     public function chatSummary(Request $request): JsonResponse
     {
+        $user = $request->user();
+        if (! Roles::isClinicStaff($user)) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
         $roleType = $request->query('role_type', 'all');
         $dateFrom = $request->query('date_from');
         $dateTo = $request->query('date_to');
 
         $query = Conversation::query()->with(['messages.sender', 'student']);
 
-        if ($roleType === 'medical' || $roleType === 'nurse') {
-            $query->where('role', 'nurse');
+        // Conversations are stored per team: 'nurse' (medical) or 'dentist' (dental). The nurse only
+        // gets the nurse chats and the dentist only the dentist chats, whatever role_type asks for.
+        $teams = array_map(
+            fn ($care) => $care === Roles::MEDICAL ? 'nurse' : 'dentist',
+            Roles::careTypes($user)
+        );
+        if (count($teams) === 1) {
+            $query->where('staff_role', $teams[0]);
+        } elseif ($roleType === 'medical' || $roleType === 'nurse') {
+            $query->where('staff_role', 'nurse');
         } elseif ($roleType === 'dental' || $roleType === 'dentist') {
-            $query->where('role', 'dentist');
+            $query->where('staff_role', 'dentist');
         }
 
         if ($dateFrom) {

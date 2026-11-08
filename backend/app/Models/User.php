@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Roles;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -16,6 +17,14 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
 
+    /**
+     * Mass assignment (create/update/fill with request data) can set these columns.
+     *
+     * NOT in this list on purpose, so request data can never reach them: `role`, `is_active`,
+     * `must_change_password` and `has_medical_access`. Set those one by one in code, e.g.
+     * `$user->is_active = true;`, after the access decision has been made.
+     * (`role` is also kept in step with `role_id` by the saving hook below.)
+     */
     protected $fillable = [
         'title',
         'name',
@@ -27,7 +36,6 @@ class User extends Authenticatable
         'avatar',
         'password',
         'role_id',
-        'role',
         'student_id',
         'department',
         'license_no',
@@ -40,9 +48,6 @@ class User extends Authenticatable
         'age',
         'date_of_birth',
         'sex',
-        'is_active',
-        'must_change_password',
-        'has_medical_access',
         'terms_accepted_at',
         'guardian_relationship',
         'last_active_at',
@@ -200,29 +205,35 @@ class User extends Authenticatable
 
     // --- Role Helpers ---
 
+    /** Canonical role (role_slug with the nurse/clinic_staff and faculty aliases resolved). See App\Support\Roles. */
+    public function normalizedRole(): ?string
+    {
+        return Roles::of($this);
+    }
+
     public function isAdmin(): bool
     {
-        return $this->role_slug === 'admin' || ($this->attributes['role'] ?? '') === 'admin';
+        return Roles::is($this, Roles::ADMIN);
     }
 
     public function isClinicStaff(): bool
     {
-        return in_array($this->role_slug, ['clinic_staff', 'nurse']) || in_array($this->attributes['role'] ?? '', ['clinic_staff', 'nurse']);
+        return Roles::is($this, Roles::NURSE);
     }
 
     public function isDentist(): bool
     {
-        return $this->role_slug === 'dentist' || ($this->attributes['role'] ?? '') === 'dentist';
+        return Roles::is($this, Roles::DENTIST);
     }
 
     public function isStudent(): bool
     {
-        return $this->role_slug === 'student' || ($this->attributes['role'] ?? '') === 'student';
+        return Roles::is($this, Roles::STUDENT);
     }
 
     public function isFacultyStaff(): bool
     {
-        return in_array($this->role_slug, ['faculty_staff', 'faculty']) || in_array($this->attributes['role'] ?? '', ['faculty_staff', 'faculty']);
+        return Roles::is($this, Roles::FACULTY);
     }
 
     protected static function booted()

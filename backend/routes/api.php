@@ -44,8 +44,9 @@ Route::get('grade-levels', [SectionController::class, 'gradeLevels']);
 Route::get('sections', [SectionController::class, 'index']);
 Route::get('roles', [UserController::class, 'roles']);
 
-// ── Protected (Sanctum token required, and the account must still be active) ──
-Route::middleware(['auth:sanctum', 'active'])->group(function () {
+// ── Protected (Sanctum token required, the account must still be active, and an admin-issued
+//    password must have been changed: only auth/change-password and auth/logout work until then) ──
+Route::middleware(['auth:sanctum', 'active', 'password.changed'])->group(function () {
 
     // Auth
     Route::post('auth/logout',          [AuthController::class, 'logout']);

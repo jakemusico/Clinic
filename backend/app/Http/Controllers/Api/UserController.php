@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\Role;
 use App\Services\AuditLogger;
 use App\Support\NameRules;
+use App\Support\Roles;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -87,11 +88,13 @@ class UserController extends Controller
         $validated = $request->validate($rules, NameRules::messages(['title', 'first_name', 'middle_name', 'last_name']));
 
         $userData = $this->buildUserData($validated, $role);
-        $userData['is_active']            = true;
-        $userData['must_change_password'] = true; // admin-created accounts must change password on first login
-        $userData['password']             = Hash::make($validated['password']);
+        $userData['password'] = Hash::make($validated['password']);
 
-        $user = User::create($userData);
+        $user = new User($userData);   // only the mass-assignable columns
+        $this->assignAccessFields($user, $validated, $role);
+        $user->is_active            = true;
+        $user->must_change_password = true; // admin-created accounts must change password on first login
+        $user->save();
 
         AuditLogger::log(
             'user_created',
@@ -134,11 +137,15 @@ class UserController extends Controller
         $userData = $this->buildUserData($validated, $role);
 
         if ($request->filled('password')) {
-            $userData['password']             = Hash::make($validated['password']);
-            $userData['must_change_password'] = true;
+            $userData['password'] = Hash::make($validated['password']);
         }
 
-        $user->update($userData);
+        $user->fill($userData);   // only the mass-assignable columns
+        $this->assignAccessFields($user, $validated, $role);
+        if ($request->filled('password')) {
+            $user->must_change_password = true;   // the admin chose this password: the user must replace it
+        }
+        $user->save();
 
         // The password was reset by an admin: every existing session of that user is revoked.
         if ($request->filled('password')) {
@@ -178,7 +185,8 @@ class UserController extends Controller
     public function toggleStatus(User $user): JsonResponse
     {
         $oldValues = ['is_active' => $user->is_active];
-        $user->update(['is_active' => ! $user->is_active]);
+        $user->is_active = ! $user->is_active;   // not mass-assignable, set explicitly
+        $user->save();
         $newValues = ['is_active' => $user->is_active];
 
         // A deactivated account is signed out everywhere at once.
@@ -397,9 +405,11 @@ class UserController extends Controller
         // Resolve role_id
         $roleId = $validated['role_id'] ?? null;
         if (!$roleId) {
-            $slug = ($role === 'clinic_staff') ? 'nurse' : $role;
-            $roleObj = Role::where('slug', $slug)->orWhere('slug', $role)->first();
-            $roleId = $roleObj?->id ?? 4;
+            // The roles table may call the nurse role 'clinic_staff' or 'nurse': look for either spelling
+            $canonical = Roles::of($role) ?? $role;
+            $slugs = array_unique(array_filter([$canonical, $role, $canonical === Roles::NURSE ? 'nurse' : null]));
+            $roleObj = Role::whereIn('slug', $slugs)->first();
+            $roleId = $roleObj?->id ?? 4;   // unknown role: the least privileged one (student)
         }
 
         $data = [
@@ -410,7 +420,6 @@ class UserController extends Controller
             'suffix'      => $validated['suffix'] ?? null,
             'email'       => $validated['email'],
             'role_id'     => $roleId,
-            'role'        => $role,
             'contact_no'  => $validated['contact_no'] ?? null,
             // Clear all role-specific fields first; re-populate below per role
             'student_id'    => null,
@@ -437,10 +446,20 @@ class UserController extends Controller
             $data['license_no'] = $validated['license_no'] ?? null;
         }
 
-        if ($role === 'admin' && isset($validated['has_medical_access'])) {
-            $data['has_medical_access'] = (bool) $validated['has_medical_access'];
-        }
-
         return $data;
+    }
+
+    /**
+     * Set the access columns that are NOT mass-assignable (role, has_medical_access).
+     * Only the admin routes reach this, after the admin's own role was checked by the route middleware.
+     */
+    private function assignAccessFields(User $user, array $validated, string $role): void
+    {
+        // Canonical slug (nurse -> clinic_staff) so it always fits the users.role column
+        $user->role = Roles::of($role) ?? $role;
+
+        if ($role === 'admin' && isset($validated['has_medical_access'])) {
+            $user->has_medical_access = (bool) $validated['has_medical_access'];
+        }
     }
 }

@@ -11,6 +11,7 @@ use App\Models\Appointment;
 use App\Services\AuditLogger;
 use App\Services\ConsultationServiceName;
 use App\Support\AppointmentLink;
+use App\Support\Roles;
 use App\Support\VitalsRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,11 +24,12 @@ class ClinicRecordController extends Controller
     {
         $user = $request->user();
 
-        if ($user->role === 'dentist') {
-            return response()->json(['message' => 'Forbidden. Dentists cannot access medical clinic records.'], 403);
+        // Allow-list: nurse and admin (medical care), or a patient looking at their own records.
+        if (! Roles::canAccessCare($user, Roles::MEDICAL) && ! Roles::isPatient($user)) {
+            return response()->json(['message' => 'Forbidden. Only the nurse, an administrator or the patient can access medical clinic records.'], 403);
         }
 
-        if ($user->role === 'admin') {
+        if (Roles::isAdmin($user)) {
             AuditLogger::log('admin_viewed_medical_records', ClinicRecord::class, null, null, [
                 'search'     => $request->search ?? null,
                 'patient_id' => $request->patient_id ?? null,
@@ -36,7 +38,7 @@ class ClinicRecordController extends Controller
 
         $query = ClinicRecord::with(['patient.user', 'appointment.service', 'createdBy']);
 
-        if (in_array($user->role, ['student', 'faculty_staff'])) {
+        if (Roles::isPatient($user)) {
             $query->whereHas('patient', function ($q) use ($user) {
                 $q->where('user_id', $user->id);
             });
@@ -92,11 +94,11 @@ class ClinicRecordController extends Controller
     {
         $user = $request->user();
 
-        if ($user->role === 'dentist') {
-            return response()->json(['message' => 'Forbidden. Dentists cannot access medical clinic records.'], 403);
+        if (! Roles::canAccessCare($user, Roles::MEDICAL) && ! Roles::isPatient($user)) {
+            return response()->json(['message' => 'Forbidden. Only the nurse, an administrator or the patient can access medical clinic records.'], 403);
         }
 
-        if (in_array($user->role, ['student', 'faculty_staff'])) {
+        if (Roles::isPatient($user)) {
             $patient = Patient::where('user_id', $user->id)->first();
             if (! $patient || $clinicRecord->patient_id !== $patient->id) {
                 return response()->json(['message' => 'Forbidden. You can only view your own records.'], 403);
@@ -105,7 +107,7 @@ class ClinicRecordController extends Controller
 
         $clinicRecord->load(['patient.user', 'appointment.service', 'createdBy']);
 
-        if ($user->role === 'admin') {
+        if (Roles::isAdmin($user)) {
             AuditLogger::log('admin_viewed_medical_record', ClinicRecord::class, $clinicRecord->id, null, [
                 'patient_id'   => $clinicRecord->patient_id,
                 'patient_name' => $clinicRecord->patient?->user?->name,
@@ -122,7 +124,7 @@ class ClinicRecordController extends Controller
     {
         $user = $request->user();
 
-        if ($user->role !== 'clinic_staff') {
+        if (! Roles::is($user, Roles::NURSE)) {
             return response()->json(['message' => 'Only nurse/clinic staff can create medical patient records.'], 403);
         }
 
@@ -233,7 +235,7 @@ class ClinicRecordController extends Controller
     {
         $user = $request->user();
 
-        if ($user->role !== 'clinic_staff') {
+        if (! Roles::is($user, Roles::NURSE)) {
             return response()->json(['message' => 'Only nurse/clinic staff can modify medical patient records.'], 403);
         }
 
@@ -331,13 +333,17 @@ class ClinicRecordController extends Controller
     {
         $user = $request->user();
 
-        if (! in_array($user->role, ['clinic_staff', 'dentist', 'admin'])) {
+        if (! Roles::isClinicStaff($user)) {
             return response()->json(['message' => 'Forbidden.'], 403);
         }
 
-        if ($user->role === 'admin') {
+        if (Roles::isAdmin($user)) {
             AuditLogger::log('admin_viewed_patient_list', Patient::class);
         }
+
+        // The nurse only gets the medical visit dates, the dentist only the dental ones, admin both.
+        $showMedical = Roles::canAccessCare($user, Roles::MEDICAL);
+        $showDental  = Roles::canAccessCare($user, Roles::DENTAL);
 
         $search = $request->query('search');
 
@@ -361,10 +367,12 @@ class ClinicRecordController extends Controller
         }
 
         // Date of the last visit, per kind of care (shown on the consultation form)
-        $lastMedical = ClinicRecord::selectRaw('patient_id, MAX(visit_date) as last_visit')
-            ->groupBy('patient_id')->pluck('last_visit', 'patient_id');
-        $lastDental = DentalConsultation::selectRaw('patient_id, MAX(consultation_date) as last_visit')
-            ->groupBy('patient_id')->pluck('last_visit', 'patient_id');
+        $lastMedical = $showMedical
+            ? ClinicRecord::selectRaw('patient_id, MAX(visit_date) as last_visit')->groupBy('patient_id')->pluck('last_visit', 'patient_id')
+            : collect();
+        $lastDental = $showDental
+            ? DentalConsultation::selectRaw('patient_id, MAX(consultation_date) as last_visit')->groupBy('patient_id')->pluck('last_visit', 'patient_id')
+            : collect();
 
         $patients = $users->map(function ($u) use ($profiles, $lastMedical, $lastDental) {
             $patient = $profiles[$u->id];

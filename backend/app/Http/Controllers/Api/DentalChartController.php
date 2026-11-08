@@ -7,6 +7,7 @@ use App\Models\DentalChart;
 use App\Models\DentalChartTooth;
 use App\Models\Patient;
 use App\Services\AuditLogger;
+use App\Support\Roles;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -20,11 +21,12 @@ class DentalChartController extends Controller
     {
         $user = $request->user();
 
-        if ($user->role === 'clinic_staff') {
-            return response()->json(['message' => 'Forbidden. Nurse role cannot access dental charts.'], 403);
+        // Allow-list: dentist and admin (dental care), or a patient looking at their own chart.
+        if (! Roles::canAccessCare($user, Roles::DENTAL) && ! Roles::isPatient($user)) {
+            return response()->json(['message' => 'Forbidden. Only the dentist, an administrator or the patient can access dental charts.'], 403);
         }
 
-        if (in_array($user->role, ['student', 'faculty_staff'])) {
+        if (Roles::isPatient($user)) {
             $patient = Patient::where('user_id', $user->id)->first();
             if (! $patient || $patient->id !== $patientId) {
                 return response()->json(['message' => 'Forbidden. You can only view your own dental chart.'], 403);
@@ -48,7 +50,7 @@ class DentalChartController extends Controller
             }
         }
 
-        if ($user->role === 'admin') {
+        if (Roles::isAdmin($user)) {
             AuditLogger::log('admin_viewed_dental_chart', DentalChart::class, $chart->id, null, [
                 'patient_id'   => $patientId,
                 'patient_name' => $patient->user?->name,
@@ -71,7 +73,7 @@ class DentalChartController extends Controller
     {
         $user = $request->user();
 
-        if ($user->role !== 'dentist') {
+        if (! Roles::is($user, Roles::DENTIST)) {
             return response()->json(['message' => 'Only dentists can update dental chart records.'], 403);
         }
 

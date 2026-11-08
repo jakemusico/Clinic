@@ -80,7 +80,7 @@ class AuthController extends Controller
         // The account and its patient profile are created together: if either fails, neither is kept.
         // Students and faculty/staff both get a patient row (guardian details are for students only).
         $user = DB::transaction(function () use ($validated, $roleId, $roleSlug, $age) {
-            $user = User::create([
+            $user = new User([
                 'first_name'            => $validated['first_name'],
                 'middle_name'           => $validated['middle_name'] ?? null,
                 'last_name'             => $validated['last_name'],
@@ -88,7 +88,6 @@ class AuthController extends Controller
                 'email'                 => $validated['email'],
                 'password'              => $validated['password'],
                 'role_id'               => $roleId,
-                'role'                  => $roleSlug,
                 'date_of_birth'         => $validated['date_of_birth'],
                 'sex'                   => $validated['sex'],
                 'age'                   => $age,
@@ -101,6 +100,14 @@ class AuthController extends Controller
                 'address'               => $validated['address'] ?? null,
                 'terms_accepted_at'     => now(),
             ]);
+
+            // Not mass-assignable: set one by one. Public registration only ever gets a patient role
+            // (the request is validated to student / faculty_staff above), active, no forced password change.
+            $user->role                 = $roleSlug;
+            $user->is_active            = true;
+            $user->must_change_password = false;
+            $user->has_medical_access   = false;
+            $user->save();
 
             $patientData = [
                 'date_of_birth' => $validated['date_of_birth'],
@@ -596,10 +603,9 @@ class AuthController extends Controller
             ]);
         }
 
-        $user->update([
-            'password'             => Hash::make($validated['password']),
-            'must_change_password' => false,
-        ]);
+        $user->password             = Hash::make($validated['password']);
+        $user->must_change_password = false;   // not mass-assignable, set explicitly
+        $user->save();
 
         // A new password signs out every other session (a stolen token stops working). The token
         // making this request is kept, so the user stays signed in on this device.
