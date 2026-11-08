@@ -20,6 +20,14 @@ export function getApiErrorMessage(err, fallback = 'Something went wrong. Please
   const message = typeof data?.message === 'string' ? data.message : ''
   if (message && !TECHNICAL.test(message)) return message
 
+  // Rate limit (also when a proxy answers without our JSON body)
+  if (err.response.status === 429) {
+    const wait = parseInt(err.response.headers?.['retry-after'], 10)
+    return wait > 0
+      ? `Too many requests. Please wait ${wait} second${wait === 1 ? '' : 's'} and try again.`
+      : 'Too many requests. Please wait a moment and try again.'
+  }
+
   if (err.response.status === 413) return 'The file is too large. Please choose a smaller one.'
   return fallback
 }

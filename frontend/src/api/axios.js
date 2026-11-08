@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { clearAllConsultationDrafts } from '../hooks/useConsultationDraft'
+import { clearAll as clearReferenceCache } from './referenceCache'
 
 const api = axios.create({
   baseURL: '/api',
@@ -41,6 +42,7 @@ api.interceptors.response.use(
       localStorage.removeItem('auth_token')
       localStorage.removeItem('auth_user')
       clearAllConsultationDrafts()   // unfinished consultation drafts hold patient details
+      clearReferenceCache()          // cached patient / stock lists belong to the session that is gone
 
       // Already on a public page (e.g. /login): nothing to leave, and a reload would wipe the form
       if (!PUBLIC_PATHS.includes(window.location.pathname)) {

@@ -11,6 +11,7 @@ import Avatar from '../../components/Avatar'
 import { EMPTY } from '../../utils/emptyValue'
 import { LoadError } from '../../components/dashboard/Fallbacks'
 import { getApiErrorMessage } from '../../utils/apiError'
+import useLatestRequest, { isRequestCanceled } from '../../hooks/useLatestRequest'
 
 export default function PeoplePage() {
   const { user } = useAuth()
@@ -27,6 +28,7 @@ export default function PeoplePage() {
   const [lastPage, setLastPage]   = useState(1)
   const [total, setTotal]         = useState(0)
   const [selectedPerson, setSelectedPerson] = useState(null)
+  const latest = useLatestRequest()
   
   const isDentist = user?.role === 'dentist'
   const canConsult = user?.role === 'clinic_staff' || user?.role === 'dentist' || (user?.role === 'admin' && Boolean(user?.has_medical_access))
@@ -45,6 +47,7 @@ export default function PeoplePage() {
   }, [initialSearch])
 
   const fetchPeople = async (searchQuery = search, targetPage = page) => {
+    const req = latest.begin()   // an older, slower response (other tab / search / page) is dropped
     setLoading(true)
     setLoadError('')
     try {
@@ -54,17 +57,20 @@ export default function PeoplePage() {
           search: searchQuery,
           page: targetPage,
           per_page: pageSize,
-        }
+        },
+        signal: req.signal,
       })
+      if (!req.isCurrent()) return
       setPeople(data.data || (Array.isArray(data) ? data : []))
       setLastPage(data.last_page || 1)
       setTotal(data.total ?? (data.data || []).length)
       setPage(targetPage)
     } catch (err) {
+      if (isRequestCanceled(err) || !req.isCurrent()) return
       console.error(err)
       setLoadError(getApiErrorMessage(err, 'Could not load the list.'))
     } finally {
-      setLoading(false)
+      if (req.isCurrent()) setLoading(false)
     }
   }
 

@@ -23,6 +23,12 @@ use App\Support\Roles;
 class ReportController extends Controller
 {
     /**
+     * Most rows a report list may hold. A month of data is a few hundred rows, so this is only a safety
+     * stop against a very wide date range loading a whole table into memory.
+     */
+    private const ROW_CAP = 10000;
+
+    /**
      * Categorize a complaint/diagnosis into standard categories (matches DashboardController).
      */
     public function categorizeComplaint(?string $category, ?string $complaint, ?string $diagnosis, string $type = 'medical'): string
@@ -93,13 +99,18 @@ class ReportController extends Controller
     }
 
     /**
-     * Calculate current stock for an item from transactions.
+     * Current stock (IN minus OUT, never below 0) of EVERY item from one grouped query, keyed by item id.
+     *
+     * @return array<int,int>
      */
-    private function getStock(int $itemId): int
+    private function stockByItem(): array
     {
-        $in  = (int) InventoryTransaction::where('item_id', $itemId)->where('type', 'IN')->sum('quantity');
-        $out = (int) InventoryTransaction::where('item_id', $itemId)->where('type', 'OUT')->sum('quantity');
-        return max(0, $in - $out);
+        return InventoryTransaction::query()
+            ->selectRaw("item_id, SUM(CASE WHEN type = 'IN' THEN quantity ELSE -quantity END) AS stock")
+            ->groupBy('item_id')
+            ->pluck('stock', 'item_id')
+            ->map(fn ($v) => max(0, (int) $v))
+            ->all();
     }
 
     /**
@@ -143,7 +154,7 @@ class ReportController extends Controller
         }
 
         $statsQuery = clone $query;
-        $appointments = $query->orderBy('scheduled_at', 'desc')->get();
+        $appointments = $query->orderBy('scheduled_at', 'desc')->limit(self::ROW_CAP)->get();
 
         $total     = $statsQuery->count();
         $completed = (clone $statsQuery)->where('status', 'completed')->count();
@@ -275,7 +286,7 @@ class ReportController extends Controller
                 $medQuery->where('created_by', $staffId);
             }
 
-            $medRecords = $medQuery->get()->map(fn ($r) => ConsultationRow::medical($r));
+            $medRecords = $medQuery->orderByDesc('id')->limit(self::ROW_CAP)->get()->map(fn ($r) => ConsultationRow::medical($r));
 
             $consultations = $consultations->merge($medRecords);
         }
@@ -301,7 +312,7 @@ class ReportController extends Controller
                 $dentQuery->where('created_by', $staffId);
             }
 
-            $dentRecords = $dentQuery->get()->map(fn ($c) => ConsultationRow::dental($c));
+            $dentRecords = $dentQuery->orderByDesc('id')->limit(self::ROW_CAP)->get()->map(fn ($c) => ConsultationRow::dental($c));
 
             $consultations = $consultations->merge($dentRecords);
         }
@@ -391,6 +402,7 @@ class ReportController extends Controller
         $in30Days = Carbon::today()->addDays(30)->toDateString();
 
         $items = InventoryItem::orderBy('name')->get();
+        $stockByItem = $this->stockByItem();   // one grouped query for every item (was two SUMs per item)
         $itemList = [];
         $lowStockItems = [];
         $categoryCounts = [];
@@ -402,7 +414,7 @@ class ReportController extends Controller
 
         foreach ($items as $item) {
             $isEquipment = $item->category === 'Equipment';
-            $stock = $isEquipment ? null : $this->getStock($item->id);
+            $stock = $isEquipment ? null : ($stockByItem[$item->id] ?? 0);
 
             $status = 'normal';
             if (!$isEquipment) {
@@ -473,7 +485,7 @@ class ReportController extends Controller
         // patient) is shown only for the user's own kind of care: nurse medical, dentist dental, admin both.
         Roles::limitToCare($txQuery, $user, 'consultation_type', includeNull: true);
 
-        $transactions = $txQuery->orderByDesc('created_at')->get()->map(function ($t) {
+        $transactions = $txQuery->orderByDesc('created_at')->limit(self::ROW_CAP)->get()->map(function ($t) {
             $u = $t->patientUser;
             $staff = $t->recordedBy;
             return [
@@ -590,7 +602,7 @@ class ReportController extends Controller
                 $medQuery->where('created_by', $staffId);
             }
 
-            $medRecords = $medQuery->get();
+            $medRecords = $medQuery->orderByDesc('id')->limit(self::ROW_CAP)->get();
             foreach ($medRecords as $r) {
                 $cat = $this->categorizeComplaint($r->complaint_category, $r->chief_complaint, $r->diagnosis, 'medical');
                 $categoryCounts[$cat] = ($categoryCounts[$cat] ?? 0) + 1;
@@ -636,7 +648,7 @@ class ReportController extends Controller
                 $dentQuery->where('created_by', $staffId);
             }
 
-            $dentRecords = $dentQuery->get();
+            $dentRecords = $dentQuery->orderByDesc('id')->limit(self::ROW_CAP)->get();
             foreach ($dentRecords as $d) {
                 $cat = $this->categorizeComplaint($d->complaint_category, $d->reason_for_visit, $d->diagnosis, 'dental');
                 $categoryCounts[$cat] = ($categoryCounts[$cat] ?? 0) + 1;
@@ -768,7 +780,7 @@ class ReportController extends Controller
         $dateFrom = $request->query('date_from');
         $dateTo = $request->query('date_to');
 
-        $query = Conversation::query()->with(['messages.sender', 'student']);
+        $query = Conversation::query();
 
         // Conversations are stored per team: 'nurse' (medical) or 'dentist' (dental). The nurse only
         // gets the nurse chats and the dentist only the dentist chats, whatever role_type asks for.
@@ -791,38 +803,32 @@ class ReportController extends Controller
             $query->whereDate('created_at', '<=', $dateTo);
         }
 
-        $conversations = $query->get();
+        // Counts and the average first-reply time come from ONE aggregate query (the first staff message of
+        // each conversation is joined in), instead of loading every conversation with all its messages.
+        $firstStaffReply = DB::table('messages as m')
+            ->join('users as u', 'u.id', '=', 'm.sender_id')
+            ->whereIn('u.role', ['clinic_staff', 'dentist'])
+            ->whereNull('m.deleted_at')
+            ->groupBy('m.conversation_id')
+            ->selectRaw('m.conversation_id, MIN(m.created_at) AS first_staff_at');
 
-        $total = $conversations->count();
-        $resolved = $conversations->where('status', 'resolved')->count();
-        $open = $conversations->where('status', 'open')->count();
+        $stats = (clone $query)
+            ->leftJoinSub($firstStaffReply, 'f', 'f.conversation_id', '=', 'conversations.id')
+            ->selectRaw("COUNT(*) AS total,
+                COALESCE(SUM(conversations.status = 'resolved'), 0) AS resolved,
+                COALESCE(SUM(conversations.status = 'open'), 0) AS open_count,
+                AVG(CASE WHEN f.first_staff_at IS NOT NULL THEN GREATEST(0, TIMESTAMPDIFF(SECOND, conversations.created_at, f.first_staff_at) / 60) END) AS avg_minutes,
+                COALESCE(SUM(f.first_staff_at IS NULL AND conversations.status = 'open' AND conversations.created_at <= ?), 0) AS unanswered",
+                [Carbon::now()->subHours(24)->toDateTimeString()])
+            ->first();
 
-        // Calculate avg response time (minutes)
-        $responseTimes = [];
-        $unanswered24h = 0;
-        $now = Carbon::now();
+        $total = (int) $stats->total;
+        $resolved = (int) $stats->resolved;
+        $open = (int) $stats->open_count;
+        $unanswered24h = (int) $stats->unanswered;
+        $avgResponseMinutes = $stats->avg_minutes !== null ? round((float) $stats->avg_minutes, 1) : 0;
 
-        foreach ($conversations as $conv) {
-            $firstStaffMsg = $conv->messages
-                ->filter(function ($m) {
-                    return $m->sender && in_array($m->sender->role, ['clinic_staff', 'dentist']);
-                })
-                ->sortBy('created_at')
-                ->first();
-
-            if ($firstStaffMsg) {
-                $created = Carbon::parse($conv->created_at);
-                $replied = Carbon::parse($firstStaffMsg->created_at);
-                $diffMinutes = max(0, $created->diffInMinutes($replied));
-                $responseTimes[] = $diffMinutes;
-            } else {
-                if ($conv->status === 'open' && Carbon::parse($conv->created_at)->diffInHours($now) >= 24) {
-                    $unanswered24h++;
-                }
-            }
-        }
-
-        $avgResponseMinutes = count($responseTimes) > 0 ? round(array_sum($responseTimes) / count($responseTimes), 1) : 0;
+        $conversations = $query->with('student')->orderByDesc('id')->limit(self::ROW_CAP)->get();
 
         return response()->json([
             'total_conversations'       => $total,

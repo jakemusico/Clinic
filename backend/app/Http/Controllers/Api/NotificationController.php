@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\CacheVersion;
+use App\Support\Paging;
 use App\Http\Controllers\Controller;
 use App\Models\Notification;
 use App\Models\User;
@@ -58,18 +60,6 @@ class NotificationController extends Controller
     }
 
     /**
-     * Admins get low stock / expiring alerts generated as notifications. That check reads the
-     * whole inventory, so run it at most once every 2 minutes instead of on every poll.
-     * (Alerts are already de-duplicated per item per day.)
-     */
-    public static function syncAdminAlerts(\App\Models\User $user): void
-    {
-        if ($user->role === 'admin' && Cache::add('inventory:admin-alert-sync', 1, 120)) {
-            InventoryController::checkAlertsAndNotifyAdmins();
-        }
-    }
-
-    /**
      * GET /api/notifications
      * Retrieve the notifications of the authenticated user (newest 200 unless paginated).
      */
@@ -77,14 +67,12 @@ class NotificationController extends Controller
     {
         $user = $request->user();
 
-        self::syncAdminAlerts($user);
-
         $query = self::visibleQuery($user);
 
         $unreadCount = (clone $query)->where('is_read', false)->count();
 
         if ($request->has('page') || $request->has('per_page')) {
-            $perPage = (int) $request->input('per_page', 10);
+            $perPage = Paging::perPage($request);
             $paginated = $query
                 ->orderBy('is_read', 'asc')
                 ->orderBy('created_at', 'desc')
@@ -191,6 +179,7 @@ class NotificationController extends Controller
         }
 
         $query->update(['is_read' => true]);
+        CacheVersion::bump("counters:{$user->id}");   // a bulk update fires no model events
 
         return response()->json([
             'message' => 'All notifications marked as read.',

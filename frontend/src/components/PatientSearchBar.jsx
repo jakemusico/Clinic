@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../api/axios'
+import useLatestRequest, { isRequestCanceled } from '../hooks/useLatestRequest'
 import Avatar from './Avatar'
 
 const Icon = ({ d, size = 16 }) => (
@@ -21,6 +22,7 @@ export default function PatientSearchBar() {
   
   const containerRef = useRef(null)
   const navigate = useNavigate()
+  const latest = useLatestRequest()
 
   useEffect(() => {
     const handler = (e) => {
@@ -34,27 +36,32 @@ export default function PatientSearchBar() {
 
   useEffect(() => {
     if (query.trim().length < 2) {
+      latest.cancel()   // a slow answer for the old text must not reopen the list
       setResults([])
       setIsOpen(false)
+      setLoading(false)
       return
     }
 
     const timer = setTimeout(async () => {
+      const req = latest.begin()   // cancels the search for the previous text
       setLoading(true)
       try {
-        const { data } = await api.get('/search-patients', { params: { query: query.trim() } })
+        const { data } = await api.get('/search-patients', { params: { query: query.trim() }, signal: req.signal })
+        if (!req.isCurrent()) return
         setResults(data.users || [])
         setIsOpen(true)
         setActiveIndex(-1)
       } catch (err) {
+        if (isRequestCanceled(err) || !req.isCurrent()) return
         console.error('Search error', err)
       } finally {
-        setLoading(false)
+        if (req.isCurrent()) setLoading(false)
       }
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [query])
+  }, [query, latest])
 
   const handleKeyDown = (e) => {
     if (!isOpen) return

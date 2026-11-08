@@ -279,144 +279,107 @@ class ChatbotController extends Controller
         $month  = (int) $request->query('month', $now->month);
         $year   = (int) $request->query('year', $now->year);
 
-        // 1. Overall conversation cards
-        $totalConversations    = Conversation::count();
-        $openConversations     = Conversation::where('status', 'open')->count();
-        $resolvedConversations = Conversation::where('status', 'resolved')->count();
-
-        // Unanswered = open conversation where the latest message is from the student with no staff reply after it
-        $unansweredConversations = 0;
-        $openConvs = Conversation::where('status', 'open')
-            ->with(['messages' => function ($q) {
-                $q->withTrashed()->with('sender')->orderBy('created_at', 'asc')->orderBy('id', 'asc');
-            }])
+        // 1 + 4. Conversation counts, overall and per team: ONE grouped query
+        $counts = Conversation::query()
+            ->selectRaw('staff_role, status, COUNT(*) AS c')
+            ->groupBy('staff_role', 'status')
             ->get();
 
-        foreach ($openConvs as $conv) {
-            $lastMsg = $conv->messages->last();
-            if ($lastMsg) {
-                $isStudent = ($lastMsg->sender && $lastMsg->sender->role === 'student')
-                    || ((int) $lastMsg->sender_id === (int) $conv->student_id);
-                if ($isStudent) {
-                    $unansweredConversations++;
-                }
+        $sum = fn (?string $role, ?string $status) => (int) $counts
+            ->when($role !== null, fn ($rows) => $rows->where('staff_role', $role))
+            ->when($status !== null, fn ($rows) => $rows->where('status', $status))
+            ->sum('c');
+
+        $totalConversations    = $sum(null, null);
+        $openConversations     = $sum(null, 'open');
+        $resolvedConversations = $sum(null, 'resolved');
+
+        // Unanswered = open conversation whose LAST message (soft-deleted ones included) is from the student
+        // (or from the conversation's own student), with no staff reply after it.
+        $unansweredConversations = (int) (DB::selectOne("
+            SELECT COUNT(*) AS n
+            FROM conversations c
+            JOIN messages m ON m.id = (
+                SELECT m2.id FROM messages m2
+                WHERE m2.conversation_id = c.id
+                ORDER BY m2.created_at DESC, m2.id DESC
+                LIMIT 1
+            )
+            LEFT JOIN users u ON u.id = m.sender_id
+            WHERE c.status = 'open'
+              AND (u.role = 'student' OR m.sender_id = c.student_id)
+        ")->n ?? 0);
+
+        // 2. Average staff response time = average gap between a student message and the first staff reply
+        // after it in the same conversation. The first reply of each message is found by a joined subquery.
+        $avg = DB::selectOne("
+            SELECT ROUND(AVG(ROUND(GREATEST(0, TIMESTAMPDIFF(SECOND, sm.created_at, r.created_at)) / 60, 2)), 1) AS avg_minutes
+            FROM messages sm
+            JOIN conversations c ON c.id = sm.conversation_id
+            LEFT JOIN users su ON su.id = sm.sender_id
+            JOIN messages r ON r.id = (
+                SELECT m3.id FROM messages m3
+                JOIN users u3 ON u3.id = m3.sender_id AND u3.role IN ('clinic_staff', 'nurse', 'dentist')
+                WHERE m3.conversation_id = sm.conversation_id
+                  AND (m3.created_at > sm.created_at OR (m3.created_at = sm.created_at AND m3.id > sm.id))
+                ORDER BY m3.created_at ASC, m3.id ASC
+                LIMIT 1
+            )
+            WHERE (su.role = 'student' OR sm.sender_id = c.student_id)
+        ");
+        $avgResponseMinutes = $avg && $avg->avg_minutes !== null ? (float) $avg->avg_minutes : null;
+
+        // 3. Conversations over time: distinct conversations that had a message (soft-deleted included) or
+        // were created in each day / month / year. One grouped query for the whole range.
+        $distinctPerBucket = function (string $bucketSql, Carbon $start, Carbon $end): array {
+            $from = $start->toDateTimeString();
+            $to   = $end->toDateTimeString();
+
+            $rows = DB::select("
+                SELECT {$bucketSql} AS bucket, COUNT(DISTINCT cid) AS n
+                FROM (
+                    SELECT conversation_id AS cid, created_at AS x FROM messages WHERE created_at BETWEEN ? AND ?
+                    UNION ALL
+                    SELECT id AS cid, created_at AS x FROM conversations WHERE created_at BETWEEN ? AND ?
+                ) t
+                GROUP BY bucket
+            ", [$from, $to, $from, $to]);
+
+            $out = [];
+            foreach ($rows as $row) {
+                $out[(int) $row->bucket] = (int) $row->n;
             }
-        }
 
-        // 2. Average Staff Response Time = average gap between a student message and the first staff reply after it
-        $responseTimes = [];
-        $allConversations = Conversation::with(['messages' => function ($q) {
-            $q->withTrashed()->with('sender')->orderBy('created_at', 'asc')->orderBy('id', 'asc');
-        }])->get();
+            return $out;
+        };
 
-        foreach ($allConversations as $conv) {
-            $messages = $conv->messages;
-            $count = count($messages);
-            for ($i = 0; $i < $count; $i++) {
-                $m = $messages[$i];
-                $isStudent = ($m->sender && $m->sender->role === 'student')
-                    || ((int) $m->sender_id === (int) $conv->student_id);
-
-                if ($isStudent) {
-                    // Find the first staff reply after this student message
-                    for ($j = $i + 1; $j < $count; $j++) {
-                        $other = $messages[$j];
-                        $isStaff = $other->sender && in_array($other->sender->role, ['clinic_staff', 'nurse', 'dentist']);
-                        if ($isStaff) {
-                            $mTime = Carbon::parse($m->created_at);
-                            $rTime = Carbon::parse($other->created_at);
-                            $diffSec = $mTime->diffInSeconds($rTime);
-                            $responseTimes[] = max(0, round($diffSec / 60, 2));
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        $avgResponseMinutes = count($responseTimes) > 0
-            ? round(array_sum($responseTimes) / count($responseTimes), 1)
-            : null;
-
-        // 3. Conversations Over Time Chart Data
-        // Count distinct conversations with at least one message per day/month/year (including soft-deleted messages, plus conversations created)
         $chartData = [];
 
         if ($period === 'daily') {
             $daysInMonth = Carbon::create($year, $month, 1, 0, 0, 0, $tz)->daysInMonth;
             $start = Carbon::create($year, $month, 1, 0, 0, 0, $tz)->startOfDay();
             $end   = Carbon::create($year, $month, $daysInMonth, 23, 59, 59, $tz)->endOfDay();
-
-            $dayConvs = array_fill(1, $daysInMonth, []);
-
-            // Messages within this month
-            $monthMessages = Message::withTrashed()
-                ->whereBetween('created_at', [$start, $end])
-                ->select('conversation_id', 'created_at')
-                ->get();
-
-            foreach ($monthMessages as $m) {
-                $d = Carbon::parse($m->created_at)->setTimezone($tz);
-                if ($d->year === $year && $d->month === $month) {
-                    $dayConvs[$d->day][$m->conversation_id] = true;
-                }
-            }
-
-            // Conversations created within this month
-            $monthConvs = Conversation::whereBetween('created_at', [$start, $end])
-                ->select('id', 'created_at')
-                ->get();
-
-            foreach ($monthConvs as $c) {
-                $d = Carbon::parse($c->created_at)->setTimezone($tz);
-                if ($d->year === $year && $d->month === $month) {
-                    $dayConvs[$d->day][$c->id] = true;
-                }
-            }
+            $perDay = $distinctPerBucket('DAY(x)', $start, $end);
 
             for ($day = 1; $day <= $daysInMonth; $day++) {
                 $d = Carbon::create($year, $month, $day, 0, 0, 0, $tz);
                 $chartData[] = [
                     'label'         => $d->format('M j, Y'),
                     'short_label'   => (string) $day,
-                    'conversations' => count($dayConvs[$day]),
+                    'conversations' => $perDay[$day] ?? 0,
                 ];
             }
         } elseif ($period === 'monthly') {
             $start = Carbon::create($year, 1, 1, 0, 0, 0, $tz)->startOfYear();
             $end   = Carbon::create($year, 12, 31, 23, 59, 59, $tz)->endOfYear();
-
-            $monthConvsMap = array_fill(1, 12, []);
-
-            $yearMessages = Message::withTrashed()
-                ->whereBetween('created_at', [$start, $end])
-                ->select('conversation_id', 'created_at')
-                ->get();
-
-            foreach ($yearMessages as $m) {
-                $d = Carbon::parse($m->created_at)->setTimezone($tz);
-                if ($d->year === $year) {
-                    $monthConvsMap[$d->month][$m->conversation_id] = true;
-                }
-            }
-
-            $yearConvs = Conversation::whereBetween('created_at', [$start, $end])
-                ->select('id', 'created_at')
-                ->get();
-
-            foreach ($yearConvs as $c) {
-                $d = Carbon::parse($c->created_at)->setTimezone($tz);
-                if ($d->year === $year) {
-                    $monthConvsMap[$d->month][$c->id] = true;
-                }
-            }
+            $perMonth = $distinctPerBucket('MONTH(x)', $start, $end);
 
             for ($m = 1; $m <= 12; $m++) {
                 $d = Carbon::create($year, $m, 1, 0, 0, 0, $tz);
                 $chartData[] = [
                     'label'         => $d->format('F Y'),
                     'short_label'   => $d->format('M'),
-                    'conversations' => count($monthConvsMap[$m]),
+                    'conversations' => $perMonth[$m] ?? 0,
                 ];
             }
         } else {
@@ -424,52 +387,16 @@ class ChatbotController extends Controller
             $startYear = $year - 4;
             $start = Carbon::create($startYear, 1, 1, 0, 0, 0, $tz)->startOfYear();
             $end   = Carbon::create($year, 12, 31, 23, 59, 59, $tz)->endOfYear();
-
-            $yearConvsMap = [];
-            for ($y = $startYear; $y <= $year; $y++) {
-                $yearConvsMap[$y] = [];
-            }
-
-            $rangeMessages = Message::withTrashed()
-                ->whereBetween('created_at', [$start, $end])
-                ->select('conversation_id', 'created_at')
-                ->get();
-
-            foreach ($rangeMessages as $m) {
-                $d = Carbon::parse($m->created_at)->setTimezone($tz);
-                if (isset($yearConvsMap[$d->year])) {
-                    $yearConvsMap[$d->year][$m->conversation_id] = true;
-                }
-            }
-
-            $rangeConvs = Conversation::whereBetween('created_at', [$start, $end])
-                ->select('id', 'created_at')
-                ->get();
-
-            foreach ($rangeConvs as $c) {
-                $d = Carbon::parse($c->created_at)->setTimezone($tz);
-                if (isset($yearConvsMap[$d->year])) {
-                    $yearConvsMap[$d->year][$c->id] = true;
-                }
-            }
+            $perYear = $distinctPerBucket('YEAR(x)', $start, $end);
 
             for ($y = $startYear; $y <= $year; $y++) {
                 $chartData[] = [
                     'label'         => (string) $y,
                     'short_label'   => (string) $y,
-                    'conversations' => count($yearConvsMap[$y]),
+                    'conversations' => $perYear[$y] ?? 0,
                 ];
             }
         }
-
-        // 4. By Staff Role
-        $nurseTotal    = Conversation::where('staff_role', 'nurse')->count();
-        $nurseResolved = Conversation::where('staff_role', 'nurse')->where('status', 'resolved')->count();
-        $nurseOpen     = Conversation::where('staff_role', 'nurse')->where('status', 'open')->count();
-
-        $dentistTotal    = Conversation::where('staff_role', 'dentist')->count();
-        $dentistResolved = Conversation::where('staff_role', 'dentist')->where('status', 'resolved')->count();
-        $dentistOpen     = Conversation::where('staff_role', 'dentist')->where('status', 'open')->count();
 
         // 5. Top 5 Most Asked FAQs from question log
         $topFaqs = ChatbotQuestionLog::whereNotNull('faq_id')
@@ -499,14 +426,14 @@ class ChatbotController extends Controller
             'chart_data' => $chartData,
             'by_role' => [
                 'nurse' => [
-                    'total'    => $nurseTotal,
-                    'resolved' => $nurseResolved,
-                    'open'     => $nurseOpen,
+                    'total'    => $sum('nurse', null),
+                    'resolved' => $sum('nurse', 'resolved'),
+                    'open'     => $sum('nurse', 'open'),
                 ],
                 'dentist' => [
-                    'total'    => $dentistTotal,
-                    'resolved' => $dentistResolved,
-                    'open'     => $dentistOpen,
+                    'total'    => $sum('dentist', null),
+                    'resolved' => $sum('dentist', 'resolved'),
+                    'open'     => $sum('dentist', 'open'),
                 ],
             ],
             'top_faqs' => $topFaqs,

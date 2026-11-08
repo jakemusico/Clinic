@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\Paging;
 use App\Http\Controllers\Controller;
 use App\Models\ClinicRecord;
 use App\Models\DentalConsultation;
@@ -64,7 +65,7 @@ class ClinicRecordController extends Controller
         $query->orderBy('visit_date', 'desc')->orderBy('created_at', 'desc');
 
         if ($request->boolean('all') || $request->get('paginate') === 'false') {
-            $records = $query->get();
+            $records = $query->limit(Paging::ALL_LIMIT)->get();
             return response()->json([
                 'data'         => $records,
                 'records'      => $records,
@@ -75,7 +76,7 @@ class ClinicRecordController extends Controller
             ]);
         }
 
-        $perPage = (int) $request->get('per_page', 10);
+        $perPage = Paging::perPage($request);
         $paginated = $query->paginate($perPage);
 
         return response()->json([

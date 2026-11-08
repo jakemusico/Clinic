@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\SystemSetting;
+use App\Support\CacheVersion;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class SystemSettingsController extends Controller
 {
@@ -15,7 +17,11 @@ class SystemSettingsController extends Controller
      */
     public function show(string $key): JsonResponse
     {
-        $value = SystemSetting::getValue($key);
+        // Reference data (clinic info, terms ...): a found value is cached 5 minutes; saving any setting starts a
+        // new version. A missing key (defaults / 404) is never cached.
+        $value = Cache::remember(CacheVersion::key('settings', 'value', $key), 300, function () use ($key) {
+            return SystemSetting::getValue($key);
+        });
         if ($value === null) {
             if ($key === 'chat_enabled') {
                 return response()->json(['key' => 'chat_enabled', 'value' => '1']);

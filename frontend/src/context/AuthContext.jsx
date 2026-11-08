@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { authApi } from '../api/auth'
 import { clearAllConsultationDrafts } from '../hooks/useConsultationDraft'
+import { clearAll as clearReferenceCache } from '../api/referenceCache'
 
 const AuthContext = createContext(null)
 
@@ -34,6 +35,7 @@ export function AuthProvider({ children }) {
 
   const login = async (credentials) => {
     const { data } = await authApi.login(credentials)
+    clearReferenceCache()   // nothing cached by a previous user is shown to this one
     localStorage.setItem('auth_token', data.token)
     localStorage.setItem('auth_user', JSON.stringify(data.user))
     setUser(data.user)
@@ -42,6 +44,7 @@ export function AuthProvider({ children }) {
 
   const register = async (formData) => {
     const { data } = await authApi.register(formData)
+    clearReferenceCache()
     localStorage.setItem('auth_token', data.token)
     localStorage.setItem('auth_user', JSON.stringify(data.user))
     setUser(data.user)
@@ -57,6 +60,7 @@ export function AuthProvider({ children }) {
       localStorage.removeItem('auth_token')
       localStorage.removeItem('auth_user')
       clearAllConsultationDrafts()   // unfinished consultation drafts contain patient details
+      clearReferenceCache()          // cached patient / stock lists
       setUser(null)
     }
   }

@@ -540,7 +540,7 @@ function StatsTab() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const { data: d } = await chatbotApi.getStatistics({ period, _t: Date.now() })
+      const { data: d } = await chatbotApi.getStatistics({ period })
       setData(d)
     } catch {
       toast.error('Failed to load chat statistics.')

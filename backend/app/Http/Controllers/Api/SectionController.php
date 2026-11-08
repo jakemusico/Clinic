@@ -4,13 +4,21 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Section;
+use App\Support\CacheVersion;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class SectionController extends Controller
 {
     public function index()
     {
-        $sections = Section::orderBy('grade_level')->orderBy('name')->get();
+        // Reference data, the same for everybody: cached 10 minutes; adding, editing or deleting a section starts a new version
+        $sections = Cache::remember(
+            CacheVersion::key('sections', 'all'),
+            600,
+            fn () => Section::orderBy('grade_level')->orderBy('name')->get()->toArray()
+        );
+
         return response()->json($sections);
     }
 

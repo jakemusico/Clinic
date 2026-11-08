@@ -1,9 +1,10 @@
 import api from './axios'
 
+// `config` is optional (e.g. { signal } so a superseded request can be cancelled)
 export const dashboardApi = {
-  admin:   (params) => api.get('/dashboard/admin', { params }),
-  nurse:   (params) => api.get('/dashboard/nurse', { params }),
-  dentist: (params) => api.get('/dashboard/dentist', { params }),
+  admin:   (params, config) => api.get('/dashboard/admin', { params, ...config }),
+  nurse:   (params, config) => api.get('/dashboard/nurse', { params, ...config }),
+  dentist: (params, config) => api.get('/dashboard/dentist', { params, ...config }),
   /** Student and faculty/staff dashboard: stats, appointments, notifications, announcements, events */
-  student: () => api.get('/dashboard/student'),
+  student: (config) => api.get('/dashboard/student', config),
 }

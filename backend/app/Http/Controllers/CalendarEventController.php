@@ -8,7 +8,9 @@ use App\Models\User;
 use App\Services\AuditLogger;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use App\Support\CacheVersion;
 
 class CalendarEventController extends Controller
 {
@@ -18,18 +20,27 @@ class CalendarEventController extends Controller
      */
     public static function visibleEvents(User $user)
     {
-        $query = CalendarEvent::query();
-
         $roleSlug = $user->role_slug;
+        $audiences = null;   // null = no filter (admin)
         if ($roleSlug === 'student') {
-            $query->whereIn('audience', ['All', 'Students']);
+            $audiences = ['All', 'Students'];
         } elseif ($roleSlug === 'faculty_staff') {
-            $query->whereIn('audience', ['All', 'Faculty/Staff']);
+            $audiences = ['All', 'Faculty/Staff'];
         } elseif (in_array($roleSlug, ['clinic_staff', 'nurse', 'dentist'])) {
-            $query->whereIn('audience', ['All', 'Clinic Staff']);
+            $audiences = ['All', 'Clinic Staff'];
         }
 
-        return $query->orderBy('start_date', 'asc')->get();
+        // Cached for 60 seconds PER AUDIENCE (the key holds the audience list, so one role's events can never
+        // be served to another). Creating, editing or deleting an event starts a new version.
+        return Cache::remember(
+            CacheVersion::key('calendar', 'events', $audiences ? implode('|', $audiences) : 'everything'),
+            60,
+            fn () => CalendarEvent::query()
+                ->when($audiences, fn ($q) => $q->whereIn('audience', $audiences))
+                ->orderBy('start_date', 'asc')
+                ->get()
+                ->toArray()
+        );
     }
 
     public function index(Request $request)

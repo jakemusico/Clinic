@@ -148,11 +148,25 @@ curl -s -o /dev/null -w "%{size_download} bytes, %{time_total}s\n" -H "Accept-En
 
 ### How the app keeps its load light
 
-- **One request per dashboard.** `GET /api/dashboard/{admin|nurse|dentist|student}` returns the stats, charts, recent visits, alerts and calendar events together. Charts, stock levels and the student count are cached for 30-60 seconds; today's appointments and recent visits are always live.
+- **One request per dashboard.** `GET /api/dashboard/{admin|nurse|dentist|student}` returns the stats, charts, recent visits, alerts and calendar events together. Charts, stock levels and the student count are cached for 1-5 minutes and refreshed at once when the data behind them changes (see Caching below); today's appointments and recent visits are always live.
 - **One request for the header badges.** `GET /api/counters` returns the unread notifications (and the 5 newest), appointment requests and unread chat in a single call, polled every 45 seconds while the tab is visible.
 - **Polling only when needed.** Nothing polls in a hidden tab (the staff heartbeat, every 60 s, is the only exception, because it reports "online"). An open chat panel polls every 7 seconds.
 - **Indexes.** Migration `2026_11_05_000001_add_performance_indexes` indexes the dates, status and foreign-key columns the dashboards and lists filter on. It is safe to run on a database that already has some of them.
 
+### 5. Scheduler (required for the inventory alerts)
+Low-stock and expiry alerts for the admins are created by the `inventory:sync-alerts` command, which Laravel's scheduler runs every 5 minutes. They are also created within a minute of any stock change. The polled `GET /api/counters` and `GET /api/notifications` no longer create them. Without the scheduler, alerts that depend only on time (a batch reaching its expiry date overnight) appear only after the next stock change.
+```bash
+php artisan schedule:work      # development: leave it running in a terminal
+```
+Production: add one cron entry (`crontab -e`) that runs every minute:
+```
+* * * * * cd /var/www/clinic/backend && php artisan schedule:run >> /dev/null 2>&1
+```
+On Windows, create a Task Scheduler task that runs `php artisan schedule:run` in `backend/` every minute. To run the sync once by hand: `php artisan inventory:sync-alerts`.
+### Rate limits
+Requests over a limit get HTTP 429 and the message "Too many requests. Please wait N seconds and try again." (the `Retry-After` header and a `retry_after` field carry the wait). Limits per minute: sign in 10 per email and address (60 per address), register 5 per address, chatbot question 30 per user, chat message 20 per user, book an appointment 10 per user, broadcast announcement 5 per user. They are defined in `AppServiceProvider::configureRateLimiting()` and attached in `routes/api.php` as `throttle:<name>`. Behind a proxy, set `TRUSTED_PROXIES` so the limits use the visitor's address and not the proxy's.
+### Caching
+Cached API data uses versioned keys (`App\Support\CacheVersion`), not cache tags, so the `file` driver works. Saving or deleting the underlying rows starts a new version, so a change shows up at once: dashboard charts (60 s), stock snapshot (60 s), registered-student count (5 min), clinic services, sections, settings and staff list (5-10 min), calendar events and announcements per audience (60 s), header counters per user (15 s). Patient records, vitals, consultation details, chat messages, slot availability and every stock read that decides a dispense are never cached.
 ## Notes
 
 - Never commit `.env` files. Use `.env.example` as the template.

@@ -35,7 +35,7 @@ export function useConsultationForm({ careType, isEdit = false, initialForm }) {
   const [loadingPatients, setLoadingPatients] = useState(true)
   useEffect(() => {
     let alive = true
-    recordsApi.patients()
+    recordsApi.patientPickList()
       .then(({ data }) => { if (alive) setPatients(data.patients || []) })
       .catch(() => { if (alive) setPatients([]) })
       .finally(() => { if (alive) setLoadingPatients(false) })

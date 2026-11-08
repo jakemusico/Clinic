@@ -7,6 +7,7 @@ import InventoryAlertBanner from '../../components/dashboard/InventoryAlertBanne
 import { EMPTY } from '../../utils/emptyValue'
 import { CardFallback, ChartsFallback, LoadError } from '../../components/dashboard/Fallbacks'
 import { getApiErrorMessage } from '../../utils/apiError'
+import useLatestRequest, { isRequestCanceled } from '../../hooks/useLatestRequest'
 
 // The charts (recharts) and the calendar are the heaviest parts of the page: load them as
 // separate chunks so the stat cards and the table can appear first.
@@ -25,19 +26,24 @@ export default function AdminDashboard() {
   const [month, setMonth] = useState(today.getMonth() + 1)
   const [year, setYear] = useState(today.getFullYear())
 
+  const latest = useLatestRequest()
+
   const fetchDashboardData = useCallback(async () => {
+    const req = latest.begin()   // switching the period quickly: only the newest answer is shown
     try {
       setLoading(true)
       setError('')
-      const res = await dashboardApi.admin({ period, month, year })
+      const res = await dashboardApi.admin({ period, month, year }, { signal: req.signal })
+      if (!req.isCurrent()) return
       setData(res.data)
     } catch (err) {
+      if (isRequestCanceled(err) || !req.isCurrent()) return
       console.error('Failed to load admin dashboard:', err)
       setError(getApiErrorMessage(err, 'Could not load the dashboard.'))
     } finally {
-      setLoading(false)
+      if (req.isCurrent()) setLoading(false)
     }
-  }, [period, month, year])
+  }, [latest, period, month, year])
 
   useEffect(() => {
     fetchDashboardData()

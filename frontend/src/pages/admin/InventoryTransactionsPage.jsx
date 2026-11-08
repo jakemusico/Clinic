@@ -75,7 +75,11 @@ export default function InventoryTransactionsPage() {
         tx.notes || EMPTY,
       ])
       downloadCsv(`Inventory_Transactions_${new Date().toISOString().split('T')[0]}.csv`, headers, rows)
-      toast.success(`Exported ${list.length} transaction(s) to CSV!`)
+      if (data.truncated) {
+        toast(`Only the first ${list.length} transactions were exported. Narrow the dates or filters to export the rest.`, { duration: 8000 })
+      } else {
+        toast.success(`Exported ${list.length} transaction(s) to CSV!`)
+      }
     } catch {
       toast.error('Failed to export transactions.')
     } finally {

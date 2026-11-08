@@ -236,8 +236,9 @@ export default function StaffProfile() {
       // Show exactly what the database now holds (server may trim / normalise values).
       const saved = res.data?.user ? buildForm(res.data.user) : { ...formData }
       isEditingRef.current = false
+      // The save response already holds the same user as /auth/me: only ask again if it did not come back
       if (res.data?.user) updateUser(res.data.user)
-      if (typeof refreshUser === 'function') await refreshUser()
+      else if (typeof refreshUser === 'function') await refreshUser()
       setFormData(saved)
       setSavedData(saved)
       setEmailPassword('')

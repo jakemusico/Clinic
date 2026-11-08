@@ -3,7 +3,7 @@ import { toast } from 'react-hot-toast'
 import DashboardLayout from '../components/DashboardLayout'
 import { useAuth } from '../context/AuthContext'
 import { authApi } from '../api/auth'
-import api from '../api/axios'
+import { useSectionsAndGradeLevels } from '../hooks/useReferenceData'
 import StaffProfile from './StaffProfile'
 import PasswordStrength, { checkPasswordRules } from '../components/PasswordStrength'
 import MobileInput, { isMobileValid, validateMobile } from '../components/MobileInput'
@@ -126,13 +126,7 @@ function PatientProfilePage() {
   const [savedData, setSavedData] = useState(() => (user ? buildFormData(user) : null))
   const [showChangePassword, setShowChangePassword] = useState(false)
 
-  const [dbSections, setDbSections] = useState([])
-  const [dbGradeLevels, setDbGradeLevels] = useState([])
-
-  useEffect(() => {
-    api.get('/sections').then(res => setDbSections(res.data)).catch(() => {})
-    api.get('/grade-levels').then(res => setDbGradeLevels(res.data)).catch(() => {})
-  }, [])
+  const { sections: dbSections, gradeLevels: dbGradeLevels } = useSectionsAndGradeLevels()
 
   const [formData, setFormData] = useState(() => buildFormData(user))
   const [passwordForm, setPasswordForm] = useState({ current_password: '', password: '', password_confirmation: '' })
@@ -290,8 +284,9 @@ function PatientProfilePage() {
       const updated = buildFormData(freshUser)
       setFormData(updated)
       setSavedData(updated)
+      // The save response already holds the same user as /auth/me: only ask again if it did not come back
       if (res.data?.user) updateUser(res.data.user)
-      if (typeof refreshUser === 'function') await refreshUser()
+      else if (typeof refreshUser === 'function') await refreshUser()
       toast.success('Profile saved successfully.')
       setIsEditing(false)
       setShowEmailPassword(false)

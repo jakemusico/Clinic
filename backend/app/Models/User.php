@@ -278,7 +278,8 @@ class User extends Authenticatable
             if (!empty($user->role_id)) {
                 $role = Role::find($user->role_id);
                 if ($role) {
-                    $user->attributes['role'] = $role->slug;
+                    // always the canonical slug: an alias such as 'nurse' is not a value of the users.role column
+                    $user->attributes['role'] = Roles::of($role->slug) ?? $role->slug;
                 }
             } elseif (!empty($user->attributes['role'])) {
                 $slug = $user->attributes['role'];
@@ -286,7 +287,7 @@ class User extends Authenticatable
                 $role = Role::where('slug', $slug)->orWhere('slug', $user->attributes['role'])->first();
                 if ($role) {
                     $user->role_id = $role->id;
-                    $user->attributes['role'] = $role->slug;
+                    $user->attributes['role'] = Roles::of($role->slug) ?? $role->slug;
                 }
             }
         });

@@ -10,6 +10,7 @@ import { DEPARTMENTS, GRADE_LEVELS } from '../constants/schoolData'
 import Dropdown from '../components/Dropdown'
 import axios from 'axios'
 import useSubmitLock from '../hooks/useSubmitLock'
+import { useSectionsAndGradeLevels } from '../hooks/useReferenceData'
 import { getApiErrorMessage, getFieldErrors } from '../utils/apiError'
 import { todayISO } from '../utils/dateUtils'
 
@@ -131,8 +132,8 @@ export default function Register() {
   const [termsText, setTermsText] = useState('')
   const [termsStatus, setTermsStatus] = useState('loading')   // 'loading' | 'ready' | 'error'
   const { lock, unlock } = useSubmitLock()
-  const [dbSections, setDbSections] = useState([])
-  const [dbGradeLevels, setDbGradeLevels] = useState([])
+  // Shared, cached lists (the same ones the Profile and User Management pickers use)
+  const { sections: dbSections, gradeLevels: dbGradeLevels } = useSectionsAndGradeLevels()
 
   // The Terms text must be loaded before anyone can agree to it
   const loadTerms = useCallback(() => {
@@ -150,17 +151,8 @@ export default function Register() {
       .catch(() => setTermsStatus('error'))
   }, [])
 
-  // Fetch terms and sections from backend
   useEffect(() => {
     loadTerms()
-
-    axios.get('/api/sections')
-      .then(res => setDbSections(res.data))
-      .catch(err => console.error('Failed to load sections:', err))
-
-    axios.get('/api/grade-levels')
-      .then(res => setDbGradeLevels(res.data))
-      .catch(err => console.error('Failed to load grade levels:', err))
   }, [loadTerms])
 
   const handleChange = useCallback((e) => {

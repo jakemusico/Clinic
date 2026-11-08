@@ -12,6 +12,7 @@ use App\Models\InventoryBatch;
 use App\Models\InventoryItem;
 use App\Models\Patient;
 use App\Models\User;
+use App\Support\CacheVersion;
 use App\Support\ConsultationRow;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -23,19 +24,21 @@ use Illuminate\Support\Facades\DB;
  * One endpoint per role returns everything its dashboard needs (stats, charts, recent visits,
  * alerts, calendar events), so a dashboard loads with a single request.
  *
- * Slow-changing numbers (charts, stock levels, student count) are cached for a short time;
- * anything that must be fresh (today's appointments, recent visits) is always read live.
+ * Slow-changing numbers (charts, stock levels, student count) are cached for a short time under VERSIONED keys
+ * (App\Support\CacheVersion): saving a consultation, changing stock or adding a user starts a new version, so the
+ * dashboards are correct right after a save. Anything that must be fresh (today's appointments, recent visits,
+ * conversation state) is always read live.
  */
 class DashboardController extends Controller
 {
-    /** Seconds the chart data is cached. */
+    /** Seconds the chart data is cached (a consultation save refreshes it sooner). */
     private const CHART_TTL = 60;
 
-    /** Seconds the stock levels and expiry counts are cached. */
+    /** Seconds the stock levels and expiry counts are cached (a stock change refreshes it sooner). */
     private const STOCK_TTL = 60;
 
-    /** Seconds small admin counters are cached. */
-    private const COUNT_TTL = 30;
+    /** Seconds the registered-student count is cached (a new / deactivated account refreshes it sooner). */
+    private const STUDENT_COUNT_TTL = 300;
 
     /**
      * Map complaints and diagnoses into standardized category buckets.
@@ -154,7 +157,8 @@ class DashboardController extends Controller
      */
     private function getTrendsAndSymptoms(string $role, string $period, int $month, int $year): array
     {
-        $key = sprintf('dash:charts:%s:%s:%d:%d:%s', $role, $period, $month, $year, Carbon::today()->toDateString());
+        // role is part of the key: each role's charts count different consultation tables
+        $key = CacheVersion::key('dashboard', 'charts', $role, $period, (string) $month, (string) $year, Carbon::today()->toDateString());
 
         return Cache::remember($key, self::CHART_TTL, fn () => $this->buildTrendsAndSymptoms($role, $period, $month, $year));
     }
@@ -327,7 +331,7 @@ class DashboardController extends Controller
      */
     private function stockSnapshot(): array
     {
-        return Cache::remember('dash:stock-snapshot:' . Carbon::today()->toDateString(), self::STOCK_TTL, function () {
+        return Cache::remember(CacheVersion::key('stock', 'snapshot', Carbon::today()->toDateString()), self::STOCK_TTL, function () {
             $stock = DB::table('inventory_transactions')
                 ->selectRaw("item_id, SUM(CASE WHEN type = 'IN' THEN quantity WHEN type = 'OUT' THEN -quantity ELSE 0 END) AS stock")
                 ->groupBy('item_id')
@@ -407,18 +411,18 @@ class DashboardController extends Controller
         $todayAppointments = Appointment::whereBetween('scheduled_at', [$from, $to])->count();
         $consultationsToday = $this->consultationsToday(ClinicRecord::class, 'visit_date')
             + $this->consultationsToday(DentalConsultation::class, 'consultation_date');
-        $registeredStudents = Cache::remember('dash:registered-students', self::COUNT_TTL, fn () => User::where('role', 'student')->count());
+        $registeredStudents = Cache::remember(CacheVersion::key('users', 'registered-students'), self::STUDENT_COUNT_TTL, fn () => User::where('role', 'student')->count());
         $invAlerts = $this->getInventoryAlertSummary();
 
-        // Unanswered conversations count (open with no staff reply in 24h)
-        $unansweredConversations = Cache::remember('dash:unanswered-conversations', self::COUNT_TTL, fn () => Conversation::where('status', 'open')
+        // Unanswered conversations count (open with no staff reply in 24h). Conversation state is never cached.
+        $unansweredConversations = Conversation::where('status', 'open')
             ->where('created_at', '<', Carbon::now()->subHours(24))
             ->whereDoesntHave('messages', function ($q) {
                 $q->whereHas('sender', function ($sq) {
                     $sq->whereIn('role', ['clinic_staff', 'dentist']);
                 });
             })
-            ->count());
+            ->count();
 
         return response()->json([
             'stats' => [
@@ -537,7 +541,7 @@ class DashboardController extends Controller
             ],
             'appointments'    => $appointments,
             'notifications'   => $recentNotifications,
-            'announcements'   => AnnouncementController::visibleQuery($user)->limit(10)->get(),
+            'announcements'   => AnnouncementController::latestFor($user, 10),
             'calendar_events' => CalendarEventController::visibleEvents($user),
         ]);
     }

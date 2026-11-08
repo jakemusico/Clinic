@@ -56,8 +56,9 @@ export default function StockInPage() {
   const { lock, unlock } = useSubmitLock()
   const [loadingModalItems, setLoadingModalItems] = useState(false)
 
-  // Complete list (NOT paginated, includes zero-stock items). Reloaded every time the modal opens,
-  // so an item created in the Items module is there immediately, with its current stock.
+  // Complete list (NOT paginated, includes zero-stock items). Kept for 30 s and forgotten after every
+  // stock or item change made in this browser (api/inventory.js), so opening the modal again does not
+  // download it again, and an item created in the Items module is still there immediately.
   const openModal = async () => {
     setModal(true)
     setLoadingModalItems(true)

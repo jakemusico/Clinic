@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import DashboardLayout from '../../components/DashboardLayout'
-import api from '../../api/axios'
+import { referenceApi } from '../../api/reference'
 import { chatbotApi } from '../../api/chatbot'
 import { groupScheduleDays } from '../../utils/clinicStorage'
 
@@ -13,7 +13,7 @@ export default function HelpContactPage() {
   const fetchClinicInfo = async () => {
     setLoading(true)
     try {
-      const res = await api.get('/settings/clinic_info')
+      const res = await referenceApi.setting('clinic_info')
       if (res.data?.value) {
         const parsed = JSON.parse(res.data.value)
         setClinicInfo(parsed)

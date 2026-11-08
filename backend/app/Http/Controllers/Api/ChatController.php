@@ -9,9 +9,12 @@ use App\Models\Message;
 use App\Models\Notification;
 use App\Models\SystemSetting;
 use App\Models\User;
+use App\Support\CacheVersion;
+use App\Support\Paging;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class ChatController extends Controller
@@ -52,11 +55,50 @@ class ChatController extends Controller
         return false;
     }
 
+    /** Most messages one response carries; older ones are fetched with ?before=<message id>. */
+    private const MESSAGE_PAGE = 200;
+
+    /** Most conversations a staff list returns when the caller does not page. */
+    private const CONVERSATION_LIST_LIMIT = 300;
+
+    private const SENDER_COLUMNS = 'sender:id,name,first_name,middle_name,last_name,suffix,title,role,avatar';
+
+    /**
+     * Put the newest MESSAGE_PAGE messages of a conversation on it (oldest first, soft-deleted "unsent"
+     * ones included), instead of loading the whole thread. With ?before=<message id> the page that ends
+     * just before that message is returned (cursor paging).
+     *
+     * Adds messages_has_more (older messages exist) and messages_next_cursor (pass it as ?before=).
+     */
+    protected function loadMessagePage(Conversation $conversation, ?int $before = null): void
+    {
+        $rows = Message::withTrashed()
+            ->where('conversation_id', $conversation->id)
+            ->when($before, fn ($q) => $q->where('id', '<', $before))
+            ->with(self::SENDER_COLUMNS)
+            ->orderByDesc('id')
+            ->limit(self::MESSAGE_PAGE + 1)
+            ->get();
+
+        $more = $rows->count() > self::MESSAGE_PAGE;
+        $page = $rows->take(self::MESSAGE_PAGE)->reverse()->values();
+
+        $conversation->setRelation('messages', $page);
+        $conversation->setAttribute('messages_has_more', $more);
+        $conversation->setAttribute('messages_next_cursor', $more ? $page->first()?->id : null);
+    }
+
     /**
      * Lazily auto-resolve conversations with no activity in 7+ days.
      */
     protected function autoResolveStale(): void
     {
+        // Two polled endpoints call this. The table-wide UPDATE is needed at most once a minute (a conversation
+        // is resolved after DAYS of silence, so a minute's delay is invisible); Cache::add lets one request in.
+        if (! Cache::add('chat:auto-resolve-stale', 1, 60)) {
+            return;
+        }
+
         $days = (int) SystemSetting::getValue('chat_auto_resolve_days', 7);
         if ($days <= 0) {
             $days = 7;
@@ -238,10 +280,9 @@ class ChatController extends Controller
             ->whereNull('read_at')
             ->whereNull('deleted_at')
             ->update(['read_at' => now()]);
+        CacheVersion::bump('counters-chat');   // a bulk update fires no model events
 
-        $conversation->load(['messages' => function ($q) {
-            $q->withTrashed()->orderBy('created_at');
-        }, 'messages.sender:id,name,first_name,middle_name,last_name,suffix,title,role,avatar']);
+        $this->loadMessagePage($conversation, $request->integer('before') ?: null);
 
         return response()->json($conversation);
     }
@@ -283,6 +324,7 @@ class ChatController extends Controller
             ->whereNull('read_at')
             ->whereNull('deleted_at')
             ->update(['read_at' => now()]);
+        CacheVersion::bump('counters-chat');   // a bulk update fires no model events
         }
 
         return response()->json(['ok' => true]);
@@ -337,7 +379,7 @@ class ChatController extends Controller
         }
 
         if ($request->has('page') || $request->has('per_page')) {
-            $perPage = (int) $request->input('per_page', 10);
+            $perPage = Paging::perPage($request);
             $paginated = $query->orderByRaw('CASE WHEN last_message_at IS NULL THEN 1 ELSE 0 END')
                 ->orderBy('last_message_at', 'desc')
                 ->orderBy('updated_at', 'desc')
@@ -358,6 +400,7 @@ class ChatController extends Controller
         $conversations = $query->orderByRaw('CASE WHEN last_message_at IS NULL THEN 1 ELSE 0 END')
             ->orderBy('last_message_at', 'desc')
             ->orderBy('updated_at', 'desc')
+            ->limit(self::CONVERSATION_LIST_LIMIT)
             ->get();
 
         return response()->json($conversations);
@@ -380,14 +423,12 @@ class ChatController extends Controller
             ->whereNull('read_at')
             ->whereNull('deleted_at')
             ->update(['read_at' => now()]);
+        CacheVersion::bump('counters-chat');   // a bulk update fires no model events
 
         $conversation->load([
             'student:id,name,title,first_name,middle_name,last_name,suffix,role,role_id,department,grade_level,section,avatar',
-            'messages' => function ($q) {
-                $q->withTrashed()->orderBy('created_at');
-            },
-            'messages.sender:id,name,first_name,middle_name,last_name,suffix,title,role,avatar',
         ]);
+        $this->loadMessagePage($conversation, $request->integer('before') ?: null);
 
         return response()->json($conversation);
     }

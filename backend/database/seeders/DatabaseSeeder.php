@@ -40,6 +40,12 @@ class DatabaseSeeder extends Seeder
                 $user->role = $role;
             }
             $user->must_change_password = ! SeedPassword::isLocal();
+
+            // users.name has no default. The User model fills it while saving, but a seeder that runs without
+            // model events would leave it empty and fail, so it is set here the same way the model does.
+            $user->name = trim(($user->title ? $user->title . ' ' : '') . implode(' ', array_filter([
+                $user->first_name, $user->middle_name, $user->last_name, $user->suffix,
+            ], fn ($p) => $p !== null && trim($p) !== '')));
             $user->save();   // a freshly created model has wasRecentlyCreated = true
         }
 
@@ -58,7 +64,8 @@ class DatabaseSeeder extends Seeder
         // Seed default roles
         $roles = [
             ['id' => 1, 'name' => 'Admin', 'slug' => 'admin', 'description' => 'System Administrator with full management access'],
-            ['id' => 2, 'name' => 'Nurse', 'slug' => 'nurse', 'description' => 'Clinic Nurse and Health Personnel'],
+            // slug is 'clinic_staff' (what the users.role column and the roles table use); the role is called "Nurse"
+            ['id' => 2, 'name' => 'Nurse', 'slug' => 'clinic_staff', 'description' => 'Clinic Nurse and Health Personnel'],
             ['id' => 3, 'name' => 'Dentist', 'slug' => 'dentist', 'description' => 'Clinic Dental Health Professional'],
             ['id' => 4, 'name' => 'Student', 'slug' => 'student', 'description' => 'Enrolled Student Patient'],
             ['id' => 5, 'name' => 'Faculty / Staff', 'slug' => 'faculty_staff', 'description' => 'University Faculty or Non-Teaching Staff Patient'],

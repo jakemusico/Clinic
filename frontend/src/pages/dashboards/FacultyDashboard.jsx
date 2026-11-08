@@ -5,6 +5,7 @@ import { dashboardApi } from '../../api/dashboard'
 import { useAuth } from '../../context/AuthContext'
 import { CardFallback, LoadError } from '../../components/dashboard/Fallbacks'
 import { getApiErrorMessage } from '../../utils/apiError'
+import useLatestRequest, { isRequestCanceled } from '../../hooks/useLatestRequest'
 import { formatAppointmentDate, formatAppointmentTime } from '../../utils/dateUtils'
 import { EMPTY } from '../../utils/emptyValue'
 
@@ -31,18 +32,22 @@ export default function FacultyDashboard() {
   const [error, setError] = useState('')
 
   // ONE request for the whole dashboard: counts, appointments, notifications and calendar events
+  const latest = useLatestRequest()
   const load = useCallback(async () => {
+    const req = latest.begin()   // a reload while one is running: only the newest answer is shown
     try {
       setError('')
-      const res = await dashboardApi.student()
+      const res = await dashboardApi.student({ signal: req.signal })
+      if (!req.isCurrent()) return
       setData(res.data)
     } catch (e) {
+      if (isRequestCanceled(e) || !req.isCurrent()) return
       console.error('Failed to load dashboard', e)
       setError(getApiErrorMessage(e, 'Could not load your dashboard.'))
     } finally {
-      setLoading(false)
+      if (req.isCurrent()) setLoading(false)
     }
-  }, [])
+  }, [latest])
 
   useEffect(() => {
     load()

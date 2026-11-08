@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\CacheVersion;
+use App\Support\Paging;
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
 use App\Models\ClinicService;
@@ -16,6 +18,7 @@ use App\Support\Roles;
 use Illuminate\Support\Str;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 
@@ -68,6 +71,7 @@ class AppointmentController extends Controller
         $query = Appointment::where('is_read', false)->whereIn('appointment_type', $types);
 
         $affected = $query->update(['is_read' => true]);
+        CacheVersion::bump('counters-appointments');   // a bulk update fires no model events
 
         return response()->json([
             'message'  => "{$affected} appointment(s) marked as read.",
@@ -167,7 +171,7 @@ class AppointmentController extends Controller
         $query->orderBy('scheduled_at', 'asc');
 
         if ($request->boolean('all') || $request->get('paginate') === 'false') {
-            $appointments = $query->get();
+            $appointments = $query->limit(Paging::ALL_LIMIT)->get();
             $this->hideStaffOnlyFields($user, $appointments);
             return response()->json([
                 'data'         => $appointments,
@@ -179,7 +183,7 @@ class AppointmentController extends Controller
             ]);
         }
 
-        $perPage = (int) $request->get('per_page', 10);
+        $perPage = Paging::perPage($request);
         $paginated = $query->paginate($perPage);
         $this->hideStaffOnlyFields($user, $paginated->getCollection());
 
@@ -532,13 +536,18 @@ class AppointmentController extends Controller
      */
     public function listStaff(Request $request): JsonResponse
     {
-        $staff = User::where(function($q) {
-                $q->whereIn('role', ['clinic_staff', 'nurse', 'dentist'])
-                  ->orWhereHas('roleRelation', fn($rq) => $rq->whereIn('slug', ['clinic_staff', 'nurse', 'dentist']));
-            })
-            ->where('is_active', true)
-            ->select(Appointment::STAFF_COLUMNS)
-            ->get();
+        // Reference data, the same for everybody (name and photo only): cached 5 minutes; creating, renaming,
+        // (de)activating or deleting an account starts a new version.
+        $staff = Cache::remember(CacheVersion::key('users', 'staff-list'), 300, function () {
+            return User::where(function($q) {
+                    $q->whereIn('role', ['clinic_staff', 'nurse', 'dentist'])
+                      ->orWhereHas('roleRelation', fn($rq) => $rq->whereIn('slug', ['clinic_staff', 'nurse', 'dentist']));
+                })
+                ->where('is_active', true)
+                ->select(Appointment::STAFF_COLUMNS)
+                ->get()
+                ->toArray();
+        });
 
         return response()->json(['staff' => $staff]);
     }

@@ -33,6 +33,21 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Over a rate limit (config: App\Providers\AppServiceProvider::configureRateLimiting): a clear message
+        // and how long to wait, instead of Laravel's bare "Too Many Attempts."
+        $exceptions->render(function (\Illuminate\Http\Exceptions\ThrottleRequestsException $e, \Illuminate\Http\Request $request) {
+            if ($request->is('api/*')) {
+                $wait = (int) ($e->getHeaders()['Retry-After'] ?? 60);
+
+                return response()->json([
+                    'message'     => $wait > 0
+                        ? "Too many requests. Please wait {$wait} second" . ($wait === 1 ? '' : 's') . ' and try again.'
+                        : 'Too many requests. Please wait a moment and try again.',
+                    'retry_after' => $wait,
+                ], 429, $e->getHeaders());
+            }
+        });
+
         // Uploads larger than PHP's post_max_size never reach validation.
         $exceptions->render(function (\Illuminate\Http\Exceptions\PostTooLargeException $e, \Illuminate\Http\Request $request) {
             if ($request->is('api/*')) {

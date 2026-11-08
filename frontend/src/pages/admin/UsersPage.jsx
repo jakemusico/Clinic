@@ -7,7 +7,7 @@ import Pagination from '../../components/Pagination'
 import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/ConfirmModal'
 import { adminApi } from '../../api/admin'
-import axios from 'axios'
+import { useSectionsAndGradeLevels } from '../../hooks/useReferenceData'
 import { DEPARTMENTS, GRADE_LEVELS } from '../../constants/schoolData'
 import Avatar from '../../components/Avatar'
 import MobileInput, { isMobileValid, validateMobile } from '../../components/MobileInput'
@@ -285,17 +285,7 @@ export default function UsersPage() {
   }, [searchParams])
 
   // Sections / grade-levels fetched from DB (same source as Register page)
-  const [dbSections,    setDbSections]    = useState([])
-  const [dbGradeLevels, setDbGradeLevels] = useState([])
-
-  useEffect(() => {
-    axios.get('/api/sections')
-      .then(r => setDbSections(r.data))
-      .catch(() => {})
-    axios.get('/api/grade-levels')
-      .then(r => setDbGradeLevels(r.data))
-      .catch(() => {})
-  }, [])
+  const { sections: dbSections, gradeLevels: dbGradeLevels } = useSectionsAndGradeLevels()
 
   // Sections filtered by selected grade level
   const sectionsForLevel = form.grade_level

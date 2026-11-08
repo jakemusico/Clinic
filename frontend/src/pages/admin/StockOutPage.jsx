@@ -68,7 +68,7 @@ export default function StockOutPage() {
 
   const loadExpired = async () => {
     try {
-      const bRes = await inventoryApi.listBatches({ all: true })
+      const bRes = await inventoryApi.listBatches({ all: true, expired: 1 })
       setExpiredBatches((bRes.data.batches || bRes.data.data || []).filter(b => b.is_expired && b.remaining > 0))
     } catch {
       // the banner simply stays hidden if this fails
@@ -84,7 +84,8 @@ export default function StockOutPage() {
     setModal('manual')
     setLoadingItems(true)
     try {
-      // Complete list (not paginated), always fresh from the database
+      // Complete list (not paginated). Kept for 30 s and forgotten after every stock change made in this
+      // browser (api/inventory.js); the server still checks the stock when the stock out is saved.
       const { data } = await inventoryApi.itemOptions({ status: 'active' })
       const activeNonEquip = data.items || []
       setItems(activeNonEquip)

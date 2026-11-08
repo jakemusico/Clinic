@@ -6,6 +6,7 @@ import DateInput from '../../components/DateInput'
 import Dropdown from '../../components/Dropdown'
 import { adminApi } from '../../api/admin'
 import { EMPTY } from '../../utils/emptyValue'
+import useLatestRequest, { isRequestCanceled } from '../../hooks/useLatestRequest'
 
 /* ── Human-readable action labels ──────────────────────────────────────── */
 const ACTION_LABELS = {
@@ -140,7 +141,10 @@ export default function AuditLogsPage() {
   const [lastPage,   setLastPage]   = useState(1)
   const [total,      setTotal]      = useState(0)
 
+  const latest = useLatestRequest()
+
   const load = useCallback(async (overrides = {}) => {
+    const req = latest.begin()   // a slower, older response can never replace the newest one
     setLoading(true)
     try {
       const params = {
@@ -152,18 +156,20 @@ export default function AuditLogsPage() {
         date_from: overrides.date_from ?? dateFrom,
         date_to:   overrides.date_to   ?? dateTo,
       }
-      const { data } = await adminApi.listAuditLogs(params)
+      const { data } = await adminApi.listAuditLogs(params, { signal: req.signal })
+      if (!req.isCurrent()) return
       setLogs(data.logs?.data || data.data || [])
       setLastPage(data.logs?.last_page || data.last_page || 1)
       setTotal(data.logs?.total ?? data.total ?? 0)
       setActions(data.actions || [])
       setUsers(data.users   || [])
-    } catch {
+    } catch (err) {
+      if (isRequestCanceled(err) || !req.isCurrent()) return
       toast.error('Failed to load audit logs.')
     } finally {
-      setLoading(false)
+      if (req.isCurrent()) setLoading(false)
     }
-  }, [page, pageSize, search, filterAct, filterUser, dateFrom, dateTo])
+  }, [latest, page, pageSize, search, filterAct, filterUser, dateFrom, dateTo])
 
   // Re-fetch when page, pageSize, action filter, or user filter change immediately
   useEffect(() => { load() }, [page, pageSize, filterAct, filterUser]) // eslint-disable-line react-hooks/exhaustive-deps

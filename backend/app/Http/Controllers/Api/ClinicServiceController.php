@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ClinicService;
+use App\Support\CacheVersion;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -21,19 +23,30 @@ class ClinicServiceController extends Controller
         $query = ClinicService::query()->orderBy('name');
 
         // Non-staff/admin only see active services
-        if (! in_array($user?->role, ['clinic_staff', 'dentist', 'admin'])) {
+        $seesInactive = in_array($user?->role, ['clinic_staff', 'dentist', 'admin']);
+        if (! $seesInactive) {
             $query->where('is_active', true);
         }
 
         // ?care_type=medical|dental  -> only that kind of care (booking, nurse and dentist forms)
         // ?active=1                  -> only services that can still be used
-        $query->careType($request->query('care_type'));
-        if ($request->boolean('active')) {
+        $careType = $request->query('care_type');
+        $query->careType($careType);
+        $activeOnly = $request->boolean('active');
+        if ($activeOnly) {
             $query->where('is_active', true);
         }
 
+        // Reference data: cached 5 minutes. The key holds everything the answer depends on (whether the
+        // caller may see inactive services, and the filters); saving or deleting a service starts a new version.
+        $services = Cache::remember(
+            CacheVersion::key('services', 'list', $seesInactive ? 'staff' : 'patient', is_string($careType) ? $careType : 'any', $activeOnly ? 'active' : 'all'),
+            300,
+            fn () => $query->get()->toArray()
+        );
+
         return response()->json([
-            'services' => $query->get(),
+            'services' => $services,
         ]);
     }
 

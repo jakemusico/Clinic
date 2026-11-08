@@ -8,6 +8,7 @@ import Avatar from '../../components/Avatar'
 import { EMPTY } from '../../utils/emptyValue'
 import { LoadError } from '../../components/dashboard/Fallbacks'
 import { getApiErrorMessage } from '../../utils/apiError'
+import useLatestRequest, { isRequestCanceled } from '../../hooks/useLatestRequest'
 
 export default function PersonProfilePage() {
   const { id } = useParams()
@@ -17,6 +18,7 @@ export default function PersonProfilePage() {
   const [appointments, setAppointments] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
+  const latest = useLatestRequest()
 
   const hasMedical = ['clinic_staff', 'admin'].includes(authUser.role)
   const hasDental = ['dentist', 'admin'].includes(authUser.role)
@@ -28,18 +30,21 @@ export default function PersonProfilePage() {
   }, [id])
 
   const fetchProfile = async () => {
+    const req = latest.begin()   // moving to another person quickly: the older person's response is dropped
     setLoading(true)
     setLoadError('')
     try {
-      const { data } = await api.get(`/clinic/people/${id}`)
+      const { data } = await api.get(`/clinic/people/${id}`, { signal: req.signal })
+      if (!req.isCurrent()) return
       setProfileUser(data.user)
       setAppointments(data.appointments || [])
     } catch (err) {
+      if (isRequestCanceled(err) || !req.isCurrent()) return
       console.error(err)
       setProfileUser(null)
       setLoadError(err?.response?.status === 404 ? '' : getApiErrorMessage(err, 'Could not load this profile.'))
     } finally {
-      setLoading(false)
+      if (req.isCurrent()) setLoading(false)
     }
   }
 

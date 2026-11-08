@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\Paging;
 use App\Http\Controllers\Controller;
 use App\Models\DentalConsultation;
 use App\Models\DentalChart;
@@ -59,7 +60,7 @@ class DentalConsultationController extends Controller
         $query->orderBy('consultation_date', 'desc')->orderBy('created_at', 'desc');
 
         if ($request->boolean('all') || $request->get('paginate') === 'false') {
-            $consultations = $query->get();
+            $consultations = $query->limit(Paging::ALL_LIMIT)->get();
             if (Roles::isPatient($user)) {
                 $consultations->makeHidden(['staff_notes']);
             }
@@ -73,7 +74,7 @@ class DentalConsultationController extends Controller
             ]);
         }
 
-        $perPage = (int) $request->get('per_page', 10);
+        $perPage = Paging::perPage($request);
         $paginated = $query->paginate($perPage);
 
         if (Roles::isPatient($user)) {

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\Paging;
 use App\Http\Controllers\Controller;
 use App\Models\Announcement;
 use App\Models\Notification;
@@ -9,7 +10,9 @@ use App\Models\User;
 use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use App\Support\CacheVersion;
 use Illuminate\Support\Facades\Log;
 
 class AnnouncementController extends Controller
@@ -34,6 +37,26 @@ class AnnouncementController extends Controller
     }
 
     /**
+     * The newest announcements a user may see (dashboards). Cached for 60 seconds PER AUDIENCE: the key holds
+     * the audience the role is filtered to, never "all roles", and creating, editing or deleting an
+     * announcement starts a new version.
+     */
+    public static function latestFor(\App\Models\User $user, int $limit)
+    {
+        $audience = match (true) {
+            $user->role === 'student'                                  => 'students',
+            in_array($user->role, ['clinic_staff', 'dentist'], true)   => 'staff',
+            default                                                    => 'everything',
+        };
+
+        return Cache::remember(
+            CacheVersion::key('announcements', 'latest', $audience, (string) $limit),
+            60,
+            fn () => self::visibleQuery($user)->limit($limit)->get()->toArray()
+        );
+    }
+
+    /**
      * GET /api/announcements
      * Return announcements filtered by the authenticated user's role.
      * Admins and clinic staff see all announcements.
@@ -51,8 +74,8 @@ class AnnouncementController extends Controller
             });
         }
 
-        if ($request->boolean('all') || $request->input('paginate') === 'false') {
-            $announcements = $query->get();
+        if (Paging::wantsAll($request)) {
+            $announcements = $query->limit(Paging::ALL_LIMIT)->get();
             return response()->json([
                 'announcements' => $announcements,
                 'data'          => $announcements,
@@ -60,7 +83,7 @@ class AnnouncementController extends Controller
             ]);
         }
 
-        $perPage = (int) $request->input('per_page', 10);
+        $perPage = Paging::perPage($request);
         $paginated = $query->paginate($perPage);
 
         return response()->json([

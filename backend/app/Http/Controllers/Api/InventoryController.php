@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Exceptions\InsufficientStockException;
+use App\Support\CacheVersion;
+use App\Support\Paging;
 use App\Support\Roles;
 use App\Http\Controllers\Controller;
 use App\Models\InventoryItem;
@@ -23,29 +25,64 @@ class InventoryController extends Controller
 
 
     /**
-     * Current stock for EVERY item in one query (IN minus OUT), keyed by item id.
-     * Avoids running two SUM queries per item when listing many items.
+     * Current stock (IN minus OUT, never below 0) of the given items, or of EVERY item when none are given,
+     * from ONE grouped query, keyed by item id. Items with no transactions are simply absent (= 0).
      *
+     * This is the read used for LISTS and counts. The reads that decide a dispense (stockLocked) are
+     * separate, run inside a transaction on locked rows, and are never cached.
+     *
+     * @param  int[]|null  $itemIds
      * @return array<int,int>
      */
-    private function stockByItem(): array
+    private static function stockMap(?array $itemIds = null): array
     {
+        if ($itemIds !== null && $itemIds === []) {
+            return [];
+        }
+
         return InventoryTransaction::query()
             ->selectRaw("item_id, SUM(CASE WHEN type = 'IN' THEN quantity ELSE -quantity END) AS stock")
+            ->when($itemIds !== null, fn ($q) => $q->whereIn('item_id', $itemIds))
             ->groupBy('item_id')
             ->pluck('stock', 'item_id')
             ->map(fn ($v) => max(0, (int) $v))
             ->all();
     }
 
+    private function stockByItem(?array $itemIds = null): array
+    {
+        return self::stockMap($itemIds);
+    }
+
     /**
-     * Calculate current stock for a non-equipment item.
+     * The batch that expires first (with stock left) of each given item, from ONE query.
+     *
+     * @param  int[]  $itemIds
+     * @return array<int,InventoryBatch>  keyed by item id
+     */
+    private function nearestBatches(array $itemIds): array
+    {
+        if ($itemIds === []) {
+            return [];
+        }
+
+        return InventoryBatch::whereIn('item_id', $itemIds)
+            ->whereNotNull('expiry_date')
+            ->where('quantity_in', '>', DB::raw('quantity_used'))
+            ->orderBy('expiry_date')
+            ->orderBy('id')
+            ->get()
+            ->groupBy('item_id')
+            ->map(fn ($batches) => $batches->first())
+            ->all();
+    }
+
+    /**
+     * Calculate current stock for ONE item (a single-row answer such as the result of a Stock In).
      */
     private function getStock(int $itemId): int
     {
-        $in  = InventoryTransaction::where('item_id', $itemId)->where('type', 'IN')->sum('quantity');
-        $out = InventoryTransaction::where('item_id', $itemId)->where('type', 'OUT')->sum('quantity');
-        return max(0, $in - $out);
+        return self::stockMap([$itemId])[$itemId] ?? 0;
     }
 
     /**
@@ -54,16 +91,18 @@ class InventoryController extends Controller
      */
     public static function preValidateStock(array $items): array
     {
+        $ids = array_values(array_unique(array_filter(array_map(fn ($r) => (int) ($r['item_id'] ?? 0), $items))));
+        $stock = self::stockMap($ids);
+        $names = InventoryItem::whereIn('id', $ids)->get()->keyBy('id');
+
         $errors = [];
         foreach ($items as $row) {
-            $item = InventoryItem::find($row['item_id'] ?? null);
+            $item = $names->get((int) ($row['item_id'] ?? 0));
             $qty  = (int) ($row['quantity'] ?? 0);
-            if (!$item || $qty <= 0) continue;
-            $in  = InventoryTransaction::where('item_id', $item->id)->where('type', 'IN')->sum('quantity');
-            $out = InventoryTransaction::where('item_id', $item->id)->where('type', 'OUT')->sum('quantity');
-            $stock = max(0, $in - $out);
-            if ($qty > $stock) {
-                $errors[] = "Insufficient stock for \"{$item->name}\" (available: {$stock} {$item->unit}, requested: {$qty}).";
+            if (! $item || $qty <= 0) continue;
+            $available = $stock[$item->id] ?? 0;
+            if ($qty > $available) {
+                $errors[] = "Insufficient stock for \"{$item->name}\" (available: {$available} {$item->unit}, requested: {$qty}).";
             }
         }
         return $errors;
@@ -71,24 +110,26 @@ class InventoryController extends Controller
 
     /**
      * Append stock info to an item for API responses.
+     *
+     * For a list, pass the stock and nearest-batch maps built once for the whole page (stockMap /
+     * nearestBatches); for a single item they are read here (two queries, not one per field).
+     *
+     * @param  array<int,int>|null  $stockMap
+     * @param  array<int,InventoryBatch>|null  $nearestMap
      */
-    private function withStock(InventoryItem $item): array
+    private function withStock(InventoryItem $item, ?array $stockMap = null, ?array $nearestMap = null): array
     {
         $data = $item->toArray();
         $today = now()->toDateString();
         $in30Days = now()->addDays(30)->toDateString();
 
         if ($item->category !== 'Equipment') {
-            $stock = $this->getStock($item->id);
+            $stock = ($stockMap ?? self::stockMap([$item->id]))[$item->id] ?? 0;
             $data['current_stock']   = $stock;
             $data['is_low_stock']    = $stock > 0 && $stock <= $item->reorder_level;
             $data['is_out_of_stock'] = $stock === 0;
 
-            $nearestBatch = $item->batches()
-                ->whereNotNull('expiry_date')
-                ->where('quantity_in', '>', DB::raw('quantity_used'))
-                ->orderBy('expiry_date')
-                ->first();
+            $nearestBatch = ($nearestMap ?? $this->nearestBatches([$item->id]))[$item->id] ?? null;
 
             if ($nearestBatch) {
                 $expDate = $nearestBatch->expiry_date->toDateString();
@@ -129,6 +170,7 @@ class InventoryController extends Controller
     public function dashboard(): JsonResponse
     {
         $items = InventoryItem::all();
+        $stockByItem = $this->stockByItem();   // one query for every item
 
         $totalItems  = $items->count();
         $lowStock    = 0;
@@ -136,7 +178,7 @@ class InventoryController extends Controller
         $expired     = 0;
 
         foreach ($items->where('category', '!=', 'Equipment') as $item) {
-            $stock = $this->getStock($item->id);
+            $stock = $stockByItem[$item->id] ?? 0;
             if ($stock > 0 && $stock <= $item->reorder_level) {
                 $lowStock++;
             }
@@ -161,7 +203,7 @@ class InventoryController extends Controller
         // Low stock items list
         $lowStockItems = [];
         foreach ($items->where('category', '!=', 'Equipment') as $item) {
-            $stock = $this->getStock($item->id);
+            $stock = $stockByItem[$item->id] ?? 0;
             if ($stock <= $item->reorder_level) {
                 $lowStockItems[] = [
                     'id'            => $item->id,
@@ -217,9 +259,10 @@ class InventoryController extends Controller
     public function alertSummary(): JsonResponse
     {
         $items = InventoryItem::where('category', '!=', 'Equipment')->get();
+        $stockByItem = $this->stockByItem();   // one query for every item
         $lowStock = 0;
         foreach ($items as $item) {
-            $stock = $this->getStock($item->id);
+            $stock = $stockByItem[$item->id] ?? 0;
             if ($stock > 0 && $stock <= $item->reorder_level) {
                 $lowStock++;
             }
@@ -241,6 +284,9 @@ class InventoryController extends Controller
     }
 
     // ── Items ─────────────────────────────────────────────────────────────
+
+    /** SQL for an item's current stock (IN minus OUT, never below 0), for use in WHERE / SELECT on inventory_items. */
+    private const STOCK_SQL = "GREATEST(0, COALESCE((SELECT SUM(CASE WHEN t.type = 'IN' THEN t.quantity ELSE -t.quantity END) FROM inventory_transactions t WHERE t.item_id = inventory_items.id), 0))";
 
     public function itemIndex(Request $request): JsonResponse
     {
@@ -264,45 +310,43 @@ class InventoryController extends Controller
             }
         }
 
-        if ($request->has('status') && $request->status !== 'all') {
-            if ($request->status === 'active') {
-                $q->where('is_active', true);
-            } elseif ($request->status === 'inactive') {
-                $q->where('is_active', false);
-            }
-        }
-
-        $items = $q->orderBy('name')->get();
-        $result = $items->map(fn($item) => $this->withStock($item));
-
-        if ($request->has('status') && in_array($request->status, ['low_stock', 'expiring_soon', 'out_of_stock'])) {
-            if ($request->status === 'low_stock') {
-                $result = $result->filter(fn($i) => $i['category'] !== 'Equipment' && $i['is_low_stock'])->values();
-            } elseif ($request->status === 'expiring_soon') {
-                $result = $result->filter(fn($i) => in_array($i['expiry_status'], ['expiring_soon', 'expired']))->values();
-            } elseif ($request->status === 'out_of_stock') {
-                $result = $result->filter(fn($i) => $i['category'] !== 'Equipment' && $i['is_out_of_stock'])->values();
-            }
-        }
-
-        // Summary counts matching Inventory Dashboard
-        $allItems = InventoryItem::all();
-        $totalItems = $allItems->count();
-        $lowStockCount = 0;
-        $outOfStockCount = 0;
-
-        foreach ($allItems->where('category', '!=', 'Equipment') as $item) {
-            $stock = $this->getStock($item->id);
-            if ($stock > 0 && $stock <= $item->reorder_level) {
-                $lowStockCount++;
-            }
-            if ($stock === 0) {
-                $outOfStockCount++;
-            }
-        }
-
         $today    = now()->toDateString();
         $in30Days = now()->addDays(30)->toDateString();
+        $stockSql = self::STOCK_SQL;
+
+        // The status filter is done in SQL (stock and batches are read by subqueries), so the database
+        // can page the result instead of PHP loading every item first.
+        if ($request->has('status') && $request->status !== 'all') {
+            switch ($request->status) {
+                case 'active':
+                    $q->where('is_active', true);
+                    break;
+                case 'inactive':
+                    $q->where('is_active', false);
+                    break;
+                case 'low_stock':
+                    $q->where('category', '!=', 'Equipment')
+                      ->whereRaw("{$stockSql} > 0")
+                      ->whereRaw("{$stockSql} <= inventory_items.reorder_level");
+                    break;
+                case 'out_of_stock':
+                    $q->where('category', '!=', 'Equipment')->whereRaw("{$stockSql} = 0");
+                    break;
+                case 'expiring_soon':   // the batch that expires first is expired or expires within 30 days
+                    $q->where('category', '!=', 'Equipment')
+                      ->whereRaw('EXISTS (SELECT 1 FROM inventory_batches b WHERE b.item_id = inventory_items.id AND b.expiry_date IS NOT NULL AND b.quantity_in > b.quantity_used AND b.expiry_date <= ?)', [$in30Days]);
+                    break;
+            }
+        }
+
+        $q->orderBy('name')->orderBy('id');
+
+        // Summary counts matching Inventory Dashboard: every item, whatever the filters (one query)
+        $counts = DB::table(DB::raw("(SELECT category, reorder_level, {$stockSql} AS stock FROM inventory_items) AS s"))
+            ->selectRaw("COUNT(*) AS total,
+                COALESCE(SUM(CASE WHEN category <> 'Equipment' AND stock > 0 AND stock <= reorder_level THEN 1 ELSE 0 END), 0) AS low,
+                COALESCE(SUM(CASE WHEN category <> 'Equipment' AND stock = 0 THEN 1 ELSE 0 END), 0) AS out_of_stock")
+            ->first();
 
         $expiringSoonCount = InventoryBatch::whereNotNull('expiry_date')
             ->where('quantity_in', '>', DB::raw('quantity_used'))
@@ -311,13 +355,24 @@ class InventoryController extends Controller
             ->count();
 
         $summary = [
-            'total_items'   => $totalItems,
-            'low_stock'     => $lowStockCount,
+            'total_items'   => (int) $counts->total,
+            'low_stock'     => (int) $counts->low,
             'expiring_soon' => $expiringSoonCount,
-            'out_of_stock'  => $outOfStockCount,
+            'out_of_stock'  => (int) $counts->out_of_stock,
         ];
 
-        if ($request->boolean('all') || $request->input('paginate') === 'false') {
+        // Stock and nearest batch for just the rows being returned: two queries, whatever the page size
+        $format = function ($rows) {
+            $ids = $rows->pluck('id')->all();
+            $stock   = self::stockMap($ids);
+            $nearest = $this->nearestBatches($ids);
+
+            return $rows->map(fn ($item) => $this->withStock($item, $stock, $nearest))->values();
+        };
+
+        if (Paging::wantsAll($request)) {
+            $result = $format($q->limit(Paging::ALL_LIMIT)->get());
+
             return response()->json([
                 'items'   => $result,
                 'data'    => $result,
@@ -326,18 +381,9 @@ class InventoryController extends Controller
             ]);
         }
 
-        $total = $result->count();
-        $perPage = (int) $request->input('per_page', 10);
-        $page = (int) $request->input('page', 1);
-        $slice = $result->slice(($page - 1) * $perPage, $perPage)->values();
-
-        $paginated = new \Illuminate\Pagination\LengthAwarePaginator(
-            $slice,
-            $total,
-            $perPage,
-            $page,
-            ['path' => $request->url(), 'query' => $request->query()]
-        );
+        $perPage   = Paging::perPage($request);
+        $paginated = $q->paginate($perPage, ['*'], 'page', max(1, (int) $request->input('page', 1)));
+        $slice     = $format(collect($paginated->items()));
 
         return response()->json([
             'items'        => $slice,
@@ -545,8 +591,15 @@ class InventoryController extends Controller
             return $data;
         };
 
-        if ($request->boolean('all') || $request->input('paginate') === 'false') {
-            $batches = $q->get()->map($format);
+        // Batches that are expired and still hold stock (the Write-off list), decided in SQL
+        if ($request->boolean('expired')) {
+            $q->whereNotNull('expiry_date')
+              ->whereDate('expiry_date', '<=', $today)
+              ->whereColumn('quantity_in', '>', 'quantity_used');
+        }
+
+        if (Paging::wantsAll($request)) {
+            $batches = $q->limit(Paging::ALL_LIMIT)->get()->map($format);
 
             return response()->json([
                 'batches' => $batches,
@@ -555,8 +608,8 @@ class InventoryController extends Controller
             ]);
         }
 
-        $perPage   = max(1, min(100, (int) $request->input('per_page', 10)));
-        $paginated = $q->paginate($perPage);
+        $perPage   = Paging::perPage($request);
+        $paginated = $q->paginate($perPage, ['*'], 'page', max(1, (int) $request->input('page', 1)));
         $items     = collect($paginated->items())->map($format);
 
         return response()->json([
@@ -728,13 +781,17 @@ class InventoryController extends Controller
         }
         $q->orderBy('id', $dir);
 
-        if ($request->boolean('all')) {
-            $rows = $q->get();
-            return response()->json(['data' => $rows, 'total' => $rows->count()]);
+        // "All" is the CSV export of the filtered list: at most EXPORT_LIMIT rows (`truncated` tells the screen)
+        if (Paging::wantsAll($request)) {
+            $rows = $q->limit(Paging::EXPORT_LIMIT + 1)->get();
+            $truncated = $rows->count() > Paging::EXPORT_LIMIT;
+            $rows = $rows->take(Paging::EXPORT_LIMIT)->values();
+
+            return response()->json(['data' => $rows, 'total' => $rows->count(), 'truncated' => $truncated, 'limit' => Paging::EXPORT_LIMIT]);
         }
 
-        $perPage      = max(1, min(100, (int) $request->input('per_page', 10)));
-        $transactions = $q->paginate($perPage);
+        $perPage      = Paging::perPage($request);
+        $transactions = $q->paginate($perPage, ['*'], 'page', max(1, (int) $request->input('page', 1)));
 
         return response()->json($transactions);
     }
@@ -1080,11 +1137,13 @@ class InventoryController extends Controller
             });
         }
 
+        $stockByItem = $this->stockByItem();   // one query for every item
+
         $items = $q->orderBy('category')
             ->orderBy('name')
             ->get()
-            ->map(function ($item) use ($today) {
-                $stock = (new self)->getStock($item->id);
+            ->map(function ($item) use ($today, $stockByItem) {
+                $stock = $stockByItem[$item->id] ?? 0;
 
                 // Check if any non-expired batch exists
                 $hasStock = $stock > 0;

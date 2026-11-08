@@ -32,8 +32,8 @@ use App\Http\Controllers\Api\ChatController;
 
 // ── Public Auth ─────────────────────────────────────────────────────────
 Route::prefix('auth')->group(function () {
-    Route::post('register', [AuthController::class, 'register']);
-    Route::post('login',    [AuthController::class, 'login']);
+    Route::post('register', [AuthController::class, 'register'])->middleware('throttle:register');
+    Route::post('login',    [AuthController::class, 'login'])->middleware('throttle:login');
 });
 
 // ── Public Settings (terms & privacy for registration page) ─────────────
@@ -114,7 +114,7 @@ Route::middleware(['auth:sanctum', 'active', 'password.changed'])->group(functio
     Route::get('appointments/unread-count', [AppointmentController::class, 'unreadCount']);
     Route::post('appointments/mark-read',   [AppointmentController::class, 'markAllRead']);
     Route::get('appointments',              [AppointmentController::class, 'index']);
-    Route::post('appointments',             [AppointmentController::class, 'store']);
+    Route::post('appointments',             [AppointmentController::class, 'store'])->middleware('throttle:booking');
     Route::put('appointments/{appointment}/reschedule', [AppointmentController::class, 'reschedule']);
     Route::patch('appointments/{appointment}/status',   [AppointmentController::class, 'updateStatus']);
     Route::patch('appointments/{appointment}/read',     [AppointmentController::class, 'markRead']);
@@ -128,7 +128,7 @@ Route::middleware(['auth:sanctum', 'active', 'password.changed'])->group(functio
     Route::patch('notifications/{notification}/unread', [NotificationController::class, 'markAsUnread']);
     Route::delete('notifications/{notification}', [NotificationController::class, 'destroy']);
     Route::post('notifications/read-all', [NotificationController::class, 'markAllAsRead']);
-    Route::post('notifications/announce', [NotificationController::class, 'announce']); // Broadcast announcements
+    Route::post('notifications/announce', [NotificationController::class, 'announce'])->middleware('throttle:announce'); // Broadcast announcements
 
     // ── Announcements API ────────────────────────────────────────────────
     Route::get('announcements', [AnnouncementController::class, 'index']);
@@ -144,7 +144,7 @@ Route::middleware(['auth:sanctum', 'active', 'password.changed'])->group(functio
     Route::prefix('chatbot')->group(function () {
         Route::get('menu',                [ChatbotController::class,    'menu']);
         Route::get('category/{category}', [ChatbotController::class,    'category']);
-        Route::post('message',            [ChatbotController::class,    'message']);
+        Route::post('message',            [ChatbotController::class,    'message'])->middleware('throttle:chatbot');
         Route::get('faqs',                [ChatbotFaqController::class, 'index']);
         Route::get('faqs/{chatbotFaq}',   [ChatbotFaqController::class, 'show']);
 
@@ -172,7 +172,7 @@ Route::middleware(['auth:sanctum', 'active', 'password.changed'])->group(functio
         Route::post('student/read-all',                      [ChatController::class, 'markStudentAllRead']);
         Route::get('conversations',                          [ChatController::class, 'listConversations']);
         Route::get('conversations/{conversation}',           [ChatController::class, 'showConversation']);
-        Route::post('conversations/{conversation}/messages', [ChatController::class, 'sendMessage']);
+        Route::post('conversations/{conversation}/messages', [ChatController::class, 'sendMessage'])->middleware('throttle:chat-send');
         Route::patch('conversations/{conversation}/status',  [ChatController::class, 'updateStatus']);
         Route::patch('messages/{message}',                  [ChatController::class, 'updateMessage']);
         Route::delete('messages/{message}',                 [ChatController::class, 'unsendMessage']);

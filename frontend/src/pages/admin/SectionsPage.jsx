@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { toast } from 'react-hot-toast'
 import api from '../../api/axios'
+import { invalidate } from '../../api/referenceCache'
 import DashboardLayout from '../../components/DashboardLayout'
 import Pagination from '../../components/Pagination'
 import { usePagination } from '../../hooks/usePagination'
@@ -9,6 +10,9 @@ import ConfirmModal from '../../components/ConfirmModal'
 import { GRADE_LEVELS, STRANDS } from '../../constants/schoolData'
 import { EMPTY } from '../../utils/emptyValue'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+
+// The Register / Profile / User Management pickers read these lists from a short-lived cache
+const forgetSectionLists = () => { invalidate('sections'); invalidate('grade-levels') }
 
 export default function SectionsPage() {
   const [sections, setSections] = useState([])
@@ -60,6 +64,7 @@ export default function SectionsPage() {
       : api.post('/admin/sections', payload)
 
     req
+      .finally(forgetSectionLists)
       .then(() => {
         toast.success(isEditing ? 'Section updated.' : 'Section added.')
         setShowModal(false)
@@ -77,7 +82,7 @@ export default function SectionsPage() {
     if (!sec) return
     setDeleteConfirm(prev => ({ ...prev, loading: true }))
     try {
-      await api.delete(`/admin/sections/${sec.id}`)
+      await api.delete(`/admin/sections/${sec.id}`).finally(forgetSectionLists)
       toast.success('Section deleted.')
       fetchSections()
       setDeleteConfirm({ open: false, sec: null, loading: false })

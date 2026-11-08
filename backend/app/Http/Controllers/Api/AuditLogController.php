@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\Paging;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\User;
@@ -52,7 +53,7 @@ class AuditLogController extends Controller
             $query->whereDate('created_at', '<=', $request->date_to);
         }
 
-        $perPage = (int) $request->get('per_page', 10);
+        $perPage = Paging::perPage($request);
         $logs = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
         // Get list of distinct actions for filter dropdown
