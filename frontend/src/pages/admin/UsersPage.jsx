@@ -11,6 +11,7 @@ import axios from 'axios'
 import { DEPARTMENTS, GRADE_LEVELS } from '../../constants/schoolData'
 import Avatar from '../../components/Avatar'
 import MobileInput, { isMobileValid, validateMobile } from '../../components/MobileInput'
+import useSubmitLock from '../../hooks/useSubmitLock'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -265,6 +266,8 @@ export default function UsersPage() {
   const [form,       setForm]       = useState(blankForm())
   const [errors,     setErrors]     = useState({})
   const [saving,     setSaving]     = useState(false)
+  const saveLock   = useSubmitLock()
+  const statusLock = useSubmitLock()
   const [search,     setSearch]     = useState(initialSearch)
   const [filterRole, setFilterRole] = useState('all')
   const [filterStat, setFilterStat] = useState('all')
@@ -392,6 +395,7 @@ export default function UsersPage() {
       toast.error('Please fix the highlighted fields.')
       return
     }
+    if (!saveLock.lock()) return   // already saving (double click / second Enter)
     setSaving(true)
     try {
       const payload = { ...form }
@@ -418,6 +422,7 @@ export default function UsersPage() {
       }
     } finally {
       setSaving(false)
+      saveLock.unlock()
     }
   }
 
@@ -433,6 +438,7 @@ export default function UsersPage() {
     const targetUser = statusConfirm.user
     if (!targetUser) return
     const action = targetUser.is_active ? 'deactivate' : 'activate'
+    if (!statusLock.lock()) return   // already running (double click)
     setStatusConfirm(prev => ({ ...prev, loading: true }))
     try {
       const { data } = await adminApi.toggleUserStatus(targetUser.id)
@@ -446,6 +452,8 @@ export default function UsersPage() {
     } catch (err) {
       toast.error(err?.response?.data?.message || `Failed to ${action} account.`)
       setStatusConfirm(prev => ({ ...prev, loading: false }))
+    } finally {
+      statusLock.unlock()
     }
   }
 

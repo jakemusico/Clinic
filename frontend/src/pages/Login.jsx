@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { ROLE_ROUTES } from '../components/RouteGuards'
+import useSubmitLock from '../hooks/useSubmitLock'
+import { getApiErrorMessage, getFieldErrors } from '../utils/apiError'
 import fsuuLogo from '../assets/fsuu_logo.png'
 import fsuuBuilding from '../assets/fsuu_building.jpg'
 
@@ -13,6 +15,7 @@ export default function Login() {
   const [form, setForm]       = useState({ email: '', password: '' })
   const [errors, setErrors]   = useState({})
   const [loading, setLoading] = useState(false)
+  const { lock, unlock } = useSubmitLock()
 
   const handleChange = (e) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }))
@@ -21,6 +24,7 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (!lock()) return   // a sign-in is already running (double click / second Enter)
     setLoading(true)
     setErrors({})
     try {
@@ -29,18 +33,13 @@ export default function Login() {
       const roleKey = typeof user.role === 'string' ? user.role : (user.role?.slug || user.role_slug || 'student')
       navigate(ROLE_ROUTES[roleKey] || '/dashboard/student', { replace: true })
     } catch (err) {
-      const data = err?.response?.data
-      if (data?.errors) {
-        setErrors(data.errors)
-      } else if (data?.message) {
-        setErrors({ email: data.message })
-      } else if (err?.code === 'ERR_NETWORK' || !err?.response) {
-        setErrors({ email: 'Unable to connect to the backend server. Please ensure the backend is running on port 8000.' })
-      } else {
-        setErrors({ email: 'Login failed. Please try again.' })
-      }
+      const fieldErrors = getFieldErrors(err)
+      setErrors(Object.keys(fieldErrors).length
+        ? fieldErrors
+        : { email: getApiErrorMessage(err, 'Login failed. Please try again.') })
     } finally {
       setLoading(false)
+      unlock()
     }
   }
 

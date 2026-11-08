@@ -9,6 +9,7 @@ import { formatAppointmentDateTime, todayISO } from '../../utils/dateUtils'
 import Pagination from '../../components/Pagination'
 import Avatar from '../../components/Avatar'
 import { EMPTY } from '../../utils/emptyValue'
+import useSubmitLock from '../../hooks/useSubmitLock'
 
 const STATUS_BADGES = {
   pending:   'status-badge inactive',
@@ -23,6 +24,7 @@ function RescheduleModal({ appointment, onClose, onRescheduled }) {
   const [loadingSlots, setLoadingSlots] = useState(false)
   const [selectedSlot, setSelectedSlot] = useState(null)
   const [saving, setSaving]   = useState(false)
+  const { lock, unlock } = useSubmitLock()
 
   const today = todayISO()
 
@@ -41,6 +43,7 @@ function RescheduleModal({ appointment, onClose, onRescheduled }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!selectedSlot) return
+    if (!lock()) return   // already saving (double click / second Enter)
     setSaving(true)
     try {
       const { data } = await appointmentsApi.reschedule(appointment.id, {
@@ -50,17 +53,17 @@ function RescheduleModal({ appointment, onClose, onRescheduled }) {
       onRescheduled(data.appointment)
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Failed to reschedule.')
-    } finally { setSaving(false) }
+    } finally { setSaving(false); unlock() }
   }
 
   const availableSlots = slots.filter(s => !s.is_booked)
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && !saving && onClose()}>
       <div className="modal-card">
         <div className="modal-header">
           <h2>Reschedule Appointment</h2>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose} disabled={saving}>✕</button>
         </div>
         <form onSubmit={handleSubmit} className="modal-body">
           <div className="form-group">
@@ -94,7 +97,7 @@ function RescheduleModal({ appointment, onClose, onRescheduled }) {
           )}
 
           <div className="modal-footer">
-            <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="button" className="btn-ghost" onClick={onClose} disabled={saving}>Cancel</button>
             <button type="submit" className="btn-primary" disabled={saving || !selectedSlot}>
               {saving ? <span className="btn-spinner" /> : 'Confirm Reschedule'}
             </button>
@@ -108,9 +111,12 @@ function RescheduleModal({ appointment, onClose, onRescheduled }) {
 function CancelModal({ appointment, onClose, onCancelled }) {
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
+  const { lock, unlock } = useSubmitLock()
 
   const handleSubmit = async (e) => {
-    e.preventDefault(); setSaving(true)
+    e.preventDefault()
+    if (!lock()) return   // already saving (double click / second Enter)
+    setSaving(true)
     try {
       const { data } = await appointmentsApi.updateStatus(appointment.id, {
         status: 'cancelled',
@@ -119,15 +125,15 @@ function CancelModal({ appointment, onClose, onCancelled }) {
       toast.success(data.message)
       onCancelled(data.appointment)
     } catch { toast.error('Failed to cancel appointment.') }
-    finally { setSaving(false) }
+    finally { setSaving(false); unlock() }
   }
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && !saving && onClose()}>
       <div className="modal-card modal-sm">
         <div className="modal-header">
           <h2>Cancel Appointment</h2>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose} disabled={saving}>✕</button>
         </div>
         <form onSubmit={handleSubmit} className="modal-body">
           <p className="confirm-text">Cancel appointment #{appointment.id} for {appointment.patient?.user?.name}?</p>
@@ -137,7 +143,7 @@ function CancelModal({ appointment, onClose, onCancelled }) {
               placeholder="e.g. Doctor unavailable, patient request..." rows={3} required />
           </div>
           <div className="modal-footer">
-            <button type="button" className="btn-ghost" onClick={onClose}>Back</button>
+            <button type="button" className="btn-ghost" onClick={onClose} disabled={saving}>Back</button>
             <button type="submit" className="btn-danger" disabled={saving}>
               {saving ? <span className="btn-spinner" /> : 'Cancel Appointment'}
             </button>

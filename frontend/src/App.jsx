@@ -5,6 +5,7 @@ import { AuthProvider } from './context/AuthContext'
 import { ChatbotProvider } from './context/ChatbotContext'
 import { ProtectedRoute, PublicRoute } from './components/RouteGuards'
 import { PageFallback } from './components/dashboard/Fallbacks'
+import ErrorBoundary from './components/ErrorBoundary'
 
 import Login    from './pages/Login'
 const Register = lazy(() => import('./pages/Register'))
@@ -56,6 +57,13 @@ function LegacyInventoryRedirect() {
   const { pathname, search, hash } = useLocation()
   return <Navigate to={pathname.replace(/^\/admin\/inventory/, '/clinic/inventory') + search + hash} replace />
 }
+
+/** Catches render errors and failed page-file downloads below it; moving to another page clears the error. */
+function RoutesBoundary({ children }) {
+  const { pathname } = useLocation()
+  return <ErrorBoundary resetKey={pathname}>{children}</ErrorBoundary>
+}
+
 export default function App() {
   return (
     <AuthProvider>
@@ -79,6 +87,7 @@ export default function App() {
           />
 
           <Suspense fallback={<PageFallback />}>
+          <RoutesBoundary>
           <Routes>
             {/* Root */}
             <Route path="/" element={<Navigate to="/login" replace />} />
@@ -366,6 +375,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/login" replace />} />
 
           </Routes>
+          </RoutesBoundary>
           </Suspense>
         </BrowserRouter>
       </ChatbotProvider>

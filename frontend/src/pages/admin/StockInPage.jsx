@@ -6,6 +6,7 @@ import InventoryFilterBar from '../../components/InventoryFilterBar'
 import InventoryTableShell, { InventoryEmptyState } from '../../components/InventoryTableShell'
 import SortableTh from '../../components/SortableTh'
 import useServerTable from '../../hooks/useServerTable'
+import useSubmitLock from '../../hooks/useSubmitLock'
 import { inventoryApi } from '../../api/inventory'
 import { inventoryItemOption, ACTION_BUTTON_STYLE } from '../../utils/inventoryOptions'
 import { formatDate, isDateExpired, isDateExpiringSoon } from '../../utils/dateUtils'
@@ -52,6 +53,7 @@ export default function StockInPage() {
   const [modal,             setModal]             = useState(false)
   const [form,              setForm]              = useState(BLANK_BATCH)
   const [saving,            setSaving]            = useState(false)
+  const { lock, unlock } = useSubmitLock()
   const [loadingModalItems, setLoadingModalItems] = useState(false)
 
   // Complete list (NOT paginated, includes zero-stock items). Reloaded every time the modal opens,
@@ -97,6 +99,7 @@ export default function StockInPage() {
       return
     }
 
+    if (!lock()) return   // already saving (double click / second Enter): never receive the stock twice
     setSaving(true)
     try {
       const { data } = await inventoryApi.createBatch({
@@ -112,6 +115,7 @@ export default function StockInPage() {
       toast.error((errors && Object.values(errors)[0]?.[0]) || e.response?.data?.message || 'Failed to save batch.')
     } finally {
       setSaving(false)
+      unlock()
     }
   }
 

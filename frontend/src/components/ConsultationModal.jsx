@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'react-hot-toast'
+import useSubmitLock from '../hooks/useSubmitLock'
 
 import { recordsApi } from '../api/records'
 import { MedicineSupplyPicker } from './MedicineSupplyPicker'
@@ -88,6 +89,9 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
   const { form, setField, errors, setErrors } = c
 
   const [saving, setSaving] = useState(false)
+  const { lock, unlock } = useSubmitLock()
+  // editing: Save waits until the medicines already dispensed have loaded (see MedicineSupplyPicker)
+  const itemsNotReady = isEdit && c.itemsStatus !== 'ready'
   const [open, setOpen] = useState(() => ({ vitals: true, findings: hasFindings(initialForm), meds: false }))
   const toggle = (key) => setOpen((o) => ({ ...o, [key]: !o[key] }))
 
@@ -95,6 +99,11 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
   useEffect(() => {
     if (c.invRows.length > 0) setOpen((o) => (o.meds ? o : { ...o, meds: true }))
   }, [c.invRows.length])
+
+  // show the picker's load error even when the Medicines section is folded
+  useEffect(() => {
+    if (c.itemsStatus === 'error') setOpen((o) => (o.meds ? o : { ...o, meds: true }))
+  }, [c.itemsStatus])
 
   const handleRestoreDraft = () => {
     const data = c.restoreDraft()
@@ -104,6 +113,12 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+
+    if (itemsNotReady) {
+      setOpen((o) => ({ ...o, meds: true }))
+      toast.error('Please wait until the medicines already dispensed have loaded.')
+      return
+    }
 
     // Required fields, then the vital signs that were filled in
     const found = {}
@@ -122,6 +137,7 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
       return
     }
 
+    if (!lock()) return   // already saving (double click / second Enter): never post twice
     setSaving(true)
     setErrors({})
 
@@ -167,6 +183,7 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
       }
     } finally {
       setSaving(false)
+      unlock()
     }
   }
 
@@ -181,6 +198,8 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
       onClose={onClose}
       onSubmit={handleSubmit}
       saving={saving}
+      saveDisabled={itemsNotReady}
+      saveDisabledHint="Waiting for the medicines already dispensed to load"
       saveLabel={isEdit ? 'Update Consultation' : 'Save & Complete Consultation'}
       draft={c.draft.pending}
       onRestoreDraft={handleRestoreDraft}
@@ -337,6 +356,7 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
           consultationId={initialData?.id}
           allergies={c.selectedPatient?.allergies}
           onAllergyMatches={c.setAllergyMatches}
+          onItemsStatus={c.setItemsStatus}
         />
       </CollapsibleSection>
     </ConsultationFormFrame>

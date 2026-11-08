@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
+import useSubmitLock from '../../hooks/useSubmitLock'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import DashboardLayout from '../../components/DashboardLayout'
@@ -105,6 +106,8 @@ export default function InventoryItemsPage() {
   const [loading,    setLoading]    = useState(true)
   const [loadError,  setLoadError]  = useState(null) // null | string (message shown with a Retry button)
   const loadAbortRef = useRef(null)
+  // one lock for all the save actions of this page (item, status, stock in, stock out): one at a time
+  const { lock, unlock } = useSubmitLock()
 
   // Modals: null | 'new' | 'edit' | 'detail' | 'stock_in' | 'stock_out'
   const [modal,            setModal]            = useState(null)
@@ -271,6 +274,7 @@ export default function InventoryItemsPage() {
       toast.error('Item name is required.')
       return
     }
+    if (!lock()) return   // already saving (double click / second Enter): never post twice
     setSaving(true)
     try {
       if (modal === 'new') {
@@ -288,6 +292,7 @@ export default function InventoryItemsPage() {
       toast.error(e.response?.data?.message || 'Save failed.')
     } finally {
       setSaving(false)
+      unlock()
     }
   }
 
@@ -295,6 +300,7 @@ export default function InventoryItemsPage() {
   const handleToggleActiveInEdit = async () => {
     if (!selectedItem) return
     const newStatus = !form.is_active
+    if (!lock()) return   // already saving (double click / second Enter): never post twice
     setSaving(true)
     try {
       await inventoryApi.toggleItem(selectedItem.id)
@@ -305,6 +311,7 @@ export default function InventoryItemsPage() {
       toast.error('Failed to change item status.')
     } finally {
       setSaving(false)
+      unlock()
     }
   }
 
@@ -320,6 +327,7 @@ export default function InventoryItemsPage() {
       toast.error('Expiry date is required for medicine.')
       return
     }
+    if (!lock()) return   // already saving (double click / second Enter): never post twice
     setSaving(true)
     try {
       await inventoryApi.createBatch({
@@ -338,6 +346,7 @@ export default function InventoryItemsPage() {
       toast.error(e.response?.data?.message || 'Failed to record stock in.')
     } finally {
       setSaving(false)
+      unlock()
     }
   }
 
@@ -354,6 +363,7 @@ export default function InventoryItemsPage() {
       toast.error(`Cannot deduct more than current stock (${currentStock} ${selectedItem.unit}).`)
       return
     }
+    if (!lock()) return   // already saving (double click / second Enter): never post twice
     setSaving(true)
     try {
       await inventoryApi.stockOut({
@@ -370,6 +380,7 @@ export default function InventoryItemsPage() {
       toast.error(e.response?.data?.message || 'Failed to record stock out.')
     } finally {
       setSaving(false)
+      unlock()
     }
   }
 

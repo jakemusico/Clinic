@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { authApi } from '../api/auth'
 import ConfirmModal from '../components/ConfirmModal'
 import { prepareImageForCrop, validatePickedFile } from '../utils/imageCrop'
-import { getApiErrorMessage } from '../utils/apiError'
+import { getApiErrorMessage, getLocalErrorMessage } from '../utils/apiError'
 
 // The cropper (react-easy-crop) is only needed after a photo is picked: load it on demand.
 const PhotoCropModal = lazy(() => import('../components/PhotoCropModal'))
@@ -62,7 +62,7 @@ export default function useProfilePhoto() {
       cropUrlRef.current = url
       setCropSrc(url)
     } catch (err) {
-      toast.error(err?.message || 'This file could not be read as an image.')
+      toast.error(getLocalErrorMessage(err, 'This file could not be read as an image.'))
     }
   }
 

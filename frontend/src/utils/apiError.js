@@ -24,6 +24,13 @@ export function getApiErrorMessage(err, fallback = 'Something went wrong. Please
   return fallback
 }
 
+// For errors that did not come from the API (reading a picked file, ...): their own message,
+// unless it looks technical.
+export function getLocalErrorMessage(err, fallback = 'Something went wrong. Please try again.') {
+  const message = typeof err?.message === 'string' ? err.message : ''
+  return message && !TECHNICAL.test(message) ? message : fallback
+}
+
 // Field-level errors from a 422 response as { field: 'message' }.
 export function getFieldErrors(err) {
   const errors = err?.response?.data?.errors

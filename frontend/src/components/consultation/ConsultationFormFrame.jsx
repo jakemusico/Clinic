@@ -5,9 +5,13 @@
  *
  * `inline` renders it as a page card (its bottom bar sticks to the bottom of the page);
  * otherwise it is a modal (the body scrolls, the bottom bar stays at the bottom of the modal).
+ *
+ * While `saving`, nothing can close the form (Cancel, the header button and a click outside are
+ * disabled). `saveDisabled` turns Save off for another reason, e.g. data it needs has not loaded;
+ * `saveDisabledHint` is then shown as the button tooltip.
  */
 export default function ConsultationFormFrame({
-  title, inline = false, onClose, onSubmit, saving = false, saveLabel,
+  title, inline = false, onClose, onSubmit, saving = false, saveDisabled = false, saveDisabledHint, saveLabel,
   draft, onRestoreDraft, onDiscardDraft, children,
 }) {
   const savedAt = draft?.savedAt ? new Date(draft.savedAt) : null
@@ -23,6 +27,7 @@ export default function ConsultationFormFrame({
           type="button"
           className={inline ? 'btn-secondary' : 'modal-close'}
           onClick={onClose}
+          disabled={saving}
           aria-label={inline ? 'Back to logs' : 'Close'}
         >
           {inline ? 'Back to Logs' : '✕'}
@@ -46,7 +51,8 @@ export default function ConsultationFormFrame({
           <span className="consult-footer-hint"><span className="req-mark">*</span> Required</span>
           <div className="consult-footer-actions">
             <button type="button" className="btn-ghost" onClick={onClose} disabled={saving}>Cancel</button>
-            <button type="submit" className="btn-primary" disabled={saving}>
+            <button type="submit" className="btn-primary" disabled={saving || saveDisabled}
+              title={saveDisabled && !saving ? saveDisabledHint : undefined}>
               {saving ? <span className="btn-spinner" /> : saveLabel}
             </button>
           </div>
@@ -58,7 +64,7 @@ export default function ConsultationFormFrame({
   if (inline) return <div className="consult-inline">{card}</div>
 
   return (
-    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && !saving && onClose()}>
       <div className="modal-card consult-modal-card">{card}</div>
     </div>
   )

@@ -22,6 +22,27 @@ export function ChartsFallback() {
   )
 }
 
+/**
+ * A failed load, with a Retry button. Shown instead of leaving empty cards with no explanation.
+ * Reuses the existing card styles; only the red accent is new.
+ */
+export function LoadError({ message = 'Could not load this page.', onRetry }) {
+  return (
+    <div
+      className="dash-card"
+      role="alert"
+      style={{
+        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: '1rem', flexWrap: 'wrap', padding: '0.85rem 1.25rem',
+        borderLeft: '3px solid var(--red, #DC2626)',
+      }}
+    >
+      <span style={{ fontSize: '0.88rem', color: 'var(--text)' }}>{message}</span>
+      {onRetry && <button type="button" className="btn-secondary" onClick={onRetry}>Retry</button>}
+    </div>
+  )
+}
+
 /** A whole page while its code is loading. */
 export function PageFallback() {
   return (

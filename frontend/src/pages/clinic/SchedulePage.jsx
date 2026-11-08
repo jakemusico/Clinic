@@ -6,6 +6,7 @@ import Dropdown from '../../components/Dropdown'
 import { schedulesApi } from '../../api/schedules'
 import { useAuth } from '../../context/AuthContext'
 import { todayISO } from '../../utils/dateUtils'
+import useSubmitLock from '../../hooks/useSubmitLock'
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 const DAY_LABELS = { monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed', thursday: 'Thu', friday: 'Fri', saturday: 'Sat', sunday: 'Sun' }
@@ -30,23 +31,29 @@ function ScheduleModal({ entry, staffList, currentUser, isAdmin, onClose, onSave
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const { lock, unlock } = useSubmitLock()
+  const deleteLock = useSubmitLock()
+  const busy = saving || deleting   // nothing can close the form while a request is running
 
   const set = (k, v) => { setForm(p => ({ ...p, [k]: v })); setErrors(p => ({ ...p, [k]: '' })) }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (!lock()) return   // already saving (double click / second Enter)
     setSaving(true)
     setErrors({})
 
     if (isAdmin && !form.user_id) {
       setErrors({ user_id: 'Please select a staff member.' })
       setSaving(false)
+      unlock()
       return
     }
 
     if (form.end_time <= form.start_time) {
       setErrors({ end_time: 'End time must be after start time.' })
       setSaving(false)
+      unlock()
       return
     }
 
@@ -75,6 +82,7 @@ function ScheduleModal({ entry, staffList, currentUser, isAdmin, onClose, onSave
       }
     } finally {
       setSaving(false)
+      unlock()
     }
   }
 
@@ -83,6 +91,7 @@ function ScheduleModal({ entry, staffList, currentUser, isAdmin, onClose, onSave
   }
 
   const doDelete = async () => {
+    if (!deleteLock.lock()) return   // already deleting (double click)
     setDeleting(true)
     try {
       const { data } = await schedulesApi.remove(entry.id)
@@ -93,15 +102,16 @@ function ScheduleModal({ entry, staffList, currentUser, isAdmin, onClose, onSave
       toast.error(err?.response?.data?.message || 'Delete failed.')
     } finally {
       setDeleting(false)
+      deleteLock.unlock()
     }
   }
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && !busy && onClose()}>
       <div className="modal-card">
         <div className="modal-header">
           <h2>{isEdit ? 'Edit Schedule Entry' : 'Add Schedule'}</h2>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose} disabled={busy}>✕</button>
         </div>
         <form onSubmit={handleSubmit} className="modal-body">
           {/* ── 1. Staff Member Field (Above Day of Week) ── */}
@@ -198,12 +208,12 @@ function ScheduleModal({ entry, staffList, currentUser, isAdmin, onClose, onSave
 
           <div className="modal-footer">
             {isEdit && (
-              <button type="button" className="btn-danger" onClick={handleDelete} disabled={deleting}>
+              <button type="button" className="btn-danger" onClick={handleDelete} disabled={busy}>
                 {deleting ? '…' : 'Delete'}
               </button>
             )}
-            <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn-primary" disabled={saving}>
+            <button type="button" className="btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
+            <button type="submit" className="btn-primary" disabled={busy}>
               {saving ? <span className="btn-spinner" /> : (isEdit ? 'Save Changes' : 'Add Schedule')}
             </button>
           </div>
@@ -231,11 +241,13 @@ function UnavailabilityModal({ staffList, currentUser, isAdmin, onClose, onAdded
   const [date, setDate]     = useState('')
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
+  const { lock, unlock } = useSubmitLock()
 
   const today = todayISO()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (!lock()) return   // already saving (double click / second Enter)
     setSaving(true)
     try {
       const payload = {
@@ -250,15 +262,16 @@ function UnavailabilityModal({ staffList, currentUser, isAdmin, onClose, onAdded
       toast.error(err?.response?.data?.message || 'Failed to block date.')
     } finally {
       setSaving(false)
+      unlock()
     }
   }
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && !saving && onClose()}>
       <div className="modal-card modal-sm">
         <div className="modal-header">
           <h2>Block a Date</h2>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose} disabled={saving}>✕</button>
         </div>
         <form onSubmit={handleSubmit} className="modal-body">
           {isAdmin && (
@@ -287,7 +300,7 @@ function UnavailabilityModal({ staffList, currentUser, isAdmin, onClose, onAdded
             <input value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. Sick leave, Seminar, Holiday" />
           </div>
           <div className="modal-footer">
-            <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="button" className="btn-ghost" onClick={onClose} disabled={saving}>Cancel</button>
             <button type="submit" className="btn-primary" disabled={saving || !date}>
               {saving ? <span className="btn-spinner" /> : 'Block Date'}
             </button>
@@ -418,6 +431,7 @@ export default function SchedulePage() {
   const [modal, setModal]                   = useState(null)
   const [unavailModal, setUnavailModal]     = useState(false)
   const [unavailConfirm, setUnavailConfirm] = useState({ open: false, id: null, loading: false })
+  const removeLock = useSubmitLock()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -481,6 +495,7 @@ export default function SchedulePage() {
 
   const doRemoveUnavail = async () => {
     if (!unavailConfirm.id) return
+    if (!removeLock.lock()) return   // already removing (double click)
     setUnavailConfirm(prev => ({ ...prev, loading: true }))
     try {
       const { data } = await schedulesApi.removeUnavailability(unavailConfirm.id)
@@ -490,6 +505,8 @@ export default function SchedulePage() {
     } catch {
       toast.error('Failed to remove date.')
       setUnavailConfirm(prev => ({ ...prev, loading: false }))
+    } finally {
+      removeLock.unlock()
     }
   }
 

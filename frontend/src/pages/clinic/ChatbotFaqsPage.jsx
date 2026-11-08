@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { toast } from 'react-hot-toast'
 import DashboardLayout from '../../components/DashboardLayout'
 import { chatbotApi } from '../../api/chatbot'
-import { getFaqs, saveFaqs } from '../../utils/clinicStorage'
+import { getApiErrorMessage, getFieldErrors } from '../../utils/apiError'
+import useSubmitLock from '../../hooks/useSubmitLock'
 import Pagination from '../../components/Pagination'
 import { usePagination } from '../../hooks/usePagination'
 import Dropdown from '../../components/Dropdown'
@@ -30,35 +31,34 @@ export default function ChatbotFaqsPage() {
   const [selected,   setSelected]   = useState(null)
   const [form,       setForm]       = useState(BLANK)
   const [saving,     setSaving]     = useState(false)
+  const [errors,     setErrors]     = useState({})
+  const [loadError,  setLoadError]  = useState('')
+  const { lock, unlock } = useSubmitLock()
+  const togglingRef = useRef(new Set())   // FAQs whose toggle request is still running
   const [filterCat,  setFilterCat]  = useState('all')
   const [filterQ,    setFilterQ]    = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, faq: null, loading: false })
 
+  // The server is the only source of truth (show_on_help included). Nothing is kept in the browser.
   const load = async () => {
     setLoading(true)
+    setLoadError('')
     try {
-      const localFaqs = getFaqs()
       const { data } = await chatbotApi.list()
-      const serverFaqs = data?.faqs || []
-      const merged = serverFaqs.length > 0 ? serverFaqs.map(sf => {
-        const match = localFaqs.find(lf => lf.id === sf.id || lf.question === sf.question)
-        return {
-          ...sf,
-          show_on_help: match ? match.show_on_help !== false : true,
-        }
-      }) : localFaqs
-      setFaqs(merged)
-      saveFaqs(merged)
+      setFaqs(data?.faqs || [])
       setCategories(data?.categories || [])
-    } catch {
-      const localFaqs = getFaqs()
-      setFaqs(localFaqs)
+    } catch (err) {
+      setLoadError(getApiErrorMessage(err, 'Could not load the FAQs.'))
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    // an older version kept a copy of the FAQs in this browser; it is no longer used
+    try { localStorage.removeItem('fsuu_chatbot_faqs') } catch { /* storage unavailable */ }
+    load()
+  }, [])
 
   const displayed = faqs.filter(f => {
     const matchCat = filterCat === 'all' || f.category === filterCat
@@ -70,8 +70,12 @@ export default function ChatbotFaqsPage() {
 
   const openAdd = () => {
     setForm(BLANK)
+    setErrors({})
     setModal('add')
   }
+
+  // A save in progress cannot be interrupted by closing the form
+  const closeForm = () => { if (!saving) setModal(null) }
 
   const openEdit = (faq) => {
     setSelected(faq)
@@ -84,6 +88,7 @@ export default function ChatbotFaqsPage() {
       is_active:    faq.is_active,
       show_on_help: faq.show_on_help !== false,
     })
+    setErrors({})
     setModal('edit')
   }
 
@@ -92,12 +97,19 @@ export default function ChatbotFaqsPage() {
     setModal('preview')
   }
 
-  const handleToggleHelp = (faq) => {
-    const nextVal = faq.show_on_help === false ? true : false
-    const updated = faqs.map(f => f.id === faq.id ? { ...f, show_on_help: nextVal } : f)
-    setFaqs(updated)
-    saveFaqs(updated)
-    toast.success(`FAQ ${nextVal ? 'will now show' : 'hidden from'} Student Help page.`)
+  const handleToggleHelp = async (faq) => {
+    if (togglingRef.current.has(faq.id)) return
+    togglingRef.current.add(faq.id)
+    try {
+      const { data } = await chatbotApi.toggleHelp(faq.id)
+      const nextVal = data?.faq ? data.faq.show_on_help !== false : faq.show_on_help === false
+      setFaqs(prev => prev.map(f => f.id === faq.id ? { ...f, show_on_help: nextVal } : f))
+      toast.success(`FAQ ${nextVal ? 'will now show' : 'hidden from'} Student Help page.`)
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Could not change the Help page visibility.'))
+    } finally {
+      togglingRef.current.delete(faq.id)
+    }
   }
 
   const handleSave = async () => {
@@ -105,37 +117,44 @@ export default function ChatbotFaqsPage() {
       toast.error('Question, Answer and Category are required.')
       return
     }
+    if (!lock()) return   // already saving (double click): never post twice
     setSaving(true)
+    setErrors({})
     try {
       if (modal === 'add') {
-        try { await chatbotApi.create(form) } catch {}
-        const newFaq = {
-          id: Date.now(),
-          ...form,
-        }
-        const updated = [...faqs, newFaq]
-        setFaqs(updated)
-        saveFaqs(updated)
+        const { data } = await chatbotApi.create(form)
+        // the row the server saved (real id), not a copy made here
+        setFaqs(prev => [...prev, data.faq])
         toast.success('FAQ added successfully!')
       } else {
-        try { await chatbotApi.update(selected.id, form) } catch {}
-        const updated = faqs.map(f => f.id === selected.id ? { ...f, ...form } : f)
-        setFaqs(updated)
-        saveFaqs(updated)
+        const { data } = await chatbotApi.update(selected.id, form)
+        setFaqs(prev => prev.map(f => f.id === selected.id ? { ...f, ...(data.faq || form) } : f))
         toast.success('FAQ updated successfully!')
       }
       setModal(null)
     } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to save FAQ.')
-    } finally { setSaving(false) }
+      // the form stays open with what was typed, and the real reason is shown
+      setErrors(getFieldErrors(err))
+      toast.error(getApiErrorMessage(err, 'Failed to save FAQ.'))
+    } finally {
+      setSaving(false)
+      unlock()
+    }
   }
 
   const handleToggle = async (faq) => {
-    try { await chatbotApi.toggle(faq.id) } catch {}
-    const updated = faqs.map(f => f.id === faq.id ? { ...f, is_active: !f.is_active } : f)
-    setFaqs(updated)
-    saveFaqs(updated)
-    toast.success(`FAQ ${faq.is_active ? 'deactivated' : 'activated'}.`)
+    if (togglingRef.current.has(faq.id)) return
+    togglingRef.current.add(faq.id)
+    try {
+      const { data } = await chatbotApi.toggle(faq.id)
+      const active = data?.faq ? Boolean(data.faq.is_active) : !faq.is_active
+      setFaqs(prev => prev.map(f => f.id === faq.id ? { ...f, is_active: active } : f))
+      toast.success(`FAQ ${active ? 'activated' : 'deactivated'}.`)
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Could not change the FAQ status.'))
+    } finally {
+      togglingRef.current.delete(faq.id)
+    }
   }
 
   const handleDelete = (faq) => {
@@ -148,13 +167,11 @@ export default function ChatbotFaqsPage() {
     setDeleteConfirm(prev => ({ ...prev, loading: true }))
     try {
       await chatbotApi.delete(faq.id)
-      const updated = faqs.filter(f => f.id !== faq.id)
-      setFaqs(updated)
-      saveFaqs(updated)
+      setFaqs(prev => prev.filter(f => f.id !== faq.id))
       toast.success('FAQ deleted successfully.')
       setDeleteConfirm({ open: false, faq: null, loading: false })
-    } catch {
-      toast.error('Failed to delete FAQ.')
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Failed to delete FAQ.'))
       setDeleteConfirm(prev => ({ ...prev, loading: false }))
     }
   }
@@ -197,6 +214,11 @@ export default function ChatbotFaqsPage() {
 
       {loading ? (
         <div className="table-loading"><span className="loader-ring" /></div>
+      ) : loadError ? (
+        <div className="empty-state" role="alert">
+          <p>{loadError}</p>
+          <button className="btn-secondary" onClick={load}>Retry</button>
+        </div>
       ) : displayed.length === 0 ? (
         <div className="empty-state">
           <p>No FAQs match the current filter.</p>
@@ -276,11 +298,11 @@ export default function ChatbotFaqsPage() {
 
       {/* Add / Edit Modal */}
       {(modal === 'add' || modal === 'edit') && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
+        <div className="modal-overlay" onClick={closeForm}>
           <div className="modal-card" style={{ maxWidth: '700px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{modal === 'add' ? 'Add New FAQ' : 'Edit FAQ'}</h2>
-              <button className="modal-close" onClick={() => setModal(null)}>✕</button>
+              <button className="modal-close" onClick={closeForm} disabled={saving}>✕</button>
             </div>
 
             <div className="modal-body">
@@ -293,6 +315,7 @@ export default function ChatbotFaqsPage() {
                     value={form.question}
                     onChange={e => setForm(f => ({ ...f, question: e.target.value }))}
                   />
+                  {errors.question && <span className="field-error">{errors.question}</span>}
                 </div>
 
                 <div className="form-group" style={{ gridColumn: '1/-1' }}>
@@ -305,6 +328,7 @@ export default function ChatbotFaqsPage() {
                     onChange={e => setForm(f => ({ ...f, answer: e.target.value }))}
                     style={{ resize: 'vertical' }}
                   />
+                  {errors.answer && <span className="field-error">{errors.answer}</span>}
                 </div>
 
                 <div className="form-group">
@@ -318,6 +342,7 @@ export default function ChatbotFaqsPage() {
                     ]}
                     placeholder="Select category"
                   />
+                  {errors.category && <span className="field-error">{errors.category}</span>}
                 </div>
 
                 <div className="form-group">
@@ -380,7 +405,7 @@ export default function ChatbotFaqsPage() {
             </div>
 
             <div className="modal-footer">
-              <button className="btn-ghost" onClick={() => setModal(null)}>Cancel</button>
+              <button className="btn-ghost" onClick={closeForm} disabled={saving}>Cancel</button>
               <button className="btn-primary" onClick={handleSave} disabled={saving}>
                 {saving ? 'Saving…' : modal === 'add' ? 'Add FAQ' : 'Save Changes'}
               </button>

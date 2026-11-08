@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'react-hot-toast'
+import useSubmitLock from '../hooks/useSubmitLock'
 import { dentalApi } from '../api/dental'
 import { MedicineSupplyPicker } from './MedicineSupplyPicker'
 import Dropdown from './Dropdown'
@@ -77,6 +78,7 @@ export function DentalConsultationModal({ initialData, onClose, onSaved, inline 
   const { form, setForm, setField, errors, setErrors } = c
 
   const [saving, setSaving] = useState(false)
+  const { lock, unlock } = useSubmitLock()
   const [teethMap, setTeethMap] = useState({})
   const [open, setOpen] = useState(() => ({ vitals: true, teeth: false, findings: false, meds: false }))
   const toggle = (key) => setOpen((o) => ({ ...o, [key]: !o[key] }))
@@ -148,6 +150,7 @@ export function DentalConsultationModal({ initialData, onClose, onSaved, inline 
       return
     }
 
+    if (!lock()) return   // already saving (double click / second Enter): never post twice
     setSaving(true)
     setErrors({})
 
@@ -193,6 +196,7 @@ export function DentalConsultationModal({ initialData, onClose, onSaved, inline 
       }
     } finally {
       setSaving(false)
+      unlock()
     }
   }
 

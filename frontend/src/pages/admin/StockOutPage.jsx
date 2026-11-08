@@ -6,6 +6,7 @@ import InventoryFilterBar from '../../components/InventoryFilterBar'
 import InventoryTableShell, { InventoryEmptyState } from '../../components/InventoryTableShell'
 import SortableTh from '../../components/SortableTh'
 import useServerTable from '../../hooks/useServerTable'
+import useSubmitLock from '../../hooks/useSubmitLock'
 import Pagination from '../../components/Pagination'
 import ConfirmModal from '../../components/ConfirmModal'
 import { inventoryApi } from '../../api/inventory'
@@ -54,6 +55,8 @@ export default function StockOutPage() {
   const [modal,           setModal]           = useState(false)   // false | 'manual' | 'expired'
   const [form,            setForm]            = useState(BLANK_FORM)
   const [saving,          setSaving]          = useState(false)
+  // one lock for both the manual stock out and the write-off: neither can run twice or at the same time
+  const { lock, unlock } = useSubmitLock()
   const [expiredBatches,  setExpiredBatches]  = useState([])
   const [writeOffConfirm, setWriteOffConfirm] = useState({ open: false, batch: null, loading: false })
   const [loadingItems,    setLoadingItems]    = useState(false)
@@ -110,6 +113,7 @@ export default function StockOutPage() {
       toast.error('Quantity must be at least 1.')
       return
     }
+    if (!lock()) return   // already saving (double click / second Enter): never take the stock out twice
     setSaving(true)
     try {
       const { data } = await inventoryApi.stockOut({
@@ -125,6 +129,7 @@ export default function StockOutPage() {
       toast.error(e.response?.data?.message || 'Failed to record stock out.')
     } finally {
       setSaving(false)
+      unlock()
     }
   }
 
@@ -135,6 +140,7 @@ export default function StockOutPage() {
   const doWriteOff = async () => {
     const batch = writeOffConfirm.batch
     if (!batch) return
+    if (!lock()) return   // a write-off (or stock out) is already running: never write the batch off twice
     setWriteOffConfirm(prev => ({ ...prev, loading: true }))
     setSaving(true)
     try {
@@ -155,6 +161,7 @@ export default function StockOutPage() {
       setWriteOffConfirm(prev => ({ ...prev, loading: false }))
     } finally {
       setSaving(false)
+      unlock()
     }
   }
 

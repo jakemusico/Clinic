@@ -5,7 +5,8 @@ import PeriodFilter from '../../components/dashboard/PeriodFilter'
 import RecentVisitsTable from '../../components/dashboard/RecentVisitsTable'
 import InventoryAlertBanner from '../../components/dashboard/InventoryAlertBanner'
 import { EMPTY } from '../../utils/emptyValue'
-import { CardFallback, ChartsFallback } from '../../components/dashboard/Fallbacks'
+import { CardFallback, ChartsFallback, LoadError } from '../../components/dashboard/Fallbacks'
+import { getApiErrorMessage } from '../../utils/apiError'
 
 // The charts (recharts) and the calendar are the heaviest parts of the page: load them as
 // separate chunks so the stat cards and the table can appear first.
@@ -16,6 +17,7 @@ const CalendarWidget = lazy(() => import('../../components/CalendarWidget'))
 export default function DentistDashboard() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   // Shared period filter state
   const today = new Date()
@@ -26,10 +28,12 @@ export default function DentistDashboard() {
   const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true)
+      setError('')
       const res = await dashboardApi.dentist({ period, month, year })
       setData(res.data)
     } catch (err) {
       console.error('Failed to load dentist dashboard:', err)
+      setError(getApiErrorMessage(err, 'Could not load the dashboard.'))
     } finally {
       setLoading(false)
     }
@@ -40,14 +44,15 @@ export default function DentistDashboard() {
   }, [fetchDashboardData])
 
   const stats = data?.stats || {}
+  const failed = Boolean(error) && !data   // nothing to show: the cards must not read as zeros
   const chartData = data?.charts || {}
 
   // 4 Stat cards at the top
   const statCards = [
-    { value: loading ? EMPTY : stats.my_dental_appointments_today ?? 0, label: "My Dental Appointments Today", icon: 'appointments' },
-    { value: loading ? EMPTY : stats.waiting_patients ?? 0, label: 'Waiting Patients', icon: 'schedule' },
-    { value: loading ? EMPTY : stats.dental_consultations_completed_today ?? 0, label: 'Dental Consultations Completed Today', icon: 'dentalChart' },
-    { value: loading ? EMPTY : stats.dental_supplies_low_stock ?? 0, label: 'Dental Supplies Low Stock', icon: 'inventory' },
+    { value: loading || failed ? EMPTY : stats.my_dental_appointments_today ?? 0, label: "My Dental Appointments Today", icon: 'appointments' },
+    { value: loading || failed ? EMPTY : stats.waiting_patients ?? 0, label: 'Waiting Patients', icon: 'schedule' },
+    { value: loading || failed ? EMPTY : stats.dental_consultations_completed_today ?? 0, label: 'Dental Consultations Completed Today', icon: 'dentalChart' },
+    { value: loading || failed ? EMPTY : stats.dental_supplies_low_stock ?? 0, label: 'Dental Supplies Low Stock', icon: 'inventory' },
   ]
 
   return (
@@ -57,6 +62,8 @@ export default function DentistDashboard() {
       stats={statCards}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}>
+        {error && !loading && <LoadError message={error} onRetry={fetchDashboardData} />}
+
         {/* Inventory Alert Banner */}
         <InventoryAlertBanner alert={data?.inventory_alert} />
 

@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import DashboardLayout from '../../components/DashboardLayout'
 import { dashboardApi } from '../../api/dashboard'
 import { useAuth } from '../../context/AuthContext'
-import { CardFallback } from '../../components/dashboard/Fallbacks'
+import { CardFallback, LoadError } from '../../components/dashboard/Fallbacks'
+import { getApiErrorMessage } from '../../utils/apiError'
 import { formatAppointmentDate, formatAppointmentTime } from '../../utils/dateUtils'
 import { EMPTY } from '../../utils/emptyValue'
 
@@ -45,14 +46,17 @@ export default function StudentDashboard() {
   const { user } = useAuth()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   // ONE request for the whole dashboard: counts, appointments, notifications, announcements and calendar events
   const load = useCallback(async () => {
     try {
+      setError('')
       const res = await dashboardApi.student()
       setData(res.data)
     } catch (e) {
       console.error('Failed to load dashboard', e)
+      setError(getApiErrorMessage(e, 'Could not load your dashboard.'))
     } finally {
       setLoading(false)
     }
@@ -64,6 +68,9 @@ export default function StudentDashboard() {
     window.addEventListener('announcements-updated', load)
     return () => window.removeEventListener('announcements-updated', load)
   }, [load])
+
+  const retry = () => { setLoading(true); load() }
+  const failed = Boolean(error) && !data   // nothing to show: the cards must not read as zeros
 
   const appointments = data?.appointments ?? []
   const unread = data?.stats?.unread_notifications ?? 0
@@ -90,9 +97,9 @@ export default function StudentDashboard() {
   const displayAnnouncements = data?.announcements ?? []
 
   const stats = [
-    { value: loading ? EMPTY : (data?.stats?.upcoming_appointments ?? 0), label: 'Upcoming Appointments', icon: 'appointments' },
-    { value: loading ? EMPTY : (data?.stats?.completed_visits ?? 0), label: 'Completed Visits',      icon: 'myRecords' },
-    { value: loading ? EMPTY : unread,               label: 'Unread Notifications',  icon: 'notifications' },
+    { value: loading || failed ? EMPTY : (data?.stats?.upcoming_appointments ?? 0), label: 'Upcoming Appointments', icon: 'appointments' },
+    { value: loading || failed ? EMPTY : (data?.stats?.completed_visits ?? 0), label: 'Completed Visits',      icon: 'myRecords' },
+    { value: loading || failed ? EMPTY : unread,               label: 'Unread Notifications',  icon: 'notifications' },
   ]
 
   return (
@@ -101,6 +108,7 @@ export default function StudentDashboard() {
       subtitle="Your health, your records — all in one place."
       stats={stats}
     >
+      {error && !loading && <div style={{ marginBottom: '1.25rem' }}><LoadError message={error} onRetry={retry} /></div>}
       <div className="dashboard-main-grid">
         
         {/* ── Main Column ────────────────────────────────────────── */}

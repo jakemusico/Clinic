@@ -6,6 +6,8 @@ import { useAuth } from '../../context/AuthContext'
 import { formatAppointmentDate, formatDate } from '../../utils/dateUtils'
 import Avatar from '../../components/Avatar'
 import { EMPTY } from '../../utils/emptyValue'
+import { LoadError } from '../../components/dashboard/Fallbacks'
+import { getApiErrorMessage } from '../../utils/apiError'
 
 export default function PersonProfilePage() {
   const { id } = useParams()
@@ -14,6 +16,7 @@ export default function PersonProfilePage() {
   const [profileUser, setProfileUser] = useState(null)
   const [appointments, setAppointments] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
   const hasMedical = ['clinic_staff', 'admin'].includes(authUser.role)
   const hasDental = ['dentist', 'admin'].includes(authUser.role)
@@ -26,12 +29,15 @@ export default function PersonProfilePage() {
 
   const fetchProfile = async () => {
     setLoading(true)
+    setLoadError('')
     try {
       const { data } = await api.get(`/clinic/people/${id}`)
       setProfileUser(data.user)
       setAppointments(data.appointments || [])
     } catch (err) {
       console.error(err)
+      setProfileUser(null)
+      setLoadError(err?.response?.status === 404 ? '' : getApiErrorMessage(err, 'Could not load this profile.'))
     } finally {
       setLoading(false)
     }
@@ -41,6 +47,14 @@ export default function PersonProfilePage() {
     return (
       <DashboardLayout title="Loading Profile..." subtitle="Fetching clinic information...">
         <div className="table-loading"><div className="loader-ring" /></div>
+      </DashboardLayout>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <DashboardLayout title="Clinic Profile" subtitle="The profile could not be loaded.">
+        <LoadError message={loadError} onRetry={fetchProfile} />
       </DashboardLayout>
     )
   }

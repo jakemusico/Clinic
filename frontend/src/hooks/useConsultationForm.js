@@ -3,6 +3,7 @@ import { toast } from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { recordsApi } from '../api/records'
 import { VITAL_SERVER_KEY } from '../utils/consultation'
+import { getApiErrorMessage, getFieldErrors } from '../utils/apiError'
 import { useCareServices } from './useCareServices'
 import { useLinkableAppointments } from './useLinkableAppointments'
 import { DRAFT_PREFIX, useConsultationDraft } from './useConsultationDraft'
@@ -25,6 +26,9 @@ export function useConsultationForm({ careType, isEdit = false, initialForm }) {
   const [invRows, setInvRows] = useState([])
   const [errors, setErrors] = useState({})
   const [allergyMatches, setAllergyMatches] = useState([])
+  // Editing: whether the medicines already dispensed have loaded ('loading' | 'ready' | 'error').
+  // Saving an edit before they load would return them all to stock, so the form blocks Save until 'ready'.
+  const [itemsStatus, setItemsStatus] = useState(isEdit ? 'loading' : 'ready')
 
   // ── patients ──
   const [patients, setPatients] = useState([])
@@ -112,14 +116,12 @@ export function useConsultationForm({ careType, isEdit = false, initialForm }) {
 
   /** Turn an API error into field errors. Returns them, or null when there were none (a toast is shown). */
   const applyApiError = useCallback((err, fallbackMessage) => {
-    const d = err?.response?.data
-    if (d?.errors) {
-      const flat = {}
-      Object.entries(d.errors).forEach(([k, v]) => { flat[k] = Array.isArray(v) ? v[0] : v })
+    const flat = getFieldErrors(err)
+    if (Object.keys(flat).length) {
       setErrors(flat)
       return flat
     }
-    toast.error(d?.message || fallbackMessage)
+    toast.error(getApiErrorMessage(err, fallbackMessage))
     return null
   }, [])
 
@@ -135,6 +137,7 @@ export function useConsultationForm({ careType, isEdit = false, initialForm }) {
     services, loadingServices,
     appointments, loadingAppointments, selectAppointment,
     invRows, setInvRows, allergyMatches, setAllergyMatches,
+    itemsStatus, setItemsStatus,
     draft, restoreDraft,
     // locked only once the appointment's service is known (the server also takes it from the appointment)
     reasonKey, serviceLocked: Boolean(form.appointment_id && form.service_name),

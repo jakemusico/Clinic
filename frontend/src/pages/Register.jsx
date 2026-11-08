@@ -9,6 +9,9 @@ import NameFields from '../components/NameFields'
 import { DEPARTMENTS, GRADE_LEVELS } from '../constants/schoolData'
 import Dropdown from '../components/Dropdown'
 import axios from 'axios'
+import useSubmitLock from '../hooks/useSubmitLock'
+import { getApiErrorMessage, getFieldErrors } from '../utils/apiError'
+import { todayISO } from '../utils/dateUtils'
 
 import fsuuBuilding from '../assets/fsuu_building.jpg'
 import fsuuLogo from '../assets/fsuu_logo.png'
@@ -19,6 +22,8 @@ const PUBLIC_ROLES = [
 ]
 
 const GUARDIAN_RELATIONSHIPS = ['Mother', 'Father', 'Guardian', 'Other']
+
+const TERMS_LOAD_ERROR = 'We could not load the Terms and Data Privacy Policy, so you cannot create an account yet. Please check your connection.'
 
 // Eye icon components
 function EyeIcon({ open }) {
@@ -37,7 +42,7 @@ function EyeIcon({ open }) {
 }
 
 // Terms modal
-function TermsModal({ content, onClose }) {
+function TermsModal({ content, error, onRetry, onClose }) {
   return (
     <div
       style={{
@@ -64,9 +69,16 @@ function TermsModal({ content, onClose }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-sub, #64748B)', fontSize: '1.2rem', lineHeight: 1 }}>✕</button>
         </div>
         <div style={{ padding: '1.25rem 1.5rem', overflowY: 'auto', flex: 1 }}>
-          <div style={{ whiteSpace: 'pre-wrap', fontSize: '0.88rem', lineHeight: 1.7, color: 'var(--text, #0F172A)' }}>
-            {content}
-          </div>
+          {error ? (
+            <div style={{ fontSize: '0.88rem', lineHeight: 1.6, color: 'var(--text, #0F172A)' }}>
+              <p style={{ margin: '0 0 0.75rem' }}>{error}</p>
+              <button type="button" onClick={onRetry} className="btn-secondary">Try again</button>
+            </div>
+          ) : (
+            <div style={{ whiteSpace: 'pre-wrap', fontSize: '0.88rem', lineHeight: 1.7, color: 'var(--text, #0F172A)' }}>
+              {content}
+            </div>
+          )}
         </div>
         <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border, #E2E8F0)', display: 'flex', justifyContent: 'flex-end' }}>
           <button
@@ -117,15 +129,31 @@ export default function Register() {
   const [showConfirm, setShowConfirm] = useState(false)
   const [showTerms, setShowTerms] = useState(false)
   const [termsText, setTermsText] = useState('')
+  const [termsStatus, setTermsStatus] = useState('loading')   // 'loading' | 'ready' | 'error'
+  const { lock, unlock } = useSubmitLock()
   const [dbSections, setDbSections] = useState([])
   const [dbGradeLevels, setDbGradeLevels] = useState([])
 
+  // The Terms text must be loaded before anyone can agree to it
+  const loadTerms = useCallback(() => {
+    setTermsStatus('loading')
+    axios.get('/api/settings/terms_and_privacy')
+      .then(res => {
+        const text = typeof res.data?.value === 'string' ? res.data.value : ''
+        if (text.trim()) {
+          setTermsText(text)
+          setTermsStatus('ready')
+        } else {
+          setTermsStatus('error')
+        }
+      })
+      .catch(() => setTermsStatus('error'))
+  }, [])
+
   // Fetch terms and sections from backend
   useEffect(() => {
-    axios.get('/api/settings/terms_and_privacy')
-      .then(res => setTermsText(res.data.value || ''))
-      .catch(() => { })
-      
+    loadTerms()
+
     axios.get('/api/sections')
       .then(res => setDbSections(res.data))
       .catch(err => console.error('Failed to load sections:', err))
@@ -133,7 +161,7 @@ export default function Register() {
     axios.get('/api/grade-levels')
       .then(res => setDbGradeLevels(res.data))
       .catch(err => console.error('Failed to load grade levels:', err))
-  }, [])
+  }, [loadTerms])
 
   const handleChange = useCallback((e) => {
     const { name, value, type, checked } = e.target
@@ -177,7 +205,9 @@ export default function Register() {
       if (!form.address.trim()) newErrors.address = 'Home Address is required.'
     }
 
-    if (!form.terms_accepted) {
+    if (termsStatus !== 'ready') {
+      newErrors.terms_accepted = TERMS_LOAD_ERROR
+    } else if (!form.terms_accepted) {
       newErrors.terms_accepted = 'You must agree to the Terms and Data Privacy Policy.'
     }
 
@@ -186,6 +216,7 @@ export default function Register() {
       return
     }
 
+    if (!lock()) return   // a sign-up is already running (double click / second Enter)
     setLoading(true)
     setErrors({})
     try {
@@ -194,21 +225,21 @@ export default function Register() {
       toast.success(`Account created! Welcome, ${user.first_name || user.name}!`)
       navigate(ROLE_ROUTES[user.role] || '/dashboard/student', { replace: true })
     } catch (err) {
-      const data = err?.response?.data
-      if (data?.errors) {
-        const flat = {}
-        Object.entries(data.errors).forEach(([k, v]) => { flat[k] = Array.isArray(v) ? v[0] : v })
-        setErrors(flat)
+      const fieldErrors = getFieldErrors(err)
+      if (Object.keys(fieldErrors).length) {
+        setErrors(fieldErrors)
       } else {
-        toast.error(data?.message || 'Registration failed.')
+        toast.error(getApiErrorMessage(err, 'Registration failed.'))
       }
     } finally {
       setLoading(false)
+      unlock()
     }
   }
 
   const pwAllGood = checkPasswordRules(form.password)
-  const canSubmit = pwAllGood && form.terms_accepted && !loading
+  const termsReady = termsStatus === 'ready'
+  const canSubmit = pwAllGood && termsReady && form.terms_accepted && !loading
   const isStudent = form.role === 'student'
   
   const availableSections = dbSections.filter(s => s.grade_level === form.grade_level)
@@ -220,7 +251,14 @@ export default function Register() {
         style={{ backgroundImage: `linear-gradient(rgba(15, 24, 42, 0.44), rgba(15, 24, 42, 0.44)), url(${fsuuBuilding})` }}
       />
 
-      {showTerms && <TermsModal content={termsText} onClose={() => setShowTerms(false)} />}
+      {showTerms && (
+        <TermsModal
+          content={termsText}
+          error={termsStatus === 'error' ? TERMS_LOAD_ERROR : null}
+          onRetry={loadTerms}
+          onClose={() => setShowTerms(false)}
+        />
+      )}
 
       <div className="login-card-box" style={{ maxWidth: '620px', maxHeight: '92vh', overflowY: 'auto', marginTop: '1.5rem', marginBottom: '1.5rem' }}>
 
@@ -264,7 +302,7 @@ export default function Register() {
               <input id="reg-dob" type="date" name="date_of_birth"
                 value={form.date_of_birth} onChange={handleChange}
                 className={errors.date_of_birth ? 'input-error' : ''}
-                max={new Date().toISOString().split('T')[0]}
+                max={todayISO()}
                 required />
               {errors.date_of_birth && <span className="field-error">{errors.date_of_birth}</span>}
             </div>
@@ -467,6 +505,7 @@ export default function Register() {
                 name="terms_accepted"
                 checked={form.terms_accepted}
                 onChange={handleChange}
+                disabled={!termsReady}
                 style={{ marginTop: '0.2rem', accentColor: 'var(--primary, #2563EB)', width: '16px', height: '16px', flexShrink: 0 }}
               />
               <span>
@@ -480,7 +519,17 @@ export default function Register() {
                 </button>
               </span>
             </label>
-            {errors.terms_accepted && <span className="field-error" style={{ display: 'block', marginTop: '0.3rem' }}>{errors.terms_accepted}</span>}
+            {termsStatus === 'error' ? (
+              <span className="field-error" style={{ display: 'block', marginTop: '0.3rem' }}>
+                {TERMS_LOAD_ERROR}{' '}
+                <button type="button" onClick={loadTerms}
+                  style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', fontSize: 'inherit' }}>
+                  Try again
+                </button>
+              </span>
+            ) : termsStatus === 'loading' ? (
+              <span style={{ display: 'block', marginTop: '0.3rem', fontSize: '0.78rem', color: 'var(--text-sub, #64748B)' }}>Loading the Terms and Data Privacy Policy…</span>
+            ) : errors.terms_accepted && <span className="field-error" style={{ display: 'block', marginTop: '0.3rem' }}>{errors.terms_accepted}</span>}
           </div>
 
           {/* Create Account button */}

@@ -7,6 +7,7 @@ import Dropdown from '../../components/Dropdown'
 import { servicesApi } from '../../api/services'
 import { EMPTY } from '../../utils/emptyValue'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import useSubmitLock from '../../hooks/useSubmitLock'
 
 const EMPTY_FORM = { name: '', care_type: 'medical', description: '', duration_minutes: 30, fee: '', is_active: true }
 
@@ -23,11 +24,13 @@ function ServiceModal({ service, onClose, onSaved }) {
   const [form, setForm]       = useState(service ? { ...service, fee: String(service.fee) } : { ...EMPTY_FORM })
   const [errors, setErrors]   = useState({})
   const [saving, setSaving]   = useState(false)
+  const { lock, unlock } = useSubmitLock()
 
   const set = (k, v) => { setForm(p => ({ ...p, [k]: v })); setErrors(p => ({ ...p, [k]: '' })) }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (!lock()) return   // already saving (double click / second Enter)
     setSaving(true); setErrors({})
     try {
       const payload = { ...form, fee: parseFloat(form.fee) || 0, duration_minutes: parseInt(form.duration_minutes) }
@@ -43,15 +46,15 @@ function ServiceModal({ service, onClose, onSaved }) {
         Object.entries(d.errors).forEach(([k, v]) => { flat[k] = Array.isArray(v) ? v[0] : v })
         setErrors(flat)
       } else toast.error(d?.message || 'Failed to save service.')
-    } finally { setSaving(false) }
+    } finally { setSaving(false); unlock() }
   }
 
   return (
-    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && !saving && onClose()}>
       <div className="modal-card">
         <div className="modal-header">
           <h2>{isEdit ? 'Edit Service' : 'Add New Service'}</h2>
-          <button className="modal-close" onClick={onClose} aria-label="Close">✕</button>
+          <button className="modal-close" onClick={onClose} disabled={saving} aria-label="Close">✕</button>
         </div>
         <form onSubmit={handleSubmit} className="modal-body">
           <div className="form-group">
@@ -109,7 +112,7 @@ function ServiceModal({ service, onClose, onSaved }) {
             </label>
           </div>
           <div className="modal-footer">
-            <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="button" className="btn-ghost" onClick={onClose} disabled={saving}>Cancel</button>
             <button type="submit" className="btn-primary" disabled={saving}>
               {saving ? <span className="btn-spinner" /> : (isEdit ? 'Save Changes' : 'Create Service')}
             </button>
@@ -150,6 +153,7 @@ export default function ServicesPage() {
   const [modalService, setModalService] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [toggling, setToggling]       = useState(null)
+  const deleteLock = useSubmitLock()
 
   const load = async () => {
     setLoading(true)
@@ -182,12 +186,13 @@ export default function ServicesPage() {
   }
 
   const handleDelete = async () => {
+    if (!deleteLock.lock()) return   // already deleting (double click)
     try {
       const { data } = await servicesApi.remove(deleteTarget.id)
       setServices(p => p.filter(s => s.id !== deleteTarget.id))
       toast.success(data.message)
     } catch (err) { toast.error(err?.response?.data?.message || 'Delete failed.') }
-    finally { setDeleteTarget(null) }
+    finally { setDeleteTarget(null); deleteLock.unlock() }
   }
 
   const filtered = services.filter(s =>

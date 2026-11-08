@@ -4,6 +4,8 @@ import { toast } from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { authApi } from '../api/auth'
 import { ROLE_ROUTES } from '../components/RouteGuards'
+import useSubmitLock from '../hooks/useSubmitLock'
+import { getApiErrorMessage, getFieldErrors } from '../utils/apiError'
 
 function EyeIcon({ open }) {
   return open ? (
@@ -45,6 +47,7 @@ export default function ChangePasswordPage() {
   const [show, setShow] = useState({ current: false, new: false, confirm: false })
   const [errors, setErrors] = useState({})
   const [saving, setSaving] = useState(false)
+  const { lock, unlock } = useSubmitLock()
 
   const rules = pwRules(form.password)
 
@@ -76,6 +79,7 @@ export default function ChangePasswordPage() {
       return
     }
 
+    if (!lock()) return   // already saving (double click / second Enter)
     setSaving(true)
     try {
       await authApi.changePassword({
@@ -88,16 +92,15 @@ export default function ChangePasswordPage() {
       toast.success('Password changed! Welcome to the system.')
       navigate(ROLE_ROUTES[user?.role] || '/login', { replace: true })
     } catch (err) {
-      const d = err?.response?.data
-      if (d?.errors) {
-        const flat = {}
-        Object.entries(d.errors).forEach(([k, v]) => { flat[k] = Array.isArray(v) ? v[0] : v })
-        setErrors(flat)
+      const fieldErrors = getFieldErrors(err)
+      if (Object.keys(fieldErrors).length) {
+        setErrors(fieldErrors)
       } else {
-        toast.error(d?.message || 'Failed to change password.')
+        toast.error(getApiErrorMessage(err, 'Failed to change password.'))
       }
     } finally {
       setSaving(false)
+      unlock()
     }
   }
 

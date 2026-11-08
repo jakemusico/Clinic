@@ -9,6 +9,8 @@ import { ConsultationModal } from '../../components/ConsultationModal'
 import { DentalConsultationModal } from '../../components/DentalConsultationModal'
 import Avatar from '../../components/Avatar'
 import { EMPTY } from '../../utils/emptyValue'
+import { LoadError } from '../../components/dashboard/Fallbacks'
+import { getApiErrorMessage } from '../../utils/apiError'
 
 export default function PeoplePage() {
   const { user } = useAuth()
@@ -18,6 +20,7 @@ export default function PeoplePage() {
   const [activeTab, setActiveTab] = useState('student') // 'student' or 'faculty_staff'
   const [search, setSearch]       = useState(initialSearch)
   const [loading, setLoading]     = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [people, setPeople]       = useState([])
   const [page, setPage]           = useState(1)
   const [pageSize, setPageSize]   = useState(10)
@@ -43,6 +46,7 @@ export default function PeoplePage() {
 
   const fetchPeople = async (searchQuery = search, targetPage = page) => {
     setLoading(true)
+    setLoadError('')
     try {
       const { data } = await api.get('/clinic/people', {
         params: {
@@ -58,6 +62,7 @@ export default function PeoplePage() {
       setPage(targetPage)
     } catch (err) {
       console.error(err)
+      setLoadError(getApiErrorMessage(err, 'Could not load the list.'))
     } finally {
       setLoading(false)
     }
@@ -117,6 +122,8 @@ export default function PeoplePage() {
         <div className="data-table-wrap">
           {loading ? (
             <div className="table-loading"><div className="loader-ring" /></div>
+          ) : loadError ? (
+            <LoadError message={loadError} onRetry={() => fetchPeople(search, page)} />
           ) : people.length === 0 ? (
             <div className="empty-state">
               <p>No {activeTab === 'student' ? 'students' : 'staff'} found.</p>

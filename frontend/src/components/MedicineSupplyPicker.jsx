@@ -15,10 +15,17 @@ import { findAllergyMatches } from '../utils/consultation'
  */
 export function MedicineSupplyPicker({
   value = [], onChange, isEdit = false, consultationType = 'medical', consultationId = null,
-  allergies = '', onAllergyMatches,
+  allergies = '', onAllergyMatches, onItemsStatus,
 }) {
   const [dispensableItems, setDispensableItems] = useState([])
   const [loading, setLoading] = useState(true)
+
+  // Editing: the items this consultation already dispensed. Saving an edit gives back ALL of them and
+  // dispenses only what is submitted, so the form must not be saved before they are loaded.
+  // 'loading' | 'ready' | 'error'  (reported to the form through onItemsStatus)
+  const editing = Boolean(isEdit && consultationId)
+  const [itemsStatus, setItemsStatus] = useState(editing ? 'loading' : 'ready')
+  const [itemsAttempt, setItemsAttempt] = useState(0)
 
   // Load dispensable inventory items
   useEffect(() => {
@@ -30,19 +37,28 @@ export function MedicineSupplyPicker({
 
   // For edits, load existing dispensed items
   useEffect(() => {
-    if (isEdit && consultationId) {
-      inventoryApi.consultationItems(consultationType, consultationId)
-        .then(({ data }) => {
-          const rows = (data.items || []).map(i => ({
-            item_id: String(i.item_id),
-            quantity: i.quantity,
-            dosage_note: i.dosage_note || '',
-          }))
-          if (rows.length > 0) onChange(rows)
-        })
-        .catch(() => {})
+    if (!editing) {
+      setItemsStatus('ready')
+      return undefined
     }
-  }, [isEdit, consultationId, consultationType])
+    let alive = true
+    setItemsStatus('loading')
+    inventoryApi.consultationItems(consultationType, consultationId)
+      .then(({ data }) => {
+        if (!alive) return
+        const rows = (data.items || []).map(i => ({
+          item_id: String(i.item_id),
+          quantity: i.quantity,
+          dosage_note: i.dosage_note || '',
+        }))
+        if (rows.length > 0) onChange(rows)
+        setItemsStatus('ready')
+      })
+      .catch(() => { if (alive) setItemsStatus('error') })
+    return () => { alive = false }
+  }, [editing, consultationId, consultationType, itemsAttempt]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { onItemsStatus?.(itemsStatus) }, [itemsStatus]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Get already added item IDs
   const addedItemIds = useMemo(() => new Set(value.map(v => String(v.item_id))), [value])
@@ -118,6 +134,22 @@ export function MedicineSupplyPicker({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      {itemsStatus === 'loading' && (
+        <div className="form-hint" role="status">Loading the medicines already dispensed for this consultation…</div>
+      )}
+      {itemsStatus === 'error' && (
+        <div className="consult-warning" role="alert">
+          <span aria-hidden="true">⚠️</span>
+          <div>
+            <strong>The medicines already dispensed could not be loaded.</strong>{' '}
+            Saving now would return them to stock, so Save is turned off until they load.
+            <div style={{ marginTop: '0.4rem' }}>
+              <button type="button" className="btn-secondary" onClick={() => setItemsAttempt(n => n + 1)}>Try again</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Searchable Dropdown (shared Dropdown: type to filter by name or category) */}
       <div>
         <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.35rem', color: 'var(--text)' }}>

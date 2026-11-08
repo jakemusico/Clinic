@@ -12,6 +12,7 @@ import Avatar from '../../components/Avatar'
 import DentalIcon from '../../components/DentalIcon'
 import { EMPTY } from '../../utils/emptyValue'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import useSubmitLock from '../../hooks/useSubmitLock'
 
 const STATUS_BADGES = {
   pending:   'status-badge pending',
@@ -103,6 +104,7 @@ function RescheduleModal({ appointment, onClose, onRescheduled }) {
   const [loadingSlots, setLoadingSlots] = useState(false)
   const [selectedSlot, setSelectedSlot] = useState(null)
   const [saving, setSaving]   = useState(false)
+  const { lock, unlock } = useSubmitLock()
 
   const today = todayISO()
 
@@ -129,6 +131,7 @@ function RescheduleModal({ appointment, onClose, onRescheduled }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!selectedSlot) return
+    if (!lock()) return   // already saving (double click / second Enter)
     setSaving(true)
     try {
       const { data } = await appointmentsApi.reschedule(appointment.id, {
@@ -140,17 +143,18 @@ function RescheduleModal({ appointment, onClose, onRescheduled }) {
       toast.error(err?.response?.data?.message || 'Failed to reschedule appointment.')
     } finally {
       setSaving(false)
+      unlock()
     }
   }
 
   const availableSlots = slots.filter(s => !s.is_booked)
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && !saving && onClose()}>
       <div className="modal-card" style={{ maxWidth: '480px' }}>
         <div className="modal-header">
           <h2>Reschedule Appointment</h2>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose} disabled={saving}>✕</button>
         </div>
         <form onSubmit={handleSubmit} className="modal-body">
           <div className="form-group">
@@ -187,7 +191,7 @@ function RescheduleModal({ appointment, onClose, onRescheduled }) {
           )}
 
           <div className="modal-footer">
-            <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="button" className="btn-ghost" onClick={onClose} disabled={saving}>Cancel</button>
             <button type="submit" className="btn-primary" disabled={saving || !selectedSlot}>
               {saving ? <span className="btn-spinner" /> : 'Confirm Reschedule'}
             </button>
@@ -466,6 +470,8 @@ export default function AppointmentsPage() {
   const [filterPopoverOpen, setFilterPopoverOpen] = useState(false)
   const filterPopoverRef = useRef(null)
   const [cancelConfirm, setCancelConfirm] = useState({ open: false, id: null, loading: false })
+  const bookingLock = useSubmitLock()
+  const cancelLock = useSubmitLock()
 
   useEffect(() => {
     if (highlightId && appointments.length > 0) {
@@ -630,6 +636,7 @@ export default function AppointmentsPage() {
       return
     }
 
+    if (!bookingLock.lock()) return   // already booking (double click / second Enter)
     setBooking(true)
     try {
       const { data } = await appointmentsApi.create({
@@ -652,6 +659,7 @@ export default function AppointmentsPage() {
       toast.error(err?.response?.data?.message || 'Failed to book appointment.')
     } finally {
       setBooking(false)
+      bookingLock.unlock()
     }
   }
 
@@ -661,6 +669,7 @@ export default function AppointmentsPage() {
 
   const doCancelAppointment = async () => {
     if (!cancelConfirm.id) return
+    if (!cancelLock.lock()) return   // already cancelling (double click)
     setCancelConfirm(prev => ({ ...prev, loading: true }))
     try {
       const { data } = await appointmentsApi.updateStatus(cancelConfirm.id, {
@@ -677,6 +686,8 @@ export default function AppointmentsPage() {
     } catch {
       toast.error('Failed to cancel appointment.')
       setCancelConfirm(prev => ({ ...prev, loading: false }))
+    } finally {
+      cancelLock.unlock()
     }
   }
 
