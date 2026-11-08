@@ -98,6 +98,7 @@ body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
 }
 
 a {
@@ -1408,6 +1409,14 @@ textarea:focus {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 1rem;
+  padding: 1rem 1.5rem 0;
+  margin: 0;
+}
+
+@media (max-width: 767px) {
+  .stats-grid {
+    padding: 1rem 0.75rem 0;
+  }
 }
 
 .stat-card {
@@ -1843,6 +1852,11 @@ textarea:focus {
   cursor: not-allowed;
 }
 
+/* Mobile-only status badge (hidden on desktop) */
+.status-badge-mobile {
+  display: none;
+}
+
 /* ── Toggle switch ────────────────────────────────────────────────── */
 .toggle-label {
   display: flex;
@@ -1915,15 +1929,17 @@ textarea:focus {
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   width: 100%;
-  max-width: 520px;
+  max-width: min(520px, 95vw);
   box-shadow: var(--shadow-lg);
   max-height: 90vh;
   overflow-y: auto;
   animation: slideUp 0.18s ease;
+  display: flex;
+  flex-direction: column;
 }
 
 .modal-card.modal-sm {
-  max-width: 400px;
+  max-width: min(400px, 95vw);
 }
 
 .modal-header {
@@ -1966,6 +1982,9 @@ textarea:focus {
   display: flex;
   flex-direction: column;
   gap: 1.1rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .modal-footer {
@@ -4132,10 +4151,11 @@ img, video { max-width: 100%; }
   .dashboard-main { margin-left: 0; }
   .dashboard-header { left: 0; padding: 0 1rem; }
   .header-left { flex-direction: row; align-items: center; gap: 0.65rem; }
+  .header-left > div { display: contents; } /* Remove the wrapper div from flex layout */
   .dashboard-page-body { padding: 1rem; }
   .auth-brand-panel { width: 320px; padding: 2rem; }
   .auth-brand-headline h2 { font-size: 1.45rem; }
-  .stats-grid { grid-template-columns: repeat(2,1fr); }
+  .stats-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
   .week-grid { grid-template-columns: repeat(3,1fr); }
   .form-group input, .form-group select, textarea { min-height: 44px; font-size: 16px !important; }
   .btn, .btn-primary, .btn-outline, .btn-sm, .btn-danger { min-height: 44px; }
@@ -4146,19 +4166,41 @@ img, video { max-width: 100%; }
 @media (max-width: 639px) {
   .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 50; width: 80vw; max-width: 300px; }
   .sidebar.sidebar-open { transform: translateX(0); }
-  .header-hamburger { display: flex; }
+  .header-hamburger { 
+    display: flex; 
+    width: 40px; 
+    height: 40px;
+    min-height: 40px;
+    max-height: 40px;
+    padding: 0;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+    box-sizing: border-box;
+    flex-shrink: 0;
+  }
+  .header-hamburger span {
+    display: block;
+    width: 18px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--text-sub);
+  }
   .form-group input, .form-group select, textarea { min-height: 44px; font-size: 16px !important; }
   .btn, .btn-primary, .btn-outline, .btn-sm, .btn-danger { min-height: 44px; }
   .nav-item { min-height: 44px; }
   .dashboard-main { margin-left: 0; padding-top: 56px; }
-  .dashboard-header { left: 0; height: auto; min-height: 56px; padding: 0.5rem 0.75rem; flex-wrap: wrap; gap: 0.5rem; }
-  .header-left { flex-direction: row; align-items: center; gap: 0.5rem; flex: 1; min-width: 0; }
+  .dashboard-header { left: 0; height: auto; min-height: 56px; padding: 0.5rem 10px; flex-wrap: nowrap; gap: 0; align-items: center; justify-content: flex-start; }
+  .header-left { flex-direction: row; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+  .header-left > div { display: contents; }
+  .header-controls { gap: 0.4rem; margin-left: auto; }
   .dashboard-title { font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dashboard-subtitle { display: none; }
-  .dashboard-page-body { padding: 0.75rem; }
+  .dashboard-page-body { padding: 0.75rem 10px; }
   .header-controls { gap: 0.4rem; }
   .form-row { grid-template-columns: 1fr !important; }
-  .stats-grid { grid-template-columns: repeat(2,1fr); }
+  .stats-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
   .week-grid { grid-template-columns: 1fr 1fr; }
   .quick-links-grid { grid-template-columns: 1fr; }
   .auth-brand-panel { display: none; }
@@ -4168,8 +4210,8 @@ img, video { max-width: 100%; }
   .login-page-wrapper { padding: 2rem 0.75rem 1rem; align-items: flex-start; }
   .login-card-box { padding: 2rem 1.25rem; border-radius: var(--radius-lg); }
   .login-official-logo { height: 70px; }
-  .modal-overlay { padding: 0 !important; align-items: flex-end !important; }
-  .modal-content, .modal-box { width: 100vw !important; max-width: 100vw !important; max-height: 90vh; border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important; overflow-y: auto; -webkit-overflow-scrolling: touch; margin: 0 !important; }
+  .modal-overlay { padding: 16px !important; align-items: center !important; justify-content: center !important; }
+  .modal-content, .modal-box { width: 100% !important; max-width: 420px !important; max-height: calc(100dvh - 32px) !important; border-radius: var(--radius-lg) !important; overflow-y: auto; -webkit-overflow-scrolling: touch; margin: 0 !important; display: flex; flex-direction: column; }
   .admin-table, .appointments-table, .records-table, table { min-width: 600px; }
   .admin-card, .clinic-card, .content-card, .dashboard-content-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .admin-header, .page-header, .section-header { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
@@ -4206,12 +4248,408 @@ img, video { max-width: 100%; }
   .mobile-bottom-nav { display: none !important; }
 }
 
+/* === PATIENT-FACING PAGES RESPONSIVE FIXES === */
+/* FIX #1: Calendar Widget - 7-column grid on mobile, full width */
+@media (max-width: 767px) {
+  /* Ensure calendar card takes full width */
+  .data-table-wrap:has(.calendar-days-grid) {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  /* The 7-column grid is already defined by inline styles in CalendarWidget.jsx */
+  /* We just need to make sure cells are square and properly sized */
+  .calendar-weekdays-row > div,
+  .calendar-day-cell {
+    min-width: 0;
+  }
+  .calendar-day-btn {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    padding: 0.2rem;
+    font-size: 0.8rem;
+  }
+  .calendar-header {
+    padding: 0 0.25rem;
+  }
+  .calendar-month-title {
+    font-size: 0.85rem;
+  }
+  .calendar-nav-btn {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+  }
+}
+
+/* FIX: STAT CARDS - 3 columns on mobile for Student/Faculty dashboard */
+@media (max-width: 767px) {
+  /* The 3-column grid is handled above in TABLET and PHONE sections */
+  
+  /* Modifier class for Student/Faculty dashboards with 3 stat cards */
+  .stats-grid.stats-grid--three {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+  
+  .stats-grid.stats-grid--three > .stat-card {
+    width: auto !important;
+    min-width: 0 !important;
+    padding: 10px 6px !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    gap: 0.35rem !important;
+  }
+  
+  .stats-grid.stats-grid--three > .stat-card .stat-icon-badge {
+    width: 28px !important;
+    height: 28px !important;
+    margin-bottom: 0.2rem;
+  }
+  
+  .stats-grid.stats-grid--three > .stat-card .stat-info {
+    align-items: center !important;
+  }
+  
+  .stats-grid.stats-grid--three > .stat-card .stat-value {
+    font-size: 1.2rem !important;
+    line-height: 1.1 !important;
+    font-weight: 700 !important;
+  }
+  
+  .stats-grid.stats-grid--three > .stat-card .stat-label {
+    font-size: 0.68rem !important;
+    line-height: 1.3 !important;
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    overflow-wrap: anywhere !important;
+  }
+  
+  /* Make stat cards compact and vertically stacked (for other dashboards without modifier) */
+  .stat-card {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    padding: 10px 6px !important;
+    gap: 0.35rem !important;
+  }
+  
+  .stat-icon-badge {
+    width: 28px !important;
+    height: 28px !important;
+    margin-bottom: 0.2rem;
+  }
+  
+  .stat-info {
+    align-items: center !important;
+  }
+  
+  .stat-value {
+    font-size: 1.2rem !important;
+    line-height: 1.1 !important;
+    font-weight: 700 !important;
+  }
+  
+  .stat-label {
+    font-size: 0.68rem !important;
+    line-height: 1.3 !important;
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    overflow-wrap: anywhere !important;
+  }
+}
+
+/* FIX #2: Appointment Status Filter Chips - horizontal scroll */
+.status-tabs-bar {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Firefox */
+  padding-bottom: 2px;
+}
+.status-tabs-bar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Edge */
+}
+.status-pill-tab {
+  flex-shrink: 0;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius-full);
+  border: 1.5px solid var(--border);
+  background: #fff;
+  color: var(--text-sub);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.status-pill-tab:hover {
+  border-color: var(--accent-soft);
+  background: var(--accent-light);
+}
+.status-pill-tab.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.status-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface0);
+  color: var(--text-sub);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.status-pill-tab.active .status-tab-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+/* FIX #3: Notifications Dropdown - fix mobile positioning */
+@media (max-width: 767px) {
+  .header-notif-dropdown {
+    position: fixed !important;
+    top: calc(var(--dashboard-header-h, 56px) + 8px) !important;
+    left: 8px !important;
+    right: 8px !important;
+    max-width: none !important;
+    max-height: calc(100vh - var(--dashboard-header-h, 56px) - 16px);
+    overflow-y: auto;
+  }
+  .notif-dropdown-list {
+    max-height: none;
+  }
+}
+
+/* FIX #4: Floating Chat Button - above bottom nav, proper z-index */
+@media (max-width: 767px) {
+  .dashboard-page-body {
+    padding-bottom: 160px !important; /* Space for bottom nav + chat button */
+  }
+  .chatbot-widget {
+    bottom: 90px !important; /* Above bottom nav (65px) + margin */
+    z-index: 40 !important; /* Below modals (1000) */
+  }
+  /* Hide chat button when modal is open */
+  body:has(.modal-overlay) .chatbot-widget {
+    display: none !important;
+  }
+}
+
+/* FIX #5: Modal Footer Buttons - no wrap, proper sizing */
+.modal-footer button {
+  white-space: nowrap;
+  min-width: 80px;
+}
+@media (max-width: 380px) {
+  .modal-footer {
+    flex-wrap: wrap;
+    gap: 0.5rem !important;
+  }
+  .modal-footer button {
+    flex: 1 1 auto;
+    min-width: 100px;
+  }
+}
+
+/* FIX #6: Spacing and Density - patient dashboards */
+@media (max-width: 767px) {
+  /* Remove large gaps between cards */
+  .dashboard-page-body {
+    gap: 1rem !important;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+  .dash-page {
+    gap: 1rem !important;
+  }
+  
+  /* Compact spacing for list cards */
+  .my-appointments-header-wrap {
+    margin-bottom: 1rem !important;
+    gap: 0.75rem !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+  .status-tabs-bar {
+    margin-bottom: 0.75rem !important;
+  }
+  .appointments-toolbar {
+    margin-bottom: 0.75rem !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+  }
+  .appointments-search-box {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    width: auto !important;
+  }
+  .appointments-filter-actions {
+    flex-shrink: 0 !important;
+    width: auto !important;
+    justify-content: flex-end;
+  }
+  
+  /* Dashboard main grid becomes single column */
+  .dashboard-main-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+  
+  /* Quick links grid */
+  .quick-links-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+}
+
+/* FIX #7: Book Appointment Form - responsive */
+@media (max-width: 767px) {
+  .booking-form-card {
+    padding: 1rem !important;
+  }
+  .booking-calendar-box {
+    padding: 0.75rem !important;
+  }
+  .booking-slots-box {
+    border-left: none !important;
+    border-top: 1px solid var(--border) !important;
+    padding-left: 0 !important;
+    padding-top: 1rem !important;
+    margin-top: 1rem !important;
+  }
+  .slots-pill-grid {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)) !important;
+    max-height: 200px !important;
+  }
+  .slot-pill-btn {
+    padding: 0.5rem 0.25rem !important;
+    font-size: 0.75rem !important;
+  }
+}
+
+/* FIX #7: Profile Page - responsive */
+@media (max-width: 767px) {
+  .profile-hero-card {
+    flex-direction: column !important;
+    text-align: center !important;
+  }
+  .profile-avatar-section {
+    margin-right: 0 !important;
+    margin-bottom: 1rem !important;
+  }
+  .profile-form-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* FIX #7: My Records Page - responsive */
+@media (max-width: 767px) {
+  .records-search-card {
+    flex-direction: column !important;
+    gap: 0.75rem !important;
+  }
+  .records-search-card input {
+    width: 100% !important;
+  }
+  .records-list-card {
+    padding: 0.5rem !important;
+  }
+  .record-list-item {
+    padding: 0.85rem 0.75rem !important;
+  }
+  .record-item-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 0.5rem !important;
+  }
+  .record-item-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* FIX #7: Help/Support Page - responsive */
+@media (max-width: 767px) {
+  .help-contact-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .faq-section {
+    padding: 1rem !important;
+  }
+  .faq-item {
+    padding: 0.75rem !important;
+  }
+}
+
+/* FIX #7: Ensure minimum tap targets (44px) */
+@media (max-width: 767px) {
+  .btn-primary,
+  .btn-secondary,
+  .btn-ghost,
+  .btn-danger,
+  .status-pill-tab,
+  .filter-btn-pill,
+  .slot-pill-btn,
+  .calendar-nav-btn,
+  button[type="button"],
+  button[type="submit"],
+  a.btn,
+  a.btn-primary,
+  a.btn-secondary {
+    min-height: 44px !important;
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+  }
+  
+  /* Smaller buttons in constrained spaces */
+  .modal-footer button,
+  .data-table-wrap .btn-secondary {
+    min-height: 40px !important;
+  }
+}
+
 /* === MOBILE & TABLET < 768px (Single Column Layout) === */
 @media (max-width: 767px) {
   /* -- Sidebar -- */
   .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 50; width: 80vw; max-width: 300px; }
   .sidebar.sidebar-open { transform: translateX(0); }
-  .header-hamburger { display: flex; }
+  .header-hamburger { 
+    display: flex; 
+    width: 40px; 
+    height: 40px;
+    min-height: 40px;
+    max-height: 40px;
+    padding: 0;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+    box-sizing: border-box;
+    flex-shrink: 0;
+  }
+  .header-hamburger span {
+    display: block;
+    width: 18px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--text-sub);
+  }
 
   /* -- Touch Targets -- */
   .form-group input, .form-group select, textarea { min-height: 44px; font-size: 16px !important; }
@@ -4238,11 +4676,12 @@ img, video { max-width: 100%; }
 
   /* -- Dashboard Main -- */
   .dashboard-main { margin-left: 0; padding-top: 56px; padding-bottom: 85px; /* extra space for bottom nav */ }
-  .dashboard-header { left: 0; height: auto; min-height: 56px; padding: 0.5rem 0.75rem; flex-wrap: wrap; gap: 0.5rem; }
-  .header-left { flex-direction: row; align-items: center; gap: 0.5rem; flex: 1; min-width: 0; }
-  .dashboard-title { font-size: 0.95rem; white-space: normal; }
+  .dashboard-header { left: 0; height: auto; min-height: 56px; padding: 0.5rem 10px; flex-wrap: nowrap; gap: 0; align-items: center; justify-content: flex-start; }
+  .header-left { flex-direction: row; align-items: center; gap: 8px; flex: 1; min-width: 0; overflow: hidden; }
+  .header-left > div { display: contents; } /* Remove the wrapper div from flex layout */
+  .dashboard-title { font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .dashboard-subtitle { display: none; }
-  .header-controls { gap: 0.4rem; }
+  .header-controls { gap: 0.4rem; margin-left: auto; display: flex; align-items: center; flex-shrink: 0; }
 
   /* -- No Cut-off Content (flex/grid overflow fixes) -- */
   .dashboard-page-body * { min-width: 0; overflow-wrap: anywhere; }
@@ -4258,17 +4697,27 @@ img, video { max-width: 100%; }
   .chatbot-fab-label { display: none !important; }
 
   /* -- Single Column Stacked Layout -- */
-  [style*="display: grid"] { grid-template-columns: 1fr !important; }
+  /* REMOVED: [style*="display: grid"] rule was breaking calendar 7-column grid */
   .form-grid { grid-template-columns: 1fr !important; }
-  .dashboard-page-body { padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; }
+  .dashboard-page-body { padding: 12px 10px; display: flex; flex-direction: column; gap: 12px; }
   .dashboard-content-card { padding: 0 !important; background: transparent !important; box-shadow: none !important; border: none !important; margin: 0 !important; }
-  .dashboard-main-grid { display: flex !important; flex-direction: column !important; gap: 12px !important; }
+  .dashboard-main-grid { display: grid !important; grid-template-columns: 1fr !important; gap: 12px !important; }
   
-  .stats-grid { grid-template-columns: 1fr; gap: 12px; padding: 0 !important; }
+  /* Patient dashboard stat cards: 3 columns on mobile - handled above in patient-facing fixes section */
   .quick-links-grid { display: flex; flex-direction: column; gap: 12px; }
   .quick-link-card { width: 100%; margin: 0; }
   
-  .admin-card, .clinic-card, .content-card, .stat-card {
+  .admin-card, .clinic-card, .content-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-bottom: 0 !important;
+    border-radius: var(--radius-md);
+    padding: 0.75rem;
+    box-sizing: border-box;
+  }
+  
+  /* stat-card width handled separately for 3-column patient dashboards */
+  .stat-card {
     width: 100% !important;
     max-width: 100% !important;
     margin-bottom: 0 !important;
@@ -4289,17 +4738,18 @@ img, video { max-width: 100%; }
   .login-official-logo { height: 70px; }
 
   /* -- Modals -- */
-  .modal-overlay { padding: 0 !important; align-items: flex-end !important; }
+  .modal-overlay { padding: 16px !important; align-items: center !important; justify-content: center !important; }
   .modal-content, .modal-box {
-    width: 100vw !important; max-width: 100vw !important; max-height: 90vh;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
+    width: 100% !important; max-width: 420px !important; max-height: calc(100dvh - 32px) !important;
+    border-radius: var(--radius-lg) !important;
     overflow-y: auto; -webkit-overflow-scrolling: touch; margin: 0 !important;
+    display: flex; flex-direction: column;
   }
 
-  /* -- Tables -> Stacked Cards -- */
+  /* -- Tables -> Stacked Cards (Default Generic Behavior) -- */
   table { display: block; width: 100%; border: none !important; }
   thead { display: none; }
-  tbody { display: flex; flex-direction: column; gap: 12px; }
+  tbody { display: flex; flex-direction: column; gap: 10px; }
   tr { display: flex; flex-direction: column; background: #FFFFFF; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; box-shadow: var(--shadow-sm); }
   td {
     display: flex; justify-content: space-between; align-items: flex-start;
@@ -4314,6 +4764,253 @@ img, video { max-width: 100%; }
   }
   .table-responsive { overflow: visible; padding: 0; }
 
+  /* -- CUSTOM APPOINTMENT CARDS (My Appointments Page) -- */
+  /* Override default table behavior for appointment cards */
+  .data-table tr {
+    position: relative;
+    padding: 12px;
+    gap: 8px;
+  }
+  
+  .data-table tr td {
+    padding: 0 !important;
+    border: none !important;
+    display: block;
+    text-align: left;
+    justify-content: flex-start;
+  }
+  
+  .data-table tr td::before {
+    display: none !important;
+  }
+  
+  /* Service column (col 1) - icon + name + type */
+  .data-table tr td:has(.service-table-cell) {
+    margin-bottom: 8px;
+  }
+  
+  .data-table .service-table-cell {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  
+  .data-table .service-icon-cell-wrap {
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  
+  .data-table .service-cell-info {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex: 1;
+    min-width: 0;
+    padding-right: 80px; /* Space for status badge */
+  }
+  
+  .data-table .service-cell-name {
+    font-weight: 700 !important;
+    font-size: 0.9rem !important;
+    color: var(--text) !important;
+    line-height: 1.3;
+    word-wrap: break-word;
+  }
+  
+  .data-table .service-cell-type {
+    font-size: 0.75rem !important;
+    color: var(--text-muted) !important;
+  }
+  
+  /* Hide old status badge (col 4) that was being clipped */
+  .data-table tr td:nth-child(4) {
+    display: none !important;
+  }
+  
+  /* Date column (col 2) - date and time on one line */
+  .data-table tr td:has(.datetime-table-cell) {
+    margin-bottom: 8px;
+  }
+  
+  .data-table .datetime-table-cell {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px 8px;
+    font-size: 0.85rem;
+    color: var(--text-sub);
+    flex-wrap: wrap;
+  }
+  
+  .data-table .datetime-cell-date {
+    font-weight: 500;
+  }
+  
+  .data-table .datetime-cell-time {
+    font-weight: 400;
+  }
+  
+  .data-table .datetime-cell-date::after {
+    content: " ·";
+    margin-left: 2px;
+  }
+
+  /* Show mobile badge in date/time row */
+  .data-table .datetime-table-cell .status-badge-mobile {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 8px;
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+    border-radius: 999px;
+    white-space: nowrap;
+    position: static;
+    transform: none;
+    gap: 0.25rem;
+  }
+
+  .data-table .datetime-table-cell .status-badge-mobile::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+
+  /* Apply status colors to mobile badge */
+  .data-table .datetime-table-cell .status-badge-mobile.confirmed {
+    background: var(--green-bg);
+    color: var(--green);
+    border: 1px solid var(--green-border);
+  }
+
+  .data-table .datetime-table-cell .status-badge-mobile.pending {
+    background: var(--amber-bg);
+    color: var(--amber);
+    border: 1px solid var(--amber-border);
+  }
+
+  .data-table .datetime-table-cell .status-badge-mobile.cancelled {
+    background: var(--red-bg);
+    color: var(--red);
+    border: 1px solid var(--red-border);
+  }
+
+  .data-table .datetime-table-cell .status-badge-mobile.completed {
+    background: var(--blue-bg);
+    color: var(--blue);
+    border: 1px solid var(--blue-border);
+  }
+
+  /* Hide old status badge (col 4) that was being clipped */
+  .data-table tr td:nth-child(4) {
+    display: none !important;
+  }
+  
+  /* Provider column (col 3) - avatar + name/role */
+  .data-table tr td:nth-child(3) {
+    display: flex !important;
+    align-items: center;
+    gap: 10px;
+    padding-right: 90px !important; /* Space for View button */
+  }
+  
+  .data-table tr td:nth-child(3) > div {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+  }
+  
+  .data-table .provider-table-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+  }
+  
+  .data-table .provider-cell-name {
+    font-weight: 600 !important;
+    font-size: 0.85rem !important;
+    color: var(--text) !important;
+    word-wrap: break-word;
+    white-space: normal !important;
+  }
+  
+  .data-table .provider-cell-role {
+    font-size: 0.73rem !important;
+    color: var(--text-muted) !important;
+  }
+  
+  /* Action column (col 5) - View button bottom right */
+  .data-table tr td:nth-child(5) {
+    position: absolute !important;
+    bottom: 12px;
+    right: 12px;
+  }
+  
+  .data-table .btn-view-pill {
+    padding: 6px 12px !important;
+    font-size: 0.8rem !important;
+  }
+
+  /* Gap fixes for Appointments Page */
+  .status-tabs-bar {
+    margin-bottom: 12px !important;
+  }
+  
+  .my-appointments-header-wrap {
+    margin-bottom: 12px !important;
+  }
+  
+  /* Search bar and filters on one row */
+  .appointments-toolbar {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 8px !important;
+    margin-bottom: 12px !important;
+  }
+  
+  .appointments-search-box {
+    flex: 1 !important;
+    min-width: 0 !important;
+  }
+  
+  .appointments-filter-actions {
+    flex-shrink: 0 !important;
+  }
+  
+  .filter-btn-pill {
+    height: 44px !important;
+    padding: 0 12px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+  
+  /* Filter popover positioning for mobile */
+  .filter-popover-card {
+    position: fixed !important;
+    left: 12px !important;
+    right: 12px !important;
+    top: auto !important;
+    bottom: 90px !important; /* Above bottom nav + chat button */
+    max-height: 60vh !important;
+    overflow-y: auto !important;
+    z-index: 150 !important;
+    box-shadow: 0 -4px 12px rgba(0,0,0,0.15) !important;
+  }
+  
+  /* Bottom padding for chat button clearance */
+  .dashboard-page-body {
+    padding-bottom: 100px !important;
+  }
+
   /* -- Headers & Actions -- */
   .admin-header, .page-header, .section-header { flex-direction: column; align-items: flex-start; gap: 0.75rem; width: 100%; }
   .admin-header .btn, .page-header .btn, .section-header .btn { width: 100%; justify-content: center; }
@@ -4321,6 +5018,67 @@ img, video { max-width: 100%; }
   .filter-bar select, .filter-bar input, .tabs button { width: 100%; }
   .patient-search-bar { display: none; }
   .dental-chart-grid { grid-template-columns: 1fr; }
+
+  /* -- Student/Faculty Dashboard Cards -- */
+  /* Override JSX inline gap for main column */
+  .dashboard-main-grid > div:first-child {
+    gap: 12px !important;
+  }
+
+  /* Clinic Announcements Card - Mobile Optimizations */
+  .announcements-card > div:first-child {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    padding: 12px 16px !important;
+    align-items: center !important;
+  }
+  
+  .announcements-card > div:first-child > div {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+  
+  .announcements-card > div:first-child > div > span:first-child {
+    font-size: 0.9375rem !important; /* 15px */
+  }
+  
+  /* View All link */
+  .announcements-card > div:first-child > a {
+    font-size: 0.75rem !important;
+    white-space: nowrap !important;
+  }
+  
+  /* Announcement rows */
+  .announcements-card > div:last-child > div {
+    padding: 12px 16px !important;
+  }
+  
+  .announcements-card > div:last-child > div > div:first-child {
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+    margin-bottom: 8px !important;
+  }
+  
+  .announcements-card > div:last-child > div > div:first-child > div {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  
+  .announcements-card > div:last-child > div > div:first-child > div > span:last-child {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  .announcements-card > div:last-child > div > div:first-child > span {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -6313,7 +7071,7 @@ button.consult-section-head:focus-visible { outline: 2px solid var(--accent); ou
   .consult-draft-actions .btn-primary,
   .consult-draft-actions .btn-ghost { flex: 1; min-height: 44px; justify-content: center; }
   .consult-tooth-list { grid-template-columns: 1fr; }
-  .consult-modal-card { max-height: 94vh; border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+  .consult-modal-card { max-height: calc(100dvh - 32px); border-radius: var(--radius-lg); }
 }
 
 @media (max-width: 380px) {
@@ -6322,3 +7080,137 @@ button.consult-section-head:focus-visible { outline: 2px solid var(--accent); ou
 
 /* the page's bottom padding would leave a gap under the sticky bar (content showing through) */
 .dashboard-page-body:has(.consult-inline) { padding-bottom: 0; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MOBILE LAYOUT FIXES 1–5  (max-width: 767px)
+   These rules are appended LAST so their specificity wins over earlier rules.
+   ══════════════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+
+  /* ── FIX 1: Hamburger at left edge, title right of it, bell/avatar at right ── */
+  /* CAUSE: flex-wrap: wrap (line 4634) + gap rules made header-controls wrap below
+     header-left, visually centering the group. Fixed by nowrap + explicit alignment. */
+  .dashboard-main .dashboard-header {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-main .dashboard-header .header-left {
+    margin: 0 !important;
+    padding: 0 !important;
+    justify-content: flex-start !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    gap: 8px !important;
+    width: auto !important;
+  }
+
+  /* ── FIX 2: Appointment card date one line, left-aligned, no dangling dot ── */
+  /* CAUSE: flex-wrap: wrap on .data-table .datetime-table-cell (old line 4797)
+     caused the time span to wrap to a 2nd line, leaving the CSS ::after dot alone
+     on line 1. Fixed by nowrap. */
+  .data-table .datetime-table-cell {
+    flex-wrap: nowrap !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    text-align: left !important;
+  }
+
+  .data-table .datetime-cell-date {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  .data-table .datetime-cell-time {
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    min-width: 0 !important;
+  }
+
+  /* ── FIX 3: Page title/subtitle padding on mobile ── */
+  /* CAUSE: Title starts exactly at left edge of rounded tab box and chips, making
+     the text appear to stick out past the container's rounded corners. */
+  .my-appointments-title-group {
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+  }
+
+  /* ── FIX 4: Modals centered, not bottom-sheet ── */
+  /* CAUSE: .modal-overlay had align-items: flex-end !important (lines 4193 & 4696)
+     and modal-content/modal-box had border-radius 0 at bottom, making them stick
+     to the bottom like a sheet. Fixed by centering overlay and rounding all corners. */
+  .modal-overlay {
+    padding: 16px !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .modal-card {
+    width: 100% !important;
+    max-width: min(480px, calc(100vw - 32px)) !important;
+    max-height: calc(100dvh - 32px) !important;
+    border-radius: var(--radius-xl) !important;
+    margin: 0 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .modal-card .modal-body {
+    overflow-y: auto !important;
+    flex: 1 !important;
+    min-height: 0 !important;
+  }
+
+  .modal-content, .modal-box {
+    width: 100% !important;
+    max-width: min(480px, calc(100vw - 32px)) !important;
+    max-height: calc(100dvh - 32px) !important;
+    border-radius: var(--radius-lg) !important;
+    margin: 0 auto !important;
+    overflow-y: auto !important;
+  }
+
+  .consult-modal-card {
+    max-height: calc(100dvh - 32px) !important;
+    border-radius: var(--radius-lg) !important;
+    margin: 0 auto !important;
+    width: 100% !important;
+    max-width: min(680px, calc(100vw - 32px)) !important;
+  }
+
+  /* ── FIX 5: Search + Filters button on ONE row, side by side ── */
+  /* CAUSE: .appointments-search-box had width: 100% !important (line 4476) in an
+     earlier 767px block and .appointments-filter-actions had width: 100% too,
+     forcing the Filters button to its own row. Fixed by resetting to flex: 1 / auto. */
+  .appointments-toolbar {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+
+  .appointments-toolbar .appointments-search-box {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    width: auto !important;
+  }
+
+  .appointments-toolbar .appointments-filter-actions {
+    flex-shrink: 0 !important;
+    width: auto !important;
+  }
+
+  .appointments-toolbar .filter-btn-pill {
+    width: auto !important;
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+    min-height: 40px !important;
+  }
+
+} /* end @media (max-width: 767px) */

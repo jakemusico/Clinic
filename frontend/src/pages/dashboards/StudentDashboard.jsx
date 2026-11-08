@@ -172,7 +172,7 @@ export default function StudentDashboard() {
           </div>
 
           {/* Clinic Announcements */}
-          <div className="data-table-wrap">
+          <div className="data-table-wrap announcements-card">
             <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)' }}>Clinic Announcements</span>

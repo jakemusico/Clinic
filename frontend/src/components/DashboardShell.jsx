@@ -803,7 +803,7 @@ export default function DashboardShell() {
 
         <div className={`dashboard-page-body ${FROZEN_INVENTORY_PAGES.includes(location.pathname) ? 'dashboard-page-body--no-scroll' : ''}`}>
           {stats.length > 0 && (
-            <div className="stats-grid" style={{ padding: '1rem 0.75rem 0' }}>
+            <div className={`stats-grid ${(user?.role === 'student' || user?.role === 'faculty_staff') && stats.length === 3 ? 'stats-grid--three' : ''}`}>
               {stats.map((s) => {
                 const CardTag = s.to ? Link : 'div'
                 return (

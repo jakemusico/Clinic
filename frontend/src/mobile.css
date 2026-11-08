@@ -205,7 +205,7 @@
     box-sizing: border-box;
   }
 
-  button,
+  button:not(.header-hamburger),
   .btn-primary,
   .btn-secondary,
   .btn-ghost,

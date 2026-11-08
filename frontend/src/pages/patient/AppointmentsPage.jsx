@@ -878,7 +878,7 @@ export default function AppointmentsPage() {
                     className="appointments-search-input"
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
-                    placeholder="Search by name, service, ID..."
+                    placeholder="Search appointments"
                   />
                 </div>
 
@@ -1017,6 +1017,9 @@ export default function AppointmentsPage() {
                               <div className="datetime-table-cell">
                                 <span className="datetime-cell-date">{dateLine}</span>
                                 <span className="datetime-cell-time">{timeLine}</span>
+                                <span className={`status-badge-mobile ${STATUS_BADGES[a.status] || 'status-badge inactive'}`.replace('status-badge ', '')}>
+                                  {a.status}
+                                </span>
                               </div>
                             </td>
 
