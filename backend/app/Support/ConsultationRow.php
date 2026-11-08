@@ -42,6 +42,12 @@ final class ConsultationRow
         return $day !== '' ? \Carbon\Carbon::parse($day)->format('M j, Y') : Placeholder::EMPTY;
     }
 
+    /** The saved status of a dental consultation as a label (Completed, Pending, Cancelled). */
+    public static function dentalStatus(DentalConsultation $c): string
+    {
+        return ucfirst(strtolower(trim((string) $c->status)) ?: 'completed');
+    }
+
     public static function medical(ClinicRecord $r): array
     {
         $u = $r->patient?->user;
@@ -62,7 +68,7 @@ final class ConsultationRow
             'complaint_diagnosis' => $r->complaint_category ?: ($r->chief_complaint ?: ($r->diagnosis ?: 'General Consultation')),
             'diagnosis'           => $r->diagnosis ?: Placeholder::EMPTY,
             'treatment'           => $r->treatment ?: Placeholder::EMPTY,
-            'status'              => 'Completed',
+            'status'              => 'Completed',   // a medical record has no status: it is only saved once the visit is done
             'attending_staff'     => $r->createdBy?->name ?? 'Clinic Nurse',
             'date'                => self::displayDate($day),
             'raw_date'            => $day,
@@ -90,7 +96,7 @@ final class ConsultationRow
             'complaint_diagnosis' => $c->complaint_category ?: ($c->reason_for_visit ?: ($c->diagnosis ?: 'Dental Examination')),
             'diagnosis'           => $c->diagnosis ?: Placeholder::EMPTY,
             'treatment'           => $c->treatment_performed ?: Placeholder::EMPTY,
-            'status'              => 'Completed',
+            'status'              => self::dentalStatus($c),
             'attending_staff'     => $c->dentist?->name ?? 'Dentist',
             'date'                => self::displayDate($day),
             'raw_date'            => $day,

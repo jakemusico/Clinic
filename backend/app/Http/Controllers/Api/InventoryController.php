@@ -582,12 +582,15 @@ class InventoryController extends Controller
     {
         $validated = $request->validate([
             'item_id'       => ['required', 'exists:inventory_items,id'],
-            'batch_no'      => ['nullable', 'string', 'max:100'],
+            // A batch number is used once per item (the database enforces it too)
+            'batch_no'      => ['nullable', 'string', 'max:100', Rule::unique('inventory_batches', 'batch_no')->where('item_id', $request->input('item_id'))],
             'supplier'      => ['nullable', 'string', 'max:255'],
             'quantity_in'   => ['required', 'integer', 'min:1'],
             'expiry_date'   => ['nullable', 'date'],
             'received_date' => ['nullable', 'date'],
             'notes'         => ['nullable', 'string'],
+        ], [
+            'batch_no.unique' => 'This item already has a batch with that batch number.',
         ]);
 
         $user = $request->user();

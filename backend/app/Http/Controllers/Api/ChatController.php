@@ -219,6 +219,8 @@ class ChatController extends Controller
         // Lazy auto-resolve stale conversations
         $this->autoResolveStale();
 
+        // One thread per student and team. With the unique index on (student_id, staff_role), two requests
+        // at the same moment get the same thread (firstOrCreate reads the winner's row when its insert loses).
         $conversation = Conversation::firstOrCreate(
             [
                 'student_id' => $user->id,

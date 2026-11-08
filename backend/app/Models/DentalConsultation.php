@@ -35,6 +35,15 @@ class DentalConsultation extends Model
         ];
     }
 
+    /**
+     * Consultations that took place. A pending or cancelled one is not counted in reports and charts.
+     * (An older row with no status counts as completed.)
+     */
+    public function scopeCompleted($query)
+    {
+        return $query->where(fn ($q) => $q->where('status', 'completed')->orWhereNull('status'));
+    }
+
     public function patient(): BelongsTo
     {
         return $this->belongsTo(Patient::class);

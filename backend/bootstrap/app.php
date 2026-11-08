@@ -12,8 +12,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Trust all proxies for proper IP detection
-        $middleware->trustProxies(at: '*');
+        // Proxies are NOT trusted by default. Only the addresses in TRUSTED_PROXIES (config/trustedproxy.php)
+        // may supply X-Forwarded-For / -Host / -Proto, so the audit log's IP cannot be faked.
 
         // CORS for SPA: allow credentials from the frontend origin
         $middleware->statefulApi();

@@ -282,7 +282,7 @@ class ReportController extends Controller
 
         // 2. Dental Consultations (DentalConsultation)
         if (!$roleType || $roleType === 'dental') {
-            $dentQuery = DentalConsultation::with(['patient.user', 'appointment.service', 'dentist'])
+            $dentQuery = DentalConsultation::completed()->with(['patient.user', 'appointment.service', 'dentist'])
                 ->where(function ($q) use ($dateFrom, $dateTo) {
                     $q->whereBetween('consultation_date', [$dateFrom, $dateTo])
                       ->orWhere(function ($sub) use ($dateFrom, $dateTo) {
@@ -617,7 +617,7 @@ class ReportController extends Controller
 
         // 2. Dental symptoms
         if (!$roleType || $roleType === 'dental') {
-            $dentQuery = DentalConsultation::with(['patient.user', 'appointment.service', 'dentist'])
+            $dentQuery = DentalConsultation::completed()->with(['patient.user', 'appointment.service', 'dentist'])
                 ->where(function ($q) use ($dateFrom, $dateTo) {
                     $q->whereBetween('consultation_date', [$dateFrom, $dateTo])
                       ->orWhere(function ($sub) use ($dateFrom, $dateTo) {

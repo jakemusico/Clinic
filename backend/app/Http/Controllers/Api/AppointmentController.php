@@ -13,6 +13,7 @@ use App\Models\Notification;
 use Carbon\Carbon;
 use App\Services\AuditLogger;
 use App\Support\Roles;
+use Illuminate\Support\Str;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -222,9 +223,6 @@ class AppointmentController extends Controller
             return response()->json(['message' => 'Only students and faculty/staff members can book appointments.'], 403);
         }
 
-        // Retrieve or create patient profile
-        $patient = Patient::firstOrCreate(['user_id' => $user->id]);
-
         $validated = $request->validate([
             'service_id'       => ['required', 'integer', 'exists:clinic_services,id'],
             'staff_id'         => ['required', 'integer', 'exists:users,id'],
@@ -261,13 +259,18 @@ class AppointmentController extends Controller
         // Check the slot and create the appointment in ONE transaction. The staff member's row is locked
         // first, so two people booking the same staff member at the same moment are handled one after
         // the other: the second one finds the first booking and is refused.
-        $result = DB::transaction(function () use ($staffId, $dateStr, $timeStr, $service, $patient, $serviceId, $scheduledAt, $validated) {
+        $result = DB::transaction(function () use ($staffId, $dateStr, $timeStr, $service, $user, $serviceId, $scheduledAt, $validated) {
             User::whereKey($staffId)->lockForUpdate()->first();
 
             $err = $this->validateSlot($staffId, $dateStr, $timeStr, null, $this->serviceMinutes($service));
             if ($err) {
                 return $err;
             }
+
+            // The patient profile is created here, after validation and the slot check, and only for a
+            // booking that is accepted (with the unique index on patients.user_id, firstOrCreate is also safe
+            // when two requests get here at the same moment).
+            $patient = Patient::firstOrCreate(['user_id' => $user->id]);
 
             return Appointment::create([
                 'patient_id'       => $patient->id,
@@ -323,11 +326,13 @@ class AppointmentController extends Controller
             if ($appointment->patient->user_id !== $user->id) {
                 return response()->json(['message' => 'Forbidden.'], 403);
             }
-            if ($appointment->status === 'completed' || $appointment->status === 'cancelled') {
-                return response()->json(['message' => 'Cannot reschedule completed or cancelled appointments.'], 422);
-            }
         } elseif (! Roles::canAccessCare($user, $appointment->appointment_type)) {
             return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
+        // Only an appointment that is still open can be moved (the same for patients and staff)
+        if (! in_array($appointment->status, self::RESCHEDULABLE, true)) {
+            return response()->json(['message' => $this->closedMessage($appointment->status, 'rescheduled')], 422);
         }
 
         $validated = $request->validate([
@@ -344,6 +349,12 @@ class AppointmentController extends Controller
         $err = DB::transaction(function () use ($appointment, $dateStr, $timeStr, $newSchedule) {
             User::whereKey($appointment->staff_id)->lockForUpdate()->first();
 
+            // Re-read the appointment under lock: it may have been cancelled or completed a moment ago
+            $appointment->refresh();
+            if (! in_array($appointment->status, self::RESCHEDULABLE, true)) {
+                return $this->closedMessage($appointment->status, 'rescheduled');
+            }
+
             $err = $this->validateSlot($appointment->staff_id, $dateStr, $timeStr, $appointment->id, $this->serviceMinutes($appointment->service));
             if ($err) {
                 return $err;
@@ -351,7 +362,7 @@ class AppointmentController extends Controller
 
             $appointment->update([
                 'scheduled_at' => $newSchedule,
-                'status'       => 'pending', // reset to pending on reschedule
+                'status'       => 'pending', // an open appointment goes back to pending (to be confirmed again)
             ]);
 
             return null;
@@ -370,7 +381,7 @@ class AppointmentController extends Controller
             ? $appointment->patient->user_id
             : $appointment->staff_id;
 
-        $isDental = in_array(strtolower($appointment->service->category ?? ''), ['dental']);
+        $isDental = $appointment->service?->care_type === ClinicService::CARE_DENTAL;
         $targetActionUrl = Roles::isClinicStaff($user)
             ? "/appointments?status=pending&highlight={$appointment->id}"
             : ($isDental
@@ -392,15 +403,38 @@ class AppointmentController extends Controller
     }
 
     /**
+     * Which status an appointment can move to from each status (by changing its status).
+     * completed, cancelled and no_show are final. A patient can only ever cancel (checked below).
+     */
+    private const TRANSITIONS = [
+        'pending'   => ['confirmed', 'completed', 'cancelled', 'no_show'],
+        'confirmed' => ['completed', 'cancelled', 'no_show'],
+        'completed' => [],
+        'cancelled' => [],
+        'no_show'   => [],
+    ];
+
+    /** Statuses from which an appointment may still be moved to another time. */
+    private const RESCHEDULABLE = ['pending', 'confirmed'];
+
+    /** Why an appointment in this status cannot be changed, in words for the user. */
+    private function closedMessage(string $status, string $action): string
+    {
+        $label = str_replace('_', ' ', $status);
+
+        return "This appointment is {$label}, so it cannot be {$action}.";
+    }
+
+    /**
      * PATCH /api/appointments/{id}/status
-     * Confirm, Complete, or Cancel an appointment.
+     * Confirm, complete, cancel or mark as no-show, following TRANSITIONS.
      */
     public function updateStatus(Request $request, Appointment $appointment): JsonResponse
     {
         $user = $request->user();
 
         $validated = $request->validate([
-            'status'              => ['required', 'string', 'in:confirmed,completed,cancelled'],
+            'status'              => ['required', 'string', 'in:confirmed,completed,cancelled,no_show'],
             'cancellation_reason' => ['nullable', 'string', 'max:255'],
         ]);
 
@@ -420,12 +454,40 @@ class AppointmentController extends Controller
             return response()->json(['message' => 'Forbidden.'], 403);
         }
 
-        $oldValues = $appointment->toArray();
-        $appointment->update([
-            'status'              => $newStatus,
-            'cancellation_reason' => $newStatus === 'cancelled' ? ($validated['cancellation_reason'] ?? 'Cancelled by user') : null,
-        ]);
-        $newValues = $appointment->getChanges();
+        // Only a cancellation has a reason: the one given, or who cancelled it
+        $reason = null;
+        if ($newStatus === 'cancelled') {
+            $reason = trim((string) ($validated['cancellation_reason'] ?? ''))
+                ?: (Roles::isPatient($user) ? 'Cancelled by patient.' : 'Cancelled by clinic staff.');
+        }
+
+        // Check the move under a row lock, so two people acting at the same moment cannot both win
+        $outcome = DB::transaction(function () use ($appointment, $newStatus, $reason) {
+            $current = Appointment::whereKey($appointment->id)->lockForUpdate()->firstOrFail();
+
+            if ($current->status === $newStatus) {
+                return ['error' => 'This appointment is already ' . str_replace('_', ' ', $newStatus) . '.'];
+            }
+            if (! in_array($newStatus, self::TRANSITIONS[$current->status] ?? [], true)) {
+                return ['error' => $this->closedMessage($current->status, 'changed to ' . str_replace('_', ' ', $newStatus))];
+            }
+
+            $old = $current->toArray();
+            $current->update([
+                'status'              => $newStatus,
+                'cancellation_reason' => $reason,
+            ]);
+
+            return ['appointment' => $current, 'old' => $old, 'new' => $current->getChanges()];
+        }, 3);
+
+        if (isset($outcome['error'])) {
+            return response()->json(['message' => $outcome['error']], 422);
+        }
+
+        $appointment = $outcome['appointment'];
+        $oldValues   = $outcome['old'];
+        $newValues   = $outcome['new'];
 
         AuditLogger::log('appointment_status_changed', Appointment::class, $appointment->id, $oldValues, $newValues);
 
@@ -434,9 +496,15 @@ class AppointmentController extends Controller
             ? $appointment->patient->user_id
             : $appointment->staff_id;
 
-        $badgeType = $newStatus === 'cancelled' ? 'error' : ($newStatus === 'confirmed' ? 'success' : 'info');
+        $badgeType = match ($newStatus) {
+            'cancelled'     => 'error',
+            'confirmed'     => 'success',
+            'no_show'       => 'warning',
+            default         => 'info',
+        };
+        $statusLabel = str_replace('_', ' ', $newStatus);
 
-        $isDental = in_array(strtolower($appointment->service->category ?? ''), ['dental']);
+        $isDental = $appointment->service?->care_type === ClinicService::CARE_DENTAL;
         $statusActionUrl = Roles::isClinicStaff($user)
             ? "/appointments?status={$newStatus}&highlight={$appointment->id}"
             : ($isDental
@@ -445,14 +513,14 @@ class AppointmentController extends Controller
 
         Notification::create([
             'user_id'    => $targetUserId,
-            'title'      => 'Appointment ' . ucfirst($newStatus),
-            'message'    => "The appointment for {$appointment->service->name} on " . Carbon::parse($appointment->scheduled_at)->format('M d, Y g:i A') . " has been marked as {$newStatus} by {$user->name}." . ($newStatus === 'cancelled' ? " Reason: " . $appointment->cancellation_reason : ""),
+            'title'      => 'Appointment ' . Str::headline($newStatus),
+            'message'    => "The appointment for {$appointment->service->name} on " . Carbon::parse($appointment->scheduled_at)->format('M d, Y g:i A') . " has been marked as {$statusLabel} by {$user->name}." . ($newStatus === 'cancelled' ? " Reason: " . $appointment->cancellation_reason : ""),
             'type'       => $badgeType,
             'action_url' => $statusActionUrl,
         ]);
 
         return response()->json([
-            'message'     => "Appointment marked as {$newStatus}.",
+            'message'     => "Appointment marked as {$statusLabel}.",
             'appointment' => $appointment->load(['service', Appointment::staffRelation()]),
         ]);
 

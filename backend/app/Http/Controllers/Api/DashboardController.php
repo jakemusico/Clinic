@@ -107,6 +107,14 @@ class DashboardController extends Controller
         });
     }
 
+    /** Dental consultations count only when completed (pending / cancelled ones did not take place). */
+    private function onlyCompleted($query, string $table)
+    {
+        return $table === 'dental_consultations'
+            ? $query->where(fn ($q) => $q->where('status', 'completed')->orWhereNull('status'))
+            : $query;
+    }
+
     /** The consultation tables a role's dashboard counts: [table, date column, text column, type]. */
     private function consultationSources(string $role): array
     {
@@ -129,7 +137,7 @@ class DashboardController extends Controller
     {
         $days = [];
         foreach ($this->consultationSources($role) as [$table, $dateColumn]) {
-            $rows = $this->inRange(DB::table($table), $dateColumn, $start, $end)
+            $rows = $this->onlyCompleted($this->inRange(DB::table($table), $dateColumn, $start, $end), $table)
                 ->selectRaw("COALESCE({$dateColumn}, DATE(created_at)) AS d, COUNT(*) AS c")
                 ->groupBy('d')
                 ->get();
@@ -216,7 +224,7 @@ class DashboardController extends Controller
         $totalSymptomsCount = 0;
 
         foreach ($this->consultationSources($role) as [$table, $dateColumn, $textColumn, $type]) {
-            $rows = $this->inRange(DB::table($table), $dateColumn, $startDate, $endDate)
+            $rows = $this->onlyCompleted($this->inRange(DB::table($table), $dateColumn, $startDate, $endDate), $table)
                 ->select('complaint_category', "{$textColumn} AS complaint", 'diagnosis')
                 ->selectRaw('COUNT(*) AS c')
                 ->groupBy('complaint_category', $textColumn, 'diagnosis')
@@ -377,7 +385,9 @@ class DashboardController extends Controller
         $today = Carbon::today()->toDateString();
         [$from, $to] = $this->todayBounds();
 
-        return $model::where(function ($q) use ($dateColumn, $today, $from, $to) {
+        $query = $model === DentalConsultation::class ? $model::completed() : $model::query();
+
+        return $query->where(function ($q) use ($dateColumn, $today, $from, $to) {
             $q->where($dateColumn, $today)->orWhereBetween('created_at', [$from, $to]);
         })->count();
     }

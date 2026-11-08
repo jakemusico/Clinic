@@ -362,7 +362,7 @@ class ClinicRecordController extends Controller
         $profiles = Patient::whereIn('user_id', $users->pluck('id'))->get()->keyBy('user_id');
         foreach ($users as $u) {
             if (! $profiles->has($u->id)) {
-                $profiles[$u->id] = Patient::create(['user_id' => $u->id]);
+                $profiles[$u->id] = Patient::firstOrCreate(['user_id' => $u->id]);
             }
         }
 

@@ -17,6 +17,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class DentalConsultationController extends Controller
 {
@@ -171,9 +172,15 @@ class DentalConsultationController extends Controller
 
         $inventoryItems = $validated['inventory_items'] ?? [];
 
+        // Only a COMPLETED consultation has side effects: it completes the linked appointment, updates the
+        // dental chart and dispenses medicines. A pending or cancelled one is only saved.
+        $status    = $validated['status'] ?? 'completed';
+        $completed = $status === 'completed';
+        $this->refuseDispenseUnlessCompleted($completed, $inventoryItems);
+
         // ONE transaction: the consultation, the appointment, the dental chart and the dispensed stock are
         // saved together. If stock is short or anything fails, none of it is kept and the API says so.
-        $consultation = DB::transaction(function () use ($validated, $user, $request, $inventoryItems) {
+        $consultation = DB::transaction(function () use ($validated, $user, $request, $inventoryItems, $status, $completed) {
             // Locks the appointment, so a double click or retry cannot save a second consultation for it
             $appointment = AppointmentLink::claim(
                 isset($validated['appointment_id']) ? (int) $validated['appointment_id'] : null,
@@ -187,7 +194,7 @@ class DentalConsultationController extends Controller
                 'service_name'        => $validated['service_name'],
                 'created_by'          => $user->id,
                 'consultation_date'   => $validated['consultation_date'],
-                'status'              => $validated['status'] ?? 'completed',
+                'status'              => $status,
                 'reason_for_visit'    => $validated['reason_for_visit'],
                 'vitals'              => $this->cleanVitals($validated['vitals'] ?? null),
                 'complaint_category'  => $validated['complaint_category'] ?? null,
@@ -200,8 +207,10 @@ class DentalConsultationController extends Controller
                 'staff_notes'         => $validated['staff_notes'] ?? null,
             ]);
 
-            // Auto-complete appointment if linked
-            $appointment?->update(['status' => 'completed']);
+            // Auto-complete appointment if linked (completed consultations only)
+            if ($completed) {
+                $appointment?->update(['status' => 'completed']);
+            }
 
             // ── Auto-update Dental Chart ──────────────────────────────────────────
             // Map service/treatment to a chart condition. Dentist can also send
@@ -209,7 +218,7 @@ class DentalConsultationController extends Controller
             $affectedTeeth   = $validated['affected_teeth'] ?? [];
             $toothConditions = $validated['tooth_conditions'] ?? [];
 
-            if (! empty($affectedTeeth)) {
+            if ($completed && ! empty($affectedTeeth)) {
                 // Derive a default condition from the service name or treatment performed
                 $serviceName   = $request->input('service_name', '');
                 $treatmentText = $validated['treatment_performed'] ?? '';
@@ -252,7 +261,7 @@ class DentalConsultationController extends Controller
             AuditLogger::log('dental_consultation_created', DentalConsultation::class, $consultation->id, null, $consultation->toArray());
 
             // Dispense inventory items (throws InsufficientStockException -> everything above is rolled back)
-            if (!empty($inventoryItems)) {
+            if ($completed && !empty($inventoryItems)) {
                 $patient = Patient::find($validated['patient_id']);
                 InventoryController::dispenseForConsultation(
                     $inventoryItems,
@@ -271,6 +280,16 @@ class DentalConsultationController extends Controller
             'message'      => 'Dental consultation record created successfully.',
             'consultation' => $consultation->load(['patient.user', 'appointment.service', 'dentist:' . Appointment::staffColumns()]),
         ], 201);
+    }
+
+    /** Medicines are only dispensed on a completed consultation: refuse a request that asks otherwise. */
+    private function refuseDispenseUnlessCompleted(bool $completed, array $inventoryItems): void
+    {
+        if (! $completed && ! empty($inventoryItems)) {
+            throw ValidationException::withMessages([
+                'inventory_items' => 'Medicines and supplies can only be dispensed on a completed consultation.',
+            ]);
+        }
     }
 
     /** Vital signs with every empty value removed; null when nothing was recorded. */
@@ -357,7 +376,13 @@ class DentalConsultationController extends Controller
 
         $inventoryItems = $validated['inventory_items'] ?? [];
 
-        DB::transaction(function () use ($validated, $user, $dentalConsultation, $inventoryItems) {
+        // Same rule as when creating: stock is dispensed only while the consultation is completed. Changing a
+        // consultation to pending / cancelled gives back what it had dispensed (the reversal below).
+        $previousStatus = $dentalConsultation->status ?: 'completed';
+        $completed      = ($validated['status'] ?? $previousStatus) === 'completed';
+        $this->refuseDispenseUnlessCompleted($completed, $inventoryItems);
+
+        DB::transaction(function () use ($validated, $user, $dentalConsultation, $inventoryItems, $completed, $previousStatus) {
             // Lock the record, and every item it dispensed before or will dispense now (sorted, once)
             DentalConsultation::whereKey($dentalConsultation->id)->lockForUpdate()->first(['id']);
             InventoryController::lockConsultationItems('dental', $dentalConsultation->id, $inventoryItems);
@@ -370,7 +395,7 @@ class DentalConsultationController extends Controller
             // The stock check happens AFTER the reversal, so re-saving a record never fails
             // because of its own earlier dispense.
             InventoryController::reverseConsultationTransactions('dental', $dentalConsultation->id);
-            if (!empty($inventoryItems)) {
+            if ($completed && !empty($inventoryItems)) {
                 $patient = Patient::find($dentalConsultation->patient_id);
                 InventoryController::dispenseForConsultation(
                     $inventoryItems,
@@ -380,6 +405,13 @@ class DentalConsultationController extends Controller
                     $user->id,
                     $validated['consultation_date']
                 );
+            }
+
+            // Becoming completed completes the linked appointment, as a completed consultation does when created
+            if ($completed && $previousStatus !== 'completed' && $dentalConsultation->appointment_id) {
+                Appointment::whereKey($dentalConsultation->appointment_id)
+                    ->whereIn('status', ['pending', 'confirmed'])
+                    ->update(['status' => 'completed']);
             }
 
             AuditLogger::log('dental_consultation_updated', DentalConsultation::class, $dentalConsultation->id, $oldValues, $newValues);
