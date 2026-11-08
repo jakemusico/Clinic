@@ -6,7 +6,7 @@ import { authApi } from '../api/auth'
 import api from '../api/axios'
 import StaffProfile from './StaffProfile'
 import PasswordStrength, { checkPasswordRules } from '../components/PasswordStrength'
-import { validateMobile } from '../components/MobileInput'
+import MobileInput, { isMobileValid, validateMobile } from '../components/MobileInput'
 import NameFields, { formatFullName } from '../components/NameFields'
 import Avatar from '../components/Avatar'
 import useProfilePhoto from '../hooks/useProfilePhoto'
@@ -198,7 +198,11 @@ function PatientProfilePage() {
     return { score: 4, label: 'Strong', width: '100%' }
   }, [passwordForm.password])
 
-  const handleChange = (field, value) => setFormData(prev => ({ ...prev, [field]: value }))
+  const handleChange = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }))
+    // editing a field clears the error that was shown for it
+    setFieldErrors(prev => (prev[field] ? { ...prev, [field]: '' } : prev))
+  }
 
   const handleCopyParentToEmergency = () => {
     setFormData(prev => ({
@@ -261,6 +265,9 @@ function PatientProfilePage() {
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) errors.email = 'Please enter a valid email address.'
       else if (!/@urios\.edu\.ph$/i.test(formData.email.trim())) errors.email = 'Email must end with @urios.edu.ph.'
       if (!formData.emailPassword) errors.emailPassword = 'Enter your current password to confirm email change.'
+    }
+    for (const field of ['contact_no', 'guardian_contact', 'emergency_contact_no', 'emergency_alt_contact']) {
+      if (!isMobileValid(formData[field])) errors[field] = validateMobile(formData[field])
     }
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors); toast.error(Object.values(errors)[0]); return
@@ -517,21 +524,17 @@ function PatientProfilePage() {
                   placeholder="Select school year" />
               </div>
 
-              <div className="profile-field-group">
-                <label>Contact Number</label>
-                <input type="tel"
-                  className={`profile-input ${formData.contact_no && validateMobile(formData.contact_no) ? 'input-error' : ''}`}
-                  value={formData.contact_no} onChange={e => handleChange('contact_no', e.target.value)}
-                  inputMode="numeric" maxLength={11} disabled={ro} />
-                {(() => {
-                  const err = formData.contact_no ? validateMobile(formData.contact_no) : null
-                  const digits = formData.contact_no?.replace(/\D/g, '') || ''
-                  const valid = digits.length === 11 && digits.startsWith('09')
-                  if (err) return <span className="field-error" style={{ fontSize: '0.75rem' }}>{err}</span>
-                  if (valid) return <span className="field-success" style={{ fontSize: '0.75rem' }}>Valid Philippine mobile number</span>
-                  return null
-                })()}
-              </div>
+              <MobileInput
+                id="profile-contact-no"
+                name="contact_no"
+                label="Contact Number"
+                groupClassName="profile-field-group"
+                className="profile-input"
+                value={formData.contact_no}
+                onChange={e => handleChange('contact_no', e.target.value)}
+                error={fieldErrors.contact_no}
+                disabled={ro}
+              />
 
               <div className="profile-field-group" style={{ gridColumn: '1 / -1' }}>
                 <label>Complete Address</label>
@@ -568,11 +571,17 @@ function PatientProfilePage() {
                   options={[{ value: '', label: 'Select relationship' }, ...RELATIONSHIPS]}
                   placeholder="Select relationship" />
               </div>
-              <div className="profile-field-group">
-                <label>Contact Number</label>
-                <input type="text" className="profile-input" value={formData.guardian_contact}
-                  onChange={e => handleChange('guardian_contact', e.target.value)} disabled={ro} />
-              </div>
+              <MobileInput
+                id="profile-guardian-contact"
+                name="guardian_contact"
+                label="Contact Number"
+                groupClassName="profile-field-group"
+                className="profile-input"
+                value={formData.guardian_contact}
+                onChange={e => handleChange('guardian_contact', e.target.value)}
+                error={fieldErrors.guardian_contact}
+                disabled={ro}
+              />
               <div className="profile-field-group">
                 <label>Email Address</label>
                 <input type="email" className="profile-input" value={formData.guardian_email}
@@ -614,27 +623,28 @@ function PatientProfilePage() {
                   options={[{ value: '', label: 'Select relationship' }, ...RELATIONSHIPS]}
                   placeholder="Select relationship" />
               </div>
-              <div className="profile-field-group">
-                <label>Contact Number</label>
-                <input type="tel"
-                  className={`profile-input ${formData.emergency_contact_no && validateMobile(formData.emergency_contact_no) ? 'input-error' : ''}`}
-                  value={formData.emergency_contact_no}
-                  onChange={e => handleChange('emergency_contact_no', e.target.value)}
-                  inputMode="numeric" maxLength={11} disabled={ro} />
-                {(() => {
-                  const err = formData.emergency_contact_no ? validateMobile(formData.emergency_contact_no) : null
-                  const digits = formData.emergency_contact_no?.replace(/\D/g, '') || ''
-                  const valid = digits.length === 11 && digits.startsWith('09')
-                  if (err) return <span className="field-error" style={{ fontSize: '0.75rem' }}>{err}</span>
-                  if (valid) return <span className="field-success" style={{ fontSize: '0.75rem' }}>Valid Philippine mobile number</span>
-                  return null
-                })()}
-              </div>
-              <div className="profile-field-group">
-                <label>Alternative Contact Number</label>
-                <input type="text" className="profile-input" value={formData.emergency_alt_contact}
-                  onChange={e => handleChange('emergency_alt_contact', e.target.value)} disabled={ro} />
-              </div>
+              <MobileInput
+                id="profile-emergency-contact-no"
+                name="emergency_contact_no"
+                label="Contact Number"
+                groupClassName="profile-field-group"
+                className="profile-input"
+                value={formData.emergency_contact_no}
+                onChange={e => handleChange('emergency_contact_no', e.target.value)}
+                error={fieldErrors.emergency_contact_no}
+                disabled={ro}
+              />
+              <MobileInput
+                id="profile-emergency-alt-contact"
+                name="emergency_alt_contact"
+                label="Alternative Contact Number"
+                groupClassName="profile-field-group"
+                className="profile-input"
+                value={formData.emergency_alt_contact}
+                onChange={e => handleChange('emergency_alt_contact', e.target.value)}
+                error={fieldErrors.emergency_alt_contact}
+                disabled={ro}
+              />
             </div>
           </div>
         )}

@@ -7,6 +7,7 @@ use App\Models\Notification;
 use App\Models\User;
 use App\Models\Role;
 use App\Services\AuditLogger;
+use App\Rules\PhilippineMobile;
 use App\Support\NameRules;
 use Laravel\Sanctum\PersonalAccessToken;
 use Illuminate\Http\JsonResponse;
@@ -35,7 +36,7 @@ class AuthController extends Controller
             'role'                  => ['required', 'string', 'in:student,faculty_staff'],
             'date_of_birth'         => ['required', 'date', 'before:today'],
             'sex'                   => ['required', 'string', 'in:male,female'],
-            'contact_no'            => ['nullable', 'string', 'max:20'],
+            'contact_no'            => ['nullable', 'string', ...PhilippineMobile::ownNumber()],
             'address'               => ['nullable', 'string', 'max:500'],
             'terms_accepted'        => ['required', 'accepted'],
             // Student-only fields
@@ -51,10 +52,12 @@ class AuthController extends Controller
             ],
             'guardian_name'         => ['nullable', 'string', 'max:255'],
             'guardian_relationship' => ['nullable', 'string', 'max:100'],
-            'guardian_contact'      => ['nullable', 'string', 'max:50'],
+            'guardian_contact'      => ['nullable', 'string', new PhilippineMobile()],
             // Faculty-only fields
             'department'            => ['nullable', 'string', 'max:255'],
-        ], NameRules::messages());
+        ], NameRules::messages() + [
+            'contact_no.unique' => PhilippineMobile::UNIQUE_MESSAGE,
+        ]);
 
         // Extra required validation for student role
         if ($validated['role'] === 'student') {
@@ -87,7 +90,6 @@ class AuthController extends Controller
                 'suffix'                => $validated['suffix'] ?? null,
                 'email'                 => $validated['email'],
                 'password'              => $validated['password'],
-                'role_id'               => $roleId,
                 'date_of_birth'         => $validated['date_of_birth'],
                 'sex'                   => $validated['sex'],
                 'age'                   => $age,
@@ -103,6 +105,7 @@ class AuthController extends Controller
 
             // Not mass-assignable: set one by one. Public registration only ever gets a patient role
             // (the request is validated to student / faculty_staff above), active, no forced password change.
+            $user->role_id              = $roleId;
             $user->role                 = $roleSlug;
             $user->is_active            = true;
             $user->must_change_password = false;
@@ -339,13 +342,6 @@ class AuthController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        // Staff (nurse / dentist / admin) use an 11-digit PH mobile number, same as the form.
-        $isStaffRole = $user->isAdmin() || $user->isClinicStaff() || $user->isDentist();
-        $contactRules = ['nullable', 'string', 'max:50'];
-        if ($isStaffRole) {
-            $contactRules[] = 'regex:/^09\d{9}$/';
-        }
-
         // NOTE: the profile photo is NOT accepted here. It is uploaded as a file
         // through POST /api/profile/photo, and only its path is stored.
         $validated = $request->validate([
@@ -362,7 +358,8 @@ class AuthController extends Controller
             'grade_level'           => ['nullable', 'string', 'max:50'],
             'section'               => ['nullable', 'string', 'max:100'],
             'school_year'           => ['nullable', 'string', 'max:50'],
-            'contact_no'            => $contactRules,
+            // Own number: valid PH mobile, unique (a number the user already has is never re-checked)
+            'contact_no'            => ['nullable', 'string', ...PhilippineMobile::ownNumber($user->id, $request->input('contact_no'))],
             'address'               => ['nullable', 'string', 'max:500'],
             'age'                   => ['nullable', 'integer', 'min:1', 'max:120'],
             'department'            => ['nullable', 'string', 'max:255'],
@@ -381,19 +378,19 @@ class AuthController extends Controller
             // Parent / Guardian
             'guardian_name'         => ['nullable', 'string', 'max:255'],
             'guardian_relationship' => ['nullable', 'string', 'max:100'],
-            'guardian_contact'      => ['nullable', 'string', 'max:50'],
+            'guardian_contact'      => ['nullable', 'string', new PhilippineMobile()],
             'guardian_email'        => ['nullable', 'string', 'max:255'],
 
             // Emergency Contact
             'emergency_name'        => ['nullable', 'string', 'max:255'],
             'emergency_relationship'=> ['nullable', 'string', 'max:100'],
-            'emergency_contact_no'  => ['nullable', 'string', 'max:50'],
-            'emergency_alt_contact' => ['nullable', 'string', 'max:50'],
+            'emergency_contact_no'  => ['nullable', 'string', new PhilippineMobile()],
+            'emergency_alt_contact' => ['nullable', 'string', new PhilippineMobile()],
         ], NameRules::messages(['name', 'first_name', 'middle_name', 'last_name']) + [
             'student_id.unique'            => 'This ID is already used by another account.',
             'student_id.max'               => 'The ID must not be longer than 50 characters.',
             'license_no.max'               => 'The PRC license number must not be longer than 100 characters.',
-            'contact_no.regex'             => 'Contact number must be 11 digits starting with 09 (e.g. 09123456789).',
+            'contact_no.unique'            => PhilippineMobile::UNIQUE_MESSAGE,
             'date_of_birth.date'           => 'Please enter a valid date of birth.',
             'date_of_birth.before_or_equal'=> 'Date of birth cannot be in the future.',
             'sex.in'                       => 'Please select Male or Female.',

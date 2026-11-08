@@ -167,6 +167,7 @@ class AppointmentController extends Controller
 
         if ($request->boolean('all') || $request->get('paginate') === 'false') {
             $appointments = $query->get();
+            $this->hideStaffOnlyFields($user, $appointments);
             return response()->json([
                 'data'         => $appointments,
                 'appointments' => $appointments,
@@ -179,6 +180,7 @@ class AppointmentController extends Controller
 
         $perPage = (int) $request->get('per_page', 10);
         $paginated = $query->paginate($perPage);
+        $this->hideStaffOnlyFields($user, $paginated->getCollection());
 
         return response()->json([
             'data'         => $paginated->items(),
@@ -190,6 +192,21 @@ class AppointmentController extends Controller
             'from'         => $paginated->firstItem(),
             'to'           => $paginated->lastItem(),
         ]);
+    }
+
+    /**
+     * A patient gets the dental consultation of their appointment without its internal staff notes
+     * (the same field the dental consultation endpoints already hide from patients).
+     */
+    private function hideStaffOnlyFields($user, $appointments): void
+    {
+        if (! Roles::isPatient($user)) {
+            return;
+        }
+
+        foreach ($appointments as $appointment) {
+            $appointment->dentalConsultation?->makeHidden(['staff_notes']);
+        }
     }
 
     /**

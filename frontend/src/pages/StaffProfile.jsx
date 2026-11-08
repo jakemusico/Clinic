@@ -7,6 +7,7 @@ import PasswordStrength, { checkPasswordRules } from '../components/PasswordStre
 import NameFields, { formatFullName } from '../components/NameFields'
 import Avatar from '../components/Avatar'
 import Dropdown from '../components/Dropdown'
+import MobileInput, { isMobileValid, validateMobile } from '../components/MobileInput'
 import useProfilePhoto from '../hooks/useProfilePhoto'
 import { getApiErrorMessage, getFieldErrors } from '../utils/apiError'
 import './ProfilePage.css'
@@ -32,13 +33,6 @@ function ProfileIcon({ name, size = 16 }) {
       {icons[name] || null}
     </svg>
   )
-}
-
-// ── Contact validation (Philippine mobile: 09XXXXXXXXX, 11 digits) ───────────
-function validateContact(val) {
-  if (!val) return true
-  const digits = val.replace(/\D/g, '')
-  return digits.length === 11 && digits.startsWith('09')
 }
 
 export default function StaffProfile() {
@@ -204,8 +198,8 @@ export default function StaffProfile() {
     if (!formData.first_name?.trim()) errors.first_name = 'First name is required.'
     if (!formData.last_name?.trim())  errors.last_name  = 'Last name is required.'
 
-    if (formData.contact_no && !validateContact(formData.contact_no)) {
-      toast.error('Contact number must be 11 digits starting with 09.')
+    if (!isMobileValid(formData.contact_no)) {
+      toast.error(validateMobile(formData.contact_no))
       return
     }
 
@@ -453,17 +447,18 @@ export default function StaffProfile() {
                   </div>
 
                   {/* Contact Number */}
-                  <div className="profile-field-group">
-                    <label>Contact Number</label>
-                    <input type="text" className={inputCls} value={formData.contact_no} maxLength={11}
-                      onChange={e => { const val = e.target.value.replace(/\D/g, '').slice(0, 11); handleChange('contact_no', val) }}
-                      disabled={ro} />
-                    {formData.contact_no && !validateContact(formData.contact_no) && (
-                      <span style={{ fontSize: '0.75rem', color: 'var(--red, #DC2626)', marginTop: '0.2rem' }}>
-                        Must be 11 digits starting with 09.
-                      </span>
-                    )}
-                  </div>
+                  <MobileInput
+                    id="staff-contact-no"
+                    name="contact_no"
+                    label="Contact Number"
+                    groupClassName="profile-field-group"
+                    className={inputCls}
+                    value={formData.contact_no}
+                    onChange={e => handleChange('contact_no', e.target.value)}
+                    error={fieldErrors.contact_no}
+                    showSuccess={false}
+                    disabled={ro}
+                  />
 
                   {/* Email Address */}
                   <div className="profile-field-group">

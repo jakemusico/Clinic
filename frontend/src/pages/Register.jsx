@@ -4,7 +4,7 @@ import { toast } from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { ROLE_ROUTES } from '../components/RouteGuards'
 import PasswordStrength, { checkPasswordRules } from '../components/PasswordStrength'
-import MobileInput, { isMobileValid } from '../components/MobileInput'
+import MobileInput, { isMobileValid, validateMobile } from '../components/MobileInput'
 import NameFields from '../components/NameFields'
 import { DEPARTMENTS, GRADE_LEVELS } from '../constants/schoolData'
 import Dropdown from '../components/Dropdown'
@@ -161,7 +161,7 @@ export default function Register() {
       newErrors.password_confirmation = 'Passwords do not match.'
     }
     if (form.contact_no && !isMobileValid(form.contact_no)) {
-      newErrors.contact_no = 'Enter a valid 11-digit Philippine mobile number starting with 09.'
+      newErrors.contact_no = validateMobile(form.contact_no)
     }
 
     if (form.role === 'student') {
@@ -172,7 +172,7 @@ export default function Register() {
       if (!form.guardian_relationship) newErrors.guardian_relationship = 'Relationship is required.'
       if (!form.guardian_contact.trim()) newErrors.guardian_contact = 'Parent/Guardian Contact is required.'
       else if (!isMobileValid(form.guardian_contact))
-        newErrors.guardian_contact = 'Enter a valid 11-digit Philippine mobile number starting with 09.'
+        newErrors.guardian_contact = validateMobile(form.guardian_contact)
       if (!form.contact_no.trim()) newErrors.contact_no = 'Contact Number is required.'
       if (!form.address.trim()) newErrors.address = 'Home Address is required.'
     }

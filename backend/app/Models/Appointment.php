@@ -47,10 +47,16 @@ class Appointment extends Model
         ], $extra);
     }
 
-    /** Same, as the single relation string for ->load(['service', Appointment::STAFF_RELATION]). */
+    /** The relation string for the attending staff member: ->load(['service', Appointment::staffRelation()]). */
     public static function staffRelation(): string
     {
-        return 'staff:' . implode(',', self::STAFF_COLUMNS);
+        return 'staff:' . self::staffColumns();
+    }
+
+    /** STAFF_COLUMNS as a comma list, for a relation string such as 'createdBy:' . Appointment::staffColumns(). */
+    public static function staffColumns(): string
+    {
+        return implode(',', self::STAFF_COLUMNS);
     }
 
     protected function casts(): array

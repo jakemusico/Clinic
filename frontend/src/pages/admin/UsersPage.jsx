@@ -10,6 +10,7 @@ import { adminApi } from '../../api/admin'
 import axios from 'axios'
 import { DEPARTMENTS, GRADE_LEVELS } from '../../constants/schoolData'
 import Avatar from '../../components/Avatar'
+import MobileInput, { isMobileValid, validateMobile } from '../../components/MobileInput'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -111,11 +112,7 @@ function validateForm(form, mode) {
     }
   }
 
-  if (form.contact_no) {
-    const d = form.contact_no.replace(/\D/g, '')
-    if (!(d.length === 11 && d.startsWith('09')))
-      errs.contact_no = 'Must be a valid 11-digit Philippine mobile (09XXXXXXXXX).'
-  }
+  if (!isMobileValid(form.contact_no)) errs.contact_no = validateMobile(form.contact_no)
 
   if (form.role === 'student') {
     if (!form.student_id.trim()) errs.student_id  = 'Student ID is required.'
@@ -705,29 +702,16 @@ export default function UsersPage() {
                   </div>
 
                   {/* ---- Contact Number ---- */}
-                  <div className="form-group">
-                    <label className="form-label">Contact Number</label>
-                    <input
-                      id="form-contact-no"
-                      type="tel"
-                      className={`form-input${errors.contact_no ? ' input-error' : ''}`}
-                      value={form.contact_no}
-                      onChange={e => handleChange('contact_no', e.target.value)}
-                      inputMode="numeric"
-                      maxLength={11}
-                    />
-                    {errors.contact_no && <span className="field-error">{errors.contact_no}</span>}
-                    {!errors.contact_no && (() => {
-                      const d = (form.contact_no || '').replace(/\D/g, '')
-                      if (d.length === 11 && d.startsWith('09')) return (
-                        <span className="field-success">
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-                          Valid Philippine mobile number
-                        </span>
-                      )
-                      return null
-                    })()}
-                  </div>
+                  <MobileInput
+                    id="form-contact-no"
+                    name="contact_no"
+                    label="Contact Number"
+                    labelClassName="form-label"
+                    className="form-input"
+                    value={form.contact_no}
+                    onChange={e => handleChange('contact_no', e.target.value)}
+                    error={errors.contact_no}
+                  />
 
                   {/* ---- ID field (Student ID or Employee ID) ---- */}
                   <div className="form-group">

@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Support\PhoneNumber;
 use App\Support\Roles;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -20,9 +22,9 @@ class User extends Authenticatable
     /**
      * Mass assignment (create/update/fill with request data) can set these columns.
      *
-     * NOT in this list on purpose, so request data can never reach them: `role`, `is_active`,
-     * `must_change_password` and `has_medical_access`. Set those one by one in code, e.g.
-     * `$user->is_active = true;`, after the access decision has been made.
+     * NOT in this list on purpose, so request data can never reach them: `role`, `role_id`,
+     * `is_active`, `must_change_password` and `has_medical_access`. Set those one by one in code,
+     * e.g. `$user->role_id = $role->id;`, after the access decision has been made.
      * (`role` is also kept in step with `role_id` by the saving hook below.)
      */
     protected $fillable = [
@@ -35,7 +37,6 @@ class User extends Authenticatable
         'email',
         'avatar',
         'password',
-        'role_id',
         'student_id',
         'department',
         'license_no',
@@ -74,6 +75,14 @@ class User extends Authenticatable
             'must_change_password'=> 'boolean',
             'has_medical_access'  => 'boolean',
         ];
+    }
+
+    // --- Mutators ---
+
+    /** Always stored as 09XXXXXXXXX (see App\Support\PhoneNumber). */
+    protected function contactNo(): Attribute
+    {
+        return Attribute::set(fn ($value) => PhoneNumber::clean($value));
     }
 
     // --- Computed Accessors ---

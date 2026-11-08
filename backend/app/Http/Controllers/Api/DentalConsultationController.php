@@ -29,7 +29,7 @@ class DentalConsultationController extends Controller
             return response()->json(['message' => 'Forbidden. Only the dentist, an administrator or the patient can access dental consultations.'], 403);
         }
 
-        $query = DentalConsultation::with(['patient.user', 'appointment.service', 'dentist']);
+        $query = DentalConsultation::with(['patient.user', 'appointment.service', 'dentist:' . Appointment::staffColumns()]);
 
         if (Roles::isPatient($user)) {
             $query->whereHas('patient', function ($q) use ($user) {
@@ -108,7 +108,7 @@ class DentalConsultationController extends Controller
             $dentalConsultation->makeHidden(['staff_notes']);
         }
 
-        $dentalConsultation->load(['patient.user', 'appointment.service', 'dentist']);
+        $dentalConsultation->load(['patient.user', 'appointment.service', 'dentist:' . Appointment::staffColumns()]);
 
         if (Roles::isAdmin($user)) {
             AuditLogger::log('admin_viewed_dental_consultation', DentalConsultation::class, $dentalConsultation->id, null, [
@@ -269,7 +269,7 @@ class DentalConsultationController extends Controller
 
         return response()->json([
             'message'      => 'Dental consultation record created successfully.',
-            'consultation' => $consultation->load(['patient.user', 'appointment.service', 'dentist']),
+            'consultation' => $consultation->load(['patient.user', 'appointment.service', 'dentist:' . Appointment::staffColumns()]),
         ], 201);
     }
 
@@ -387,7 +387,7 @@ class DentalConsultationController extends Controller
 
         return response()->json([
             'message'      => 'Dental consultation record updated successfully.',
-            'consultation' => $dentalConsultation->load(['patient.user', 'appointment.service', 'dentist']),
+            'consultation' => $dentalConsultation->load(['patient.user', 'appointment.service', 'dentist:' . Appointment::staffColumns()]),
         ]);
     }
 }

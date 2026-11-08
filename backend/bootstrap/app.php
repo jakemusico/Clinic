@@ -18,6 +18,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // CORS for SPA: allow credentials from the frontend origin
         $middleware->statefulApi();
 
+        // Every phone number in an API request is converted to 09XXXXXXXXX before validation
+        $middleware->api(append: [
+            \App\Http\Middleware\NormalizePhoneNumbers::class,
+        ]);
+
         // Register custom role middleware alias
         $middleware->alias([
             'role' => \App\Http\Middleware\EnsureRole::class,

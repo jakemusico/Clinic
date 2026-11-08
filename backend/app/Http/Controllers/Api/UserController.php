@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Role;
 use App\Services\AuditLogger;
+use App\Rules\PhilippineMobile;
 use App\Support\NameRules;
 use App\Support\Roles;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 
@@ -85,13 +87,14 @@ class UserController extends Controller
         $rules = $this->baseRules($role);
         $rules['password'] = ['required', 'string', 'min:8'];
 
-        $validated = $request->validate($rules, NameRules::messages(['title', 'first_name', 'middle_name', 'last_name']));
+        $validated = $request->validate($rules, NameRules::messages(['title', 'first_name', 'middle_name', 'last_name']) + ['contact_no.unique' => PhilippineMobile::UNIQUE_MESSAGE]);
 
         $userData = $this->buildUserData($validated, $role);
         $userData['password'] = Hash::make($validated['password']);
 
+        $roleId = Arr::pull($userData, 'role_id');   // not mass-assignable: set below
         $user = new User($userData);   // only the mass-assignable columns
-        $this->assignAccessFields($user, $validated, $role);
+        $this->assignAccessFields($user, $validated, $role, (int) $roleId);
         $user->is_active            = true;
         $user->must_change_password = true; // admin-created accounts must change password on first login
         $user->save();
@@ -129,7 +132,7 @@ class UserController extends Controller
             $rules['password'] = ['string', 'min:8'];
         }
 
-        $validated = $request->validate($rules, NameRules::messages(['title', 'first_name', 'middle_name', 'last_name']));
+        $validated = $request->validate($rules, NameRules::messages(['title', 'first_name', 'middle_name', 'last_name']) + ['contact_no.unique' => PhilippineMobile::UNIQUE_MESSAGE]);
 
         $oldValues = $user->toArray();
         $oldRole   = $user->role_slug;
@@ -140,8 +143,9 @@ class UserController extends Controller
             $userData['password'] = Hash::make($validated['password']);
         }
 
+        $roleId = Arr::pull($userData, 'role_id');   // not mass-assignable: set below
         $user->fill($userData);   // only the mass-assignable columns
-        $this->assignAccessFields($user, $validated, $role);
+        $this->assignAccessFields($user, $validated, $role, (int) $roleId);
         if ($request->filled('password')) {
             $user->must_change_password = true;   // the admin chose this password: the user must replace it
         }
@@ -362,7 +366,8 @@ class UserController extends Controller
             'email'       => ['required', 'string', 'email', 'max:255', $uniqueEmail],
             'role'        => ['nullable', 'string'],
             'role_id'     => ['nullable', 'integer', 'exists:roles,id'],
-            'contact_no'  => ['nullable', 'string', 'max:20'],
+            // A valid PH mobile, unique among users (an unchanged number is not re-checked)
+            'contact_no'  => ['nullable', 'string', ...PhilippineMobile::ownNumber($ignoreId, request()->input('contact_no'))],
         ];
 
         // Role-specific rules
@@ -450,11 +455,12 @@ class UserController extends Controller
     }
 
     /**
-     * Set the access columns that are NOT mass-assignable (role, has_medical_access).
+     * Set the access columns that are NOT mass-assignable (role_id, role, has_medical_access).
      * Only the admin routes reach this, after the admin's own role was checked by the route middleware.
      */
-    private function assignAccessFields(User $user, array $validated, string $role): void
+    private function assignAccessFields(User $user, array $validated, string $role, int $roleId): void
     {
+        $user->role_id = $roleId;
         // Canonical slug (nurse -> clinic_staff) so it always fits the users.role column
         $user->role = Roles::of($role) ?? $role;
 

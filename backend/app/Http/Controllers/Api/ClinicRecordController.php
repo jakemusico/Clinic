@@ -36,7 +36,7 @@ class ClinicRecordController extends Controller
             ]);
         }
 
-        $query = ClinicRecord::with(['patient.user', 'appointment.service', 'createdBy']);
+        $query = ClinicRecord::with(['patient.user', 'appointment.service', 'createdBy:' . Appointment::staffColumns()]);
 
         if (Roles::isPatient($user)) {
             $query->whereHas('patient', function ($q) use ($user) {
@@ -105,7 +105,7 @@ class ClinicRecordController extends Controller
             }
         }
 
-        $clinicRecord->load(['patient.user', 'appointment.service', 'createdBy']);
+        $clinicRecord->load(['patient.user', 'appointment.service', 'createdBy:' . Appointment::staffColumns()]);
 
         if (Roles::isAdmin($user)) {
             AuditLogger::log('admin_viewed_medical_record', ClinicRecord::class, $clinicRecord->id, null, [
@@ -227,7 +227,7 @@ class ClinicRecordController extends Controller
 
         return response()->json([
             'message' => 'Consultation record saved to patient medical record successfully.',
-            'record'  => $record->load(['patient.user', 'appointment.service', 'createdBy']),
+            'record'  => $record->load(['patient.user', 'appointment.service', 'createdBy:' . Appointment::staffColumns()]),
         ], 201);
     }
 
@@ -314,7 +314,7 @@ class ClinicRecordController extends Controller
 
         return response()->json([
             'message' => 'Patient medical record updated successfully.',
-            'record'  => $clinicRecord->load(['patient.user', 'appointment.service', 'createdBy']),
+            'record'  => $clinicRecord->load(['patient.user', 'appointment.service', 'createdBy:' . Appointment::staffColumns()]),
         ]);
     }
 

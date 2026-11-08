@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Support\PhoneNumber;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -35,6 +37,28 @@ class Patient extends Model
         return [
             'date_of_birth' => 'date:Y-m-d',
         ];
+    }
+
+    // Phone numbers are always stored as 09XXXXXXXXX (see App\Support\PhoneNumber).
+
+    protected function guardianContact(): Attribute
+    {
+        return Attribute::set(fn ($value) => PhoneNumber::clean($value));
+    }
+
+    protected function emergencyContactNo(): Attribute
+    {
+        return Attribute::set(fn ($value) => PhoneNumber::clean($value));
+    }
+
+    protected function emergencyAltContact(): Attribute
+    {
+        return Attribute::set(fn ($value) => PhoneNumber::clean($value));
+    }
+
+    protected function emergencyContact(): Attribute
+    {
+        return Attribute::set(fn ($value) => PhoneNumber::clean($value));
     }
 
     public function user(): BelongsTo

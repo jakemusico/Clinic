@@ -27,11 +27,15 @@ class DatabaseSeeder extends Seeder
         $user = User::where('email', $email)->first();
 
         if (! $user) {
-            // `role` and `must_change_password` are not mass-assignable: they are set one by one.
-            $role = $attributes['role'] ?? null;
-            unset($attributes['role']);
+            // `role`, `role_id` and `must_change_password` are not mass-assignable: they are set one by one.
+            $role   = $attributes['role'] ?? null;
+            $roleId = $attributes['role_id'] ?? null;
+            unset($attributes['role'], $attributes['role_id']);
 
             $user = new User($attributes + ['email' => $email, 'password' => Hash::make($password)]);
+            if ($roleId !== null) {
+                $user->role_id = $roleId;
+            }
             if ($role !== null) {
                 $user->role = $role;
             }
