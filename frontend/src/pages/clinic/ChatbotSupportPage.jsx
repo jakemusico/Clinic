@@ -19,6 +19,7 @@ import {
   Cell,
 } from 'recharts'
 import { EMPTY } from '../../utils/emptyValue'
+import '../ProfilePage.css'
 
 /* ─── Constants ──────────────────────────────────────────────────── */
 
@@ -93,7 +94,7 @@ export default function ChatbotSupportPage() {
       <div style={{ width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
         {/* ── Tab Navigation ───────────────────────────────────────── */}
         <div className="profile-nav-tabs-wrap" style={{ width: '100%', marginBottom: '1.5rem' }}>
-          <div className="profile-tab-list">
+          <div className="profile-tab-list" style={{ display: 'flex', gap: '0.5rem' }}>
             {TABS.map(t => (
               <button
                 key={t.key}

@@ -118,6 +118,12 @@ class ReportController extends Controller
      */
     public function appointmentSummary(Request $request): JsonResponse
     {
+        // Validate date parameters (fix #3)
+        $request->validate([
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to'   => ['nullable', 'date_format:Y-m-d'],
+        ]);
+
         $user = $request->user();
         if (! Roles::isClinicStaff($user)) {
             return response()->json(['message' => 'Forbidden.'], 403);
@@ -250,6 +256,12 @@ class ReportController extends Controller
      */
     public function consultationSummary(Request $request): JsonResponse
     {
+        // Validate date parameters (fix #3)
+        $request->validate([
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to'   => ['nullable', 'date_format:Y-m-d'],
+        ]);
+
         $user = $request->user();
         if (! Roles::isClinicStaff($user)) {
             return response()->json(['message' => 'Forbidden.'], 403);
@@ -391,6 +403,12 @@ class ReportController extends Controller
      */
     public function inventorySummary(Request $request): JsonResponse
     {
+        // Validate date parameters (fix #3)
+        $request->validate([
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to'   => ['nullable', 'date_format:Y-m-d'],
+        ]);
+
         $user = $request->user();
         if (! Roles::isClinicStaff($user)) {
             return response()->json(['message' => 'Forbidden.'], 403);

@@ -55,6 +55,11 @@ class AppointmentController extends Controller
      */
     public function markAllRead(Request $request): JsonResponse
     {
+        // Validate appointment_type (fix #2)
+        $request->validate([
+            'appointment_type' => ['nullable', 'string', 'in:medical,dental,all'],
+        ]);
+
         $user = $request->user();
 
         $types = Roles::careTypes($user);
@@ -112,6 +117,17 @@ class AppointmentController extends Controller
         $types = Roles::careTypes($user);
         if (! Roles::isPatient($user) && ! $types) {
             return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
+        // Validate filter parameters (fix #2)
+        if (! Roles::isPatient($user)) {
+            $request->validate([
+                'status'           => ['nullable', 'string', 'in:pending,confirmed,completed,cancelled,no-show'],
+                'date'             => ['nullable', 'date_format:Y-m-d'],
+                'staff_id'         => ['nullable', 'integer'],
+                'patient_id'       => ['nullable', 'integer'],
+                'appointment_type' => ['nullable', 'string', 'in:medical,dental,all'],
+            ]);
         }
 
         // Explicit columns for the patient and the staff member (no full user rows). The nurse is only

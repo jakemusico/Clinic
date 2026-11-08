@@ -133,29 +133,26 @@ class DentalConsultationController extends Controller
             return response()->json(['message' => 'Only dentists can create dental consultation records.'], 403);
         }
 
-        // Linked to an appointment: the service is the appointment's. Otherwise the dentist must pick a dental one.
+        // Capture appointmentId but do NOT resolve service_name yet (fix #4: validate first)
         $appointmentId = $request->input('appointment_id');
-        $request->merge([
-            'service_name' => ConsultationServiceName::resolve($request->input('service_name'), $appointmentId),
-        ]);
 
-        // Required: patient, date, service, reason for the visit. Everything else is optional.
+        // Validate first (including appointment_id), THEN resolve service (fix #4)
         $validated = $request->validate(array_merge([
             'patient_id'          => ['required', 'integer', 'exists:patients,id'],
             'appointment_id'      => ['nullable', 'integer', Rule::exists('appointments', 'id')->where('appointment_type', 'dental'), Rule::unique('dental_consultations', 'appointment_id')],
             'service_name'        => ConsultationServiceName::rules('dental', locked: (bool) $appointmentId),
             'consultation_date'   => ['required', 'date', 'date_format:Y-m-d'],
             'status'              => ['nullable', 'string', 'in:completed,pending,cancelled'],
-            'reason_for_visit'    => ['required', 'string'],
+            'reason_for_visit'    => ['required', 'string', 'max:10000'],
             'complaint_category'  => ['nullable', 'string', 'max:100'],
             'affected_teeth'      => ['nullable', 'array'],
             'affected_teeth.*'    => ['integer', 'min:1', 'max:52'],
-            'dental_findings'     => ['nullable', 'string'],
+            'dental_findings'     => ['nullable', 'string', 'max:10000'],
             'diagnosis'           => ['nullable', 'string', 'max:255'],
-            'treatment_performed' => ['nullable', 'string'],
-            'recommendations'     => ['nullable', 'string'],
-            'notes'               => ['nullable', 'string'],
-            'staff_notes'         => ['nullable', 'string'],
+            'treatment_performed' => ['nullable', 'string', 'max:10000'],
+            'recommendations'     => ['nullable', 'string', 'max:10000'],
+            'notes'               => ['nullable', 'string', 'max:10000'],
+            'staff_notes'         => ['nullable', 'string', 'max:10000'],
             'tooth_conditions'    => ['nullable', 'array'],
             'tooth_conditions.*'  => ['string', 'in:healthy,cavity,filled,extracted,missing,treated'],
             'inventory_items'     => ['nullable', 'array'],
@@ -170,6 +167,14 @@ class DentalConsultationController extends Controller
             'inventory_items.*.item_id.distinct' => 'Each medicine or supply can only be listed once.',
             'reason_for_visit.required'  => 'Please enter the reason for the visit / chief complaint.',
         ]);
+
+        // Now resolve service_name AFTER validation (fix #4)
+        $validated['service_name'] = ConsultationServiceName::resolve($validated['service_name'], $validated['appointment_id'] ?? null);
+
+        // Compute BMI server-side (fix #5)
+        if (isset($validated['vitals'])) {
+            $validated['vitals'] = VitalsRules::computeBMI($validated['vitals']);
+        }
 
         $inventoryItems = $validated['inventory_items'] ?? [];
 
@@ -352,15 +357,15 @@ class DentalConsultationController extends Controller
             'service_name'        => ConsultationServiceName::rules('dental', locked: (bool) $dentalConsultation->appointment_id || ! $serviceChanged, required: false),
             'consultation_date'   => ['required', 'date', 'date_format:Y-m-d'],
             'status'              => ['nullable', 'string', 'in:completed,pending,cancelled'],
-            'reason_for_visit'    => ['required', 'string'],
+            'reason_for_visit'    => ['required', 'string', 'max:10000'],
             'complaint_category'  => ['nullable', 'string', 'max:100'],
             'affected_teeth'      => ['nullable', 'array'],
-            'dental_findings'     => ['nullable', 'string'],
+            'dental_findings'     => ['nullable', 'string', 'max:10000'],
             'diagnosis'           => ['nullable', 'string', 'max:255'],
-            'treatment_performed' => ['nullable', 'string'],
-            'recommendations'     => ['nullable', 'string'],
-            'notes'               => ['nullable', 'string'],
-            'staff_notes'         => ['nullable', 'string'],
+            'treatment_performed' => ['nullable', 'string', 'max:10000'],
+            'recommendations'     => ['nullable', 'string', 'max:10000'],
+            'notes'               => ['nullable', 'string', 'max:10000'],
+            'staff_notes'         => ['nullable', 'string', 'max:10000'],
             'inventory_items'     => ['nullable', 'array'],
             'inventory_items.*.item_id'  => ['required_with:inventory_items', 'integer', 'distinct', 'exists:inventory_items,id'],
             'inventory_items.*.quantity' => ['required_with:inventory_items', 'integer', 'min:1'],
@@ -371,8 +376,9 @@ class DentalConsultationController extends Controller
             'inventory_items.*.item_id.distinct' => 'Each medicine or supply can only be listed once.',
         ]);
 
+        // Compute BMI server-side (fix #5)
         if (array_key_exists('vitals', $validated)) {
-            $validated['vitals'] = $this->cleanVitals($validated['vitals']);
+            $validated['vitals'] = VitalsRules::computeBMI($this->cleanVitals($validated['vitals']));
         }
 
         $inventoryItems = $validated['inventory_items'] ?? [];

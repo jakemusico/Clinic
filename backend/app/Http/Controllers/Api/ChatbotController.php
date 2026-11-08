@@ -273,6 +273,13 @@ class ChatbotController extends Controller
      */
     public function statistics(Request $request): JsonResponse
     {
+        // Validate period parameters (fix #3)
+        $request->validate([
+            'period' => ['nullable', 'string', 'in:daily,monthly,yearly'],
+            'month'  => ['nullable', 'integer', 'between:1,12'],
+            'year'   => ['nullable', 'integer', 'min:2020', 'max:2100'],
+        ]);
+
         $tz     = config('app.timezone', 'Asia/Manila');
         $now    = Carbon::now($tz);
         $period = $request->query('period', 'daily'); // daily | monthly | yearly

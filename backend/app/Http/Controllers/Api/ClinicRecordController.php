@@ -129,28 +129,25 @@ class ClinicRecordController extends Controller
             return response()->json(['message' => 'Only nurse/clinic staff can create medical patient records.'], 403);
         }
 
-        // Linked to an appointment: the service is the appointment's. Otherwise the nurse must pick a medical one.
+        // Capture appointmentId but do NOT resolve service_name yet (fix #4: validate first)
         $appointmentId = $request->input('appointment_id');
-        $request->merge([
-            'service_name' => ConsultationServiceName::resolve($request->input('service_name'), $appointmentId),
-        ]);
 
-        // Required: patient, date, service, reason for the visit. Everything else is optional.
+        // Validate first (including appointment_id), THEN resolve service (fix #4)
         $validated = $request->validate(array_merge([
             'patient_id'       => ['required', 'integer', 'exists:patients,id'],
             'appointment_id'   => ['nullable', 'integer', Rule::exists('appointments', 'id')->where('appointment_type', 'medical'), Rule::unique('clinic_records', 'appointment_id')],
             'service_name'     => ConsultationServiceName::rules('medical', locked: (bool) $appointmentId),
             'visit_date'       => ['required', 'date', 'date_format:Y-m-d'],
-            'chief_complaint'  => ['required', 'string'],
+            'chief_complaint'  => ['required', 'string', 'max:10000'],
             'diagnosis'        => ['nullable', 'string', 'max:255'],
-            'assessment'       => ['nullable', 'string'],
+            'assessment'       => ['nullable', 'string', 'max:10000'],
             'complaint_category' => ['nullable', 'string', 'max:100'],
-            'symptoms'         => ['nullable', 'string'],
-            'treatment'        => ['nullable', 'string'],
-            'recommendation'   => ['nullable', 'string'],
-            'prescription'     => ['nullable', 'string'],
-            'notes'            => ['nullable', 'string'],
-            'remarks'          => ['nullable', 'string'],
+            'symptoms'         => ['nullable', 'string', 'max:10000'],
+            'treatment'        => ['nullable', 'string', 'max:10000'],
+            'recommendation'   => ['nullable', 'string', 'max:10000'],
+            'prescription'     => ['nullable', 'string', 'max:10000'],
+            'notes'            => ['nullable', 'string', 'max:10000'],
+            'remarks'          => ['nullable', 'string', 'max:10000'],
             'inventory_items'  => ['nullable', 'array'],
             'inventory_items.*.item_id'  => ['required_with:inventory_items', 'integer', 'distinct', 'exists:inventory_items,id'],
             'inventory_items.*.quantity' => ['required_with:inventory_items', 'integer', 'min:1'],
@@ -163,6 +160,14 @@ class ClinicRecordController extends Controller
             'inventory_items.*.item_id.distinct' => 'Each medicine or supply can only be listed once.',
             'chief_complaint.required' => 'Please enter the reason for the visit / chief complaint.',
         ]);
+
+        // Now resolve service_name AFTER validation (fix #4)
+        $validated['service_name'] = ConsultationServiceName::resolve($validated['service_name'], $validated['appointment_id'] ?? null);
+
+        // Compute BMI server-side (fix #5)
+        if (isset($validated['vitals'])) {
+            $validated['vitals'] = VitalsRules::computeBMI($validated['vitals']);
+        }
 
         $inventoryItems = $validated['inventory_items'] ?? [];
 
@@ -242,24 +247,23 @@ class ClinicRecordController extends Controller
 
         // Keep the saved service unless a different one is picked; a linked appointment's service always wins.
         $appointmentId = $request->exists('appointment_id') ? $request->input('appointment_id') : $clinicRecord->appointment_id;
-        $given         = ConsultationServiceName::resolve($request->input('service_name'), $appointmentId);
+        $given         = $request->input('service_name') ?? $clinicRecord->service_name;
         $serviceChanged = $given !== null && $given !== $clinicRecord->service_name;
-        $request->merge(['service_name' => $given ?? $clinicRecord->service_name]);
 
         $validated = $request->validate(array_merge([
             'appointment_id'   => ['nullable', 'integer', Rule::exists('appointments', 'id')->where('appointment_type', 'medical'), Rule::unique('clinic_records', 'appointment_id')->ignore($clinicRecord->id)],
             'service_name'     => ConsultationServiceName::rules('medical', locked: (bool) $appointmentId || ! $serviceChanged, required: false),
             'visit_date'       => ['required', 'date', 'date_format:Y-m-d'],
-            'chief_complaint'  => ['required', 'string'],
+            'chief_complaint'  => ['required', 'string', 'max:10000'],
             'diagnosis'        => ['nullable', 'string', 'max:255'],
-            'assessment'       => ['nullable', 'string'],
+            'assessment'       => ['nullable', 'string', 'max:10000'],
             'complaint_category' => ['nullable', 'string', 'max:100'],
-            'symptoms'         => ['nullable', 'string'],
-            'treatment'        => ['nullable', 'string'],
-            'recommendation'   => ['nullable', 'string'],
-            'prescription'     => ['nullable', 'string'],
-            'notes'            => ['nullable', 'string'],
-            'remarks'          => ['nullable', 'string'],
+            'symptoms'         => ['nullable', 'string', 'max:10000'],
+            'treatment'        => ['nullable', 'string', 'max:10000'],
+            'recommendation'   => ['nullable', 'string', 'max:10000'],
+            'prescription'     => ['nullable', 'string', 'max:10000'],
+            'notes'            => ['nullable', 'string', 'max:10000'],
+            'remarks'          => ['nullable', 'string', 'max:10000'],
             'inventory_items'  => ['nullable', 'array'],
             'inventory_items.*.item_id'  => ['required_with:inventory_items', 'integer', 'distinct', 'exists:inventory_items,id'],
             'inventory_items.*.quantity' => ['required_with:inventory_items', 'integer', 'min:1'],
@@ -272,8 +276,12 @@ class ClinicRecordController extends Controller
             'chief_complaint.required' => 'Please enter the reason for the visit / chief complaint.',
         ]);
 
+        // Resolve service_name AFTER validation (fix #4)
+        $validated['service_name'] = ConsultationServiceName::resolve($validated['service_name'] ?? $clinicRecord->service_name, $validated['appointment_id'] ?? $appointmentId);
+
+        // Compute BMI server-side (fix #5)
         if (array_key_exists('vitals', $validated)) {
-            $validated['vitals'] = $this->cleanVitals($validated['vitals']);
+            $validated['vitals'] = VitalsRules::computeBMI($this->cleanVitals($validated['vitals']));
         }
 
         $inventoryItems = $validated['inventory_items'] ?? [];
