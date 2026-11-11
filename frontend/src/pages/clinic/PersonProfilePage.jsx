@@ -7,6 +7,7 @@ import { formatAppointmentDate, formatDate } from '../../utils/dateUtils'
 import Avatar from '../../components/Avatar'
 import { EMPTY } from '../../utils/emptyValue'
 import { LoadError } from '../../components/dashboard/Fallbacks'
+import BackButton from '../../components/BackButton'
 import { getApiErrorMessage } from '../../utils/apiError'
 import useLatestRequest, { isRequestCanceled } from '../../hooks/useLatestRequest'
 
@@ -88,6 +89,9 @@ export default function PersonProfilePage() {
       title={`${profileUser.name}'s Clinic Profile`}
       subtitle={`Clinic records and health information for ${isStudent ? 'Student' : 'Faculty/Staff'}.`}
     >
+      <div style={{ marginBottom: '0.75rem' }}>
+        <BackButton />
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '1.5rem', alignItems: 'start', marginBottom: '1.5rem' }}>
         
         {/* Left Column - Basics & Identity */}

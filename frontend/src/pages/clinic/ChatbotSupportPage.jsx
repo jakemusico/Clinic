@@ -45,9 +45,10 @@ const BLANK = {
 }
 
 const TABS = [
-  { key: 'faqs',     label: 'FAQs' },
-  { key: 'stats',    label: 'Chat Statistics' },
-  { key: 'settings', label: 'Settings' },
+  { key: 'faqs',       label: 'FAQs' },
+  { key: 'categories', label: 'Categories' },
+  { key: 'stats',      label: 'Chat Stats' },
+  { key: 'settings',   label: 'Settings' },
 ]
 
 /* ─── Tiny helpers ───────────────────────────────────────────────── */
@@ -89,7 +90,7 @@ export default function ChatbotSupportPage() {
   return (
     <DashboardLayout
       title="Chatbot Support"
-      subtitle="Manage FAQ database, view chat statistics, and configure live chat settings."
+      subtitle="Manage FAQs, view chat stats, and configure settings."
     >
       <div style={{ width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
         {/* ── Tab Navigation ───────────────────────────────────────── */}
@@ -109,9 +110,10 @@ export default function ChatbotSupportPage() {
         </div>
 
         {/* ── Tab Views ────────────────────────────────────────────── */}
-        {activeTab === 'faqs'     && <FaqsTab />}
-        {activeTab === 'stats'    && <StatsTab />}
-        {activeTab === 'settings' && <SettingsTab />}
+        {activeTab === 'faqs'       && <FaqsTab />}
+        {activeTab === 'categories' && <CategoriesTab />}
+        {activeTab === 'stats'      && <StatsTab />}
+        {activeTab === 'settings'   && <SettingsTab />}
       </div>
     </DashboardLayout>
   )
@@ -125,6 +127,7 @@ function FaqsTab() {
   const [faqs,       setFaqs]       = useState([])
   const [placeholders, setPlaceholders] = useState([])
   const [categories, setCategories] = useState([])
+  const [dbCategories, setDbCategories] = useState([]) // Categories from chatbot_categories table
   const [loading,    setLoading]    = useState(true)
   const [modal,      setModal]      = useState(null)   // 'add' | 'edit' | 'preview'
   const [selected,   setSelected]   = useState(null)
@@ -138,10 +141,14 @@ function FaqsTab() {
   const load = async () => {
     setLoading(true)
     try {
-      const { data } = await chatbotApi.list({ raw: 1 })
-      setFaqs(data?.faqs || [])
-      setPlaceholders(data?.placeholders || [])
-      setCategories(data?.categories || [])
+      const [faqRes, catRes] = await Promise.all([
+        chatbotApi.list({ raw: 1 }),
+        chatbotApi.listCategories()
+      ])
+      setFaqs(faqRes.data?.faqs || [])
+      setPlaceholders(faqRes.data?.placeholders || [])
+      setCategories(faqRes.data?.categories || [])
+      setDbCategories(catRes.data?.categories || [])
     } catch {
       toast.error('Failed to load FAQs from the server.')
     } finally {
@@ -159,7 +166,16 @@ function FaqsTab() {
 
   const pagination = usePagination({ items: displayed })
 
-  const allCategories = Array.from(new Set([...Object.keys(CATEGORY_LABELS), ...categories]))
+  // Helper function to get category display name
+  const getCategoryLabel = (catName) => {
+    const dbCat = dbCategories.find(c => c.name === catName)
+    if (dbCat) return ucwords(dbCat.name.replace(/_/g, ' '))
+    return CATEGORY_LABELS[catName] || ucwords(catName.replace(/_/g, ' '))
+  }
+
+  const allCategories = dbCategories.length > 0
+    ? dbCategories.map(c => c.name)
+    : Array.from(new Set([...Object.keys(CATEGORY_LABELS), ...categories]))
 
   const openAdd  = () => { setForm(BLANK); setModal('add') }
   const openEdit = (faq) => {
@@ -258,24 +274,45 @@ function FaqsTab() {
       </div>
 
       {/* ── Toolbar ───────────────────────────────────────────── */}
-      <div className="page-toolbar" style={{ width: '100%', marginBottom: '1.25rem' }}>
-        <div style={{ display: 'flex', gap: '0.75rem', flex: 1, flexWrap: 'wrap' }}>
-          <input
-            className="search-input"
-            placeholder="Search FAQs..."
-            value={filterQ}
-            onChange={e => { setFilterQ(e.target.value); pagination.setPage(1) }}
+      <div className="faq-toolbar" style={{ 
+        width: '100%', 
+        marginBottom: '1.25rem',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+      }}>
+        <input
+          className="search-input"
+          placeholder="Search FAQs..."
+          value={filterQ}
+          onChange={e => { setFilterQ(e.target.value); pagination.setPage(1) }}
+          style={{ 
+            flex: 1,
+            minWidth: '200px',
+            height: '44px',
+            minHeight: '44px',
+          }}
+        />
+        <div style={{ minWidth: '175px', height: '44px' }}>
+          <Dropdown
+            variant="filter"
+            value={filterCat}
+            onChange={v => { setFilterCat(v); pagination.setPage(1) }}
+            options={[{ value: 'all', label: 'All Categories' }, ...allCategories.map(c => ({ value: c, label: getCategoryLabel(c) }))]}
           />
-          <div style={{ minWidth: '175px' }}>
-            <Dropdown
-              variant="filter"
-              value={filterCat}
-              onChange={v => { setFilterCat(v); pagination.setPage(1) }}
-              options={[{ value: 'all', label: 'All Categories' }, ...allCategories.map(c => ({ value: c, label: CATEGORY_LABELS[c] || c }))]}
-            />
-          </div>
         </div>
-        <button type="button" className="btn-primary" onClick={openAdd}>Add FAQ</button>
+        <button 
+          type="button" 
+          className="btn-primary" 
+          onClick={openAdd}
+          style={{
+            height: '44px',
+            minHeight: '44px',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Add FAQ
+        </button>
       </div>
 
       {/* ── Table ─────────────────────────────────────────────── */}
@@ -303,7 +340,7 @@ function FaqsTab() {
                   <td>{faq.sort_order}</td>
                   <td>
                     <span className="status-badge role-blue">
-                      {CATEGORY_LABELS[faq.category] || faq.category}
+                      {getCategoryLabel(faq.category)}
                     </span>
                   </td>
                   <td style={{ fontWeight: 600, color: 'var(--text)' }}>{faq.question}</td>
@@ -354,61 +391,136 @@ function FaqsTab() {
         </div>
       )}
 
-      {/* ── Add / Edit Modal ──────────────────────────────────── */}
+      {/* ── Add / Edit Modal (SIMPLIFIED) ──────────────────────────────────── */}
       {(modal === 'add' || modal === 'edit') && (
         <div className="modal-overlay" onClick={() => setModal(null)}>
-          <div className="modal-card" style={{ maxWidth: '700px' }} onClick={e => e.stopPropagation()}>
+          <div className="modal-card" style={{ maxWidth: '650px', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+            {/* Fixed Header */}
             <div className="modal-header">
               <h2>{modal === 'add' ? 'Add New FAQ' : 'Edit FAQ'}</h2>
               <button type="button" className="modal-close" onClick={() => setModal(null)}>✕</button>
             </div>
-            <div className="modal-body">
-              <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-                <div className="form-group" style={{ gridColumn: '1/-1' }}>
+
+            {/* Scrollable Body */}
+            <div className="modal-body" style={{ overflowY: 'auto', flex: 1 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                {/* Question */}
+                <div className="form-group">
                   <label className="form-label">Question</label>
+                  <p className="form-hint" style={{ marginBottom: '0.5rem' }}>What will students ask?</p>
                   <input
                     className="form-input"
+                    placeholder="e.g. How do I book an appointment?"
                     value={form.question}
                     onChange={e => setForm(f => ({ ...f, question: e.target.value }))}
+                    style={{ minHeight: '44px' }}
                   />
                 </div>
-                <div className="form-group" style={{ gridColumn: '1/-1' }}>
+
+                {/* Answer */}
+                <div className="form-group">
                   <label className="form-label">Answer</label>
+                  <p className="form-hint" style={{ marginBottom: '0.5rem' }}>What should the chatbot reply?</p>
                   <textarea
                     className="form-input"
+                    placeholder="Type the chatbot's response here..."
                     rows={6}
                     value={form.answer}
                     onChange={e => setForm(f => ({ ...f, answer: e.target.value }))}
-                    style={{ resize: 'vertical' }}
+                    style={{ resize: 'vertical', minHeight: '120px' }}
                   />
-                  {placeholders.length > 0 && (
-                    <div style={{ marginTop: '0.5rem' }}>
-                      <p className="form-hint" style={{ marginBottom: '0.35rem' }}>
-                        Placeholders you can type in the answer (replaced with the current Clinic Info / Staff Schedules when the chatbot replies):
-                      </p>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.25rem 1rem' }}>
-                        {placeholders.map(p => (
-                          <div key={p.token} style={{ fontSize: '0.78rem', color: 'var(--text-sub)', lineHeight: 1.45 }}>
-                            <code style={{ fontWeight: 600, color: 'var(--accent)' }}>{p.token}</code>
-                            {' — '}{p.description}
-                          </div>
-                        ))}
-                      </div>
+
+                  {/* Insert Clinic Info Button & Dropdown */}
+                  <div style={{ marginTop: '0.75rem', position: 'relative' }}>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      style={{ fontSize: '0.85rem', padding: '0.4rem 0.8rem' }}
+                      onClick={() => {
+                        const dropdown = document.getElementById('clinic-info-dropdown')
+                        if (dropdown) {
+                          dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none'
+                        }
+                      }}
+                    >
+                      + Insert clinic info
+                    </button>
+
+                    {/* Clinic Info Dropdown Menu */}
+                    <div
+                      id="clinic-info-dropdown"
+                      style={{
+                        marginTop: '0.5rem',
+                        display: 'none',
+                        background: '#ffffff',
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius-sm)',
+                        boxShadow: 'var(--shadow-sm)',
+                        position: 'relative',
+                        zIndex: 10,
+                      }}
+                    >
+                      {[
+                        { label: 'Clinic hours', value: '{clinic_hours}' },
+                        { label: 'Clinic days', value: '{clinic_days}' },
+                        { label: 'Clinic location', value: '{clinic_location}' },
+                        { label: 'Hotline', value: '{clinic_hotline}' },
+                        { label: 'Clinic email', value: '{clinic_email}' },
+                        { label: 'Nurse schedule', value: '{nurse_schedule}' },
+                        { label: 'Dentist schedule', value: '{dentist_schedule}' },
+                      ].map((item, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '0.6rem 0.85rem',
+                            fontSize: '0.82rem',
+                            background: 'none',
+                            border: idx < 6 ? '0 0 1px 0 solid var(--border)' : 'none',
+                            borderBottom: idx < 6 ? '1px solid var(--border)' : 'none',
+                            color: 'var(--text)',
+                            cursor: 'pointer',
+                            transition: 'background 0.15s',
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-crust)'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                          onClick={() => {
+                            const textarea = document.querySelector('.modal-body textarea')
+                            if (textarea) {
+                              const start = textarea.selectionStart
+                              const end = textarea.selectionEnd
+                              const newValue = form.answer.substring(0, start) + item.value + form.answer.substring(end)
+                              setForm(f => ({ ...f, answer: newValue }))
+                              document.getElementById('clinic-info-dropdown').style.display = 'none'
+                              setTimeout(() => {
+                                textarea.focus()
+                                textarea.setSelectionRange(start + item.value.length, start + item.value.length)
+                              }, 0)
+                            }
+                          }}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
                     </div>
-                  )}
+                  </div>
                 </div>
+
+                {/* Category */}
                 <div className="form-group">
                   <label className="form-label">Category</label>
                   <Dropdown
                     value={form.category || ''}
                     onChange={v => setForm(f => ({ ...f, category: v }))}
-                    options={[
-                      ...allCategories.map(c => ({ value: c, label: CATEGORY_LABELS[c] || c })),
-                      { value: 'custom', label: 'Custom' },
-                    ]}
+                    options={allCategories.map(c => ({ value: c, label: getCategoryLabel(c) }))}
                     placeholder="Select category"
                   />
                 </div>
+
+                {/* Sort Order */}
                 <div className="form-group">
                   <label className="form-label">Sort Order</label>
                   <input
@@ -417,50 +529,71 @@ function FaqsTab() {
                     min={0}
                     value={form.sort_order}
                     onChange={e => setForm(f => ({ ...f, sort_order: parseInt(e.target.value, 10) || 0 }))}
+                    style={{ minHeight: '44px' }}
                   />
+                  <p className="form-hint" style={{ marginTop: '0.35rem' }}>Lower numbers appear first in the list.</p>
                 </div>
-                <div className="form-group" style={{ gridColumn: '1/-1' }}>
+
+                {/* Keywords */}
+                <div className="form-group">
                   <label className="form-label">Keywords</label>
                   <input
                     className="form-input"
+                    placeholder="e.g. book, schedule, appointment (comma-separated)"
                     value={form.keywords}
                     onChange={e => setForm(f => ({ ...f, keywords: e.target.value }))}
+                    style={{ minHeight: '44px' }}
                   />
-                  <p className="form-hint">Comma-separated terms for rule-based chatbot intent matching.</p>
+                  <p className="form-hint" style={{ marginTop: '0.35rem' }}>Helps the chatbot find this FAQ when students ask similar questions.</p>
                 </div>
-                <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                  <label className="form-label">Student Help Page</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginTop: '0.4rem' }}>
+
+                {/* Show on Student Help */}
+                <div className="form-group">
+                  <label className="form-label">Show on Student Help</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginTop: '0.5rem' }}>
                     <button
                       type="button"
                       className={`toggle-switch ${form.show_on_help !== false ? 'on' : 'off'}`}
                       onClick={() => setForm(f => ({ ...f, show_on_help: f.show_on_help === false }))}
+                      style={{ 
+                        minWidth: '44px',
+                        minHeight: '24px',
+                        width: '44px',
+                        height: '24px',
+                      }}
                     >
                       <span className="toggle-knob" />
                     </button>
                     <span style={{ fontSize: '0.85rem', color: 'var(--text)' }}>
-                      {form.show_on_help !== false ? 'Shown on Student Help FAQ accordion' : 'Hidden from Student Help FAQ accordion'}
+                      {form.show_on_help !== false ? 'Shown' : 'Hidden'}
                     </span>
                   </div>
                 </div>
+
+                {/* Status */}
                 <div className="form-group">
                   <label className="form-label">Status</label>
                   <div style={{ display: 'flex', gap: '1.25rem', marginTop: '0.5rem' }}>
-                    {[true, false].map(v => (
-                      <label key={String(v)} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}>
+                    {[
+                      { value: true, label: 'Active' },
+                      { value: false, label: 'Inactive' }
+                    ].map(option => (
+                      <label key={String(option.value)} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}>
                         <input
                           type="radio"
                           name="is_active"
-                          checked={form.is_active === v}
-                          onChange={() => setForm(f => ({ ...f, is_active: v }))}
+                          checked={form.is_active === option.value}
+                          onChange={() => setForm(f => ({ ...f, is_active: option.value }))}
                         />
-                        <span>{v ? 'Active' : 'Inactive'}</span>
+                        <span>{option.label}</span>
                       </label>
                     ))}
                   </div>
                 </div>
               </div>
             </div>
+
+            {/* Fixed Footer */}
             <div className="modal-footer">
               <button type="button" className="btn-ghost" onClick={() => setModal(null)}>Cancel</button>
               <button type="button" className="btn-primary" onClick={handleSave} disabled={saving}>
@@ -493,7 +626,7 @@ function FaqsTab() {
               <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                 <div>
                   <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>CATEGORY </span>
-                  <span className="status-badge role-blue">{CATEGORY_LABELS[selected.category] || selected.category}</span>
+                  <span className="status-badge role-blue">{getCategoryLabel(selected.category)}</span>
                 </div>
                 <div>
                   <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>KEYWORDS </span>
@@ -524,7 +657,313 @@ function FaqsTab() {
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   TAB 2: Chat Statistics
+   TAB 2: Categories
+══════════════════════════════════════════════════════════════════ */
+
+function CategoriesTab() {
+  const [categories, setCategories] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [modal, setModal] = useState(null) // 'add' | 'edit'
+  const [selected, setSelected] = useState(null)
+  const [form, setForm] = useState({ name: '', sort_order: 0, is_active: true })
+  const [saving, setSaving] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState({ open: false, category: null, loading: false, error: null })
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const { data } = await chatbotApi.listCategories()
+      setCategories(data?.categories || [])
+    } catch {
+      toast.error('Failed to load categories.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [])
+
+  const openAdd = () => {
+    setForm({ name: '', sort_order: 0, is_active: true })
+    setModal('add')
+  }
+
+  const openEdit = (cat) => {
+    setSelected(cat)
+    setForm({
+      name: cat.name,
+      sort_order: cat.sort_order,
+      is_active: cat.is_active,
+    })
+    setModal('edit')
+  }
+
+  const handleSave = async () => {
+    if (!form.name.trim()) {
+      toast.error('Category name is required.')
+      return
+    }
+    setSaving(true)
+    try {
+      if (modal === 'add') {
+        await chatbotApi.createCategory(form)
+        toast.success('Category added successfully.')
+      } else {
+        await chatbotApi.updateCategory(selected.id, form)
+        toast.success('Category updated successfully.')
+      }
+      setModal(null)
+      await load()
+    } catch (err) {
+      const data = err?.response?.data
+      toast.error(data?.message || 'Failed to save category.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleToggle = async (cat) => {
+    try {
+      await chatbotApi.toggleCategory(cat.id)
+      setCategories(prev => prev.map(c => c.id === cat.id ? { ...c, is_active: !c.is_active } : c))
+      toast.success(`Category ${cat.is_active ? 'deactivated' : 'activated'}.`)
+    } catch {
+      toast.error('Failed to update category status.')
+    }
+  }
+
+  const handleDelete = (cat) => {
+    setDeleteConfirm({ open: true, category: cat, loading: false, error: null })
+  }
+
+  const doDeleteCategory = async () => {
+    const cat = deleteConfirm.category
+    if (!cat) return
+    setDeleteConfirm(prev => ({ ...prev, loading: true, error: null }))
+    try {
+      await chatbotApi.deleteCategory(cat.id)
+      setCategories(prev => prev.filter(c => c.id !== cat.id))
+      toast.success('Category deleted successfully.')
+      setDeleteConfirm({ open: false, category: null, loading: false, error: null })
+    } catch (err) {
+      const data = err?.response?.data
+      const errorMsg = data?.message || 'Failed to delete category.'
+      setDeleteConfirm(prev => ({ ...prev, loading: false, error: errorMsg }))
+    }
+  }
+
+  return (
+    <div style={{ width: '100%', paddingBottom: '2.5rem' }}>
+      {/* ── Summary Cards ─────────────────────────────────────── */}
+      <div className="stats-grid" style={{ marginBottom: '1.5rem', width: '100%' }}>
+        {[
+          { label: 'Total Categories', value: categories.length },
+          { label: 'Active', value: categories.filter(c => c.is_active).length },
+        ].map(s => (
+          <div key={s.label} className="stat-card">
+            <div className="stat-info">
+              <span className="stat-value">{s.value}</span>
+              <span className="stat-label">{s.label}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Toolbar ───────────────────────────────────────────── */}
+      <div className="page-toolbar" style={{ width: '100%', marginBottom: '1.25rem', justifyContent: 'flex-end' }}>
+        <button type="button" className="btn-primary" onClick={openAdd}>Add Category</button>
+      </div>
+
+      {/* ── Table ─────────────────────────────────────────────── */}
+      {loading ? (
+        <div className="table-loading"><span className="loader-ring" /></div>
+      ) : categories.length === 0 ? (
+        <div className="empty-state"><p>No categories found. Add one to get started.</p></div>
+      ) : (
+        <div className="data-table-wrap" style={{ width: '100%' }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th style={{ width: '60px' }}>Order</th>
+                <th>Name</th>
+                <th style={{ width: '100px' }}>FAQ Count</th>
+                <th>Status</th>
+                <th style={{ width: '180px' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {categories.map(cat => (
+                <tr key={cat.id}>
+                  <td>{cat.sort_order}</td>
+                  <td style={{ fontWeight: 600, color: 'var(--text)' }}>
+                    {ucwords(cat.name.replace(/_/g, ' '))}
+                  </td>
+                  <td>{cat.faq_count || 0}</td>
+                  <td>
+                    <span className={`status-badge ${cat.is_active ? 'confirmed' : 'cancelled'}`}>
+                      {cat.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                      <button type="button" className="btn-secondary" onClick={() => openEdit(cat)}>Edit</button>
+                      <button
+                        type="button"
+                        className={`btn-secondary ${cat.is_active ? '' : 'success'}`}
+                        onClick={() => handleToggle(cat)}
+                      >
+                        {cat.is_active ? 'Disable' : 'Enable'}
+                      </button>
+                      <button type="button" className="btn-danger" onClick={() => handleDelete(cat)}>Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ── Add / Edit Modal ──────────────────────────────────── */}
+      {(modal === 'add' || modal === 'edit') && (
+        <div className="modal-overlay" onClick={() => setModal(null)}>
+          <div className="modal-card" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{modal === 'add' ? 'Add Category' : 'Edit Category'}</h2>
+              <button type="button" className="modal-close" onClick={() => setModal(null)}>✕</button>
+            </div>
+
+            <div className="modal-body">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                {/* Name */}
+                <div className="form-group">
+                  <label className="form-label">Name *</label>
+                  <input
+                    className="form-input"
+                    placeholder="e.g. appointments, services, hours"
+                    value={form.name}
+                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                    style={{ minHeight: '44px' }}
+                  />
+                  <p className="form-hint" style={{ marginTop: '0.35rem' }}>
+                    Shows in the chatbot once it has at least one active FAQ.
+                  </p>
+                </div>
+
+                {/* Sort Order */}
+                <div className="form-group">
+                  <label className="form-label">Sort Order</label>
+                  <input
+                    className="form-input"
+                    type="number"
+                    min={0}
+                    value={form.sort_order}
+                    onChange={e => setForm(f => ({ ...f, sort_order: parseInt(e.target.value, 10) || 0 }))}
+                    style={{ minHeight: '44px' }}
+                  />
+                  <p className="form-hint" style={{ marginTop: '0.35rem' }}>
+                    Lower numbers appear first in the chatbot menu.
+                  </p>
+                </div>
+
+                {/* Active */}
+                <div className="form-group">
+                  <label className="form-label">Active</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginTop: '0.5rem' }}>
+                    <button
+                      type="button"
+                      className={`toggle-switch ${form.is_active ? 'on' : 'off'}`}
+                      onClick={() => setForm(f => ({ ...f, is_active: !f.is_active }))}
+                      style={{
+                        minWidth: '44px',
+                        minHeight: '24px',
+                        width: '44px',
+                        height: '24px',
+                      }}
+                    >
+                      <span className="toggle-knob" />
+                    </button>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text)' }}>
+                      {form.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button type="button" className="btn-ghost" onClick={() => setModal(null)}>Cancel</button>
+              <button type="button" className="btn-primary" onClick={handleSave} disabled={saving}>
+                {saving ? 'Saving…' : modal === 'add' ? 'Add Category' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Category Modal */}
+      {deleteConfirm.open && deleteConfirm.category && (
+        <div className="modal-overlay" onClick={() => !deleteConfirm.loading && setDeleteConfirm({ open: false, category: null, loading: false, error: null })}>
+          <div className="modal-card" style={{ maxWidth: '450px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Delete Category</h2>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setDeleteConfirm({ open: false, category: null, loading: false, error: null })}
+                disabled={deleteConfirm.loading}
+              >✕</button>
+            </div>
+
+            <div className="modal-body">
+              <p>Delete category <strong>{ucwords(deleteConfirm.category.name.replace(/_/g, ' '))}</strong>?</p>
+              {deleteConfirm.error && (
+                <div style={{
+                  marginTop: '1rem',
+                  padding: '0.75rem',
+                  background: 'rgba(239,68,68,0.08)',
+                  border: '1px solid rgba(239,68,68,0.2)',
+                  borderRadius: 'var(--radius-sm)',
+                  color: 'var(--red)',
+                  fontSize: '0.85rem',
+                }}>
+                  {deleteConfirm.error}
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => setDeleteConfirm({ open: false, category: null, loading: false, error: null })}
+                disabled={deleteConfirm.loading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={doDeleteCategory}
+                disabled={deleteConfirm.loading}
+              >
+                {deleteConfirm.loading ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Helper to capitalize words
+function ucwords(str) {
+  return str.replace(/\b\w/g, l => l.toUpperCase())
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   TAB 3: Chat Statistics
 ══════════════════════════════════════════════════════════════════ */
 
 const PERIOD_OPTIONS = [

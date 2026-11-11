@@ -6,13 +6,14 @@ import { reportsApi } from '../../api/reports'
 import {
   BarChart,
   Bar,
+  Cell,
+  CartesianGrid,
   XAxis,
   YAxis,
   Tooltip,
   ResponsiveContainer,
   PieChart,
   Pie,
-  Cell,
   Legend,
 } from 'recharts'
 import { formatAppointmentDate, formatAppointmentTime } from '../../utils/dateUtils'
@@ -81,20 +82,12 @@ const STATUS_CLS = {
   pending:   'role-gold',
 }
 
-const BLUE_TINTS = [
-  '#2563EB',
-  '#3B82F6',
-  '#60A5FA',
-  '#93C5FD',
-  '#1D4ED8',
-  '#CBD5E1',
-]
-
 const PIE_COLORS = {
   completed: 'var(--green)',
   cancelled: 'var(--red)',
   confirmed: 'var(--blue)',
   pending:   'var(--amber)',
+  no_show:   '#64748B',
 }
 
 function TruncCell({ text, maxLen = 45 }) {
@@ -156,7 +149,6 @@ export default function ReportsPage() {
   const [invByCategory,   setInvByCategory]   = useState([])
 
   // Tab 4: Frequent Symptoms
-  const [symptomCategories,    setSymptomCategories]    = useState([])
   const [allSymptomCategories, setAllSymptomCategories] = useState([])
   const [symptomTotalLogs,     setSymptomTotalLogs]     = useState(0)
   const [symptomConsultations, setSymptomConsultations] = useState([])
@@ -226,7 +218,6 @@ export default function ReportsPage() {
         setInvByCategory(data.by_category || [])
       } else if (tab === 'symptoms') {
         const { data } = await reportsApi.symptomsSummary(params)
-        setSymptomCategories(data.categories || [])
         setAllSymptomCategories(data.all_categories || [])
         setSymptomTotalLogs(data.total_logs || 0)
         setSymptomConsultations(data.consultations || [])
@@ -296,7 +287,7 @@ export default function ReportsPage() {
       consultations, consSummary, consByDate, consByService,
       invSummary, invItems, lowStockItems, expiringBatches,
       invTransactions, invUsageByDate, invByCategory,
-      symptomCategories, allSymptomCategories, symptomTotalLogs, symptomConsultations,
+      allSymptomCategories, symptomTotalLogs, symptomConsultations,
       chatData,
     },
     user,
@@ -313,9 +304,34 @@ export default function ReportsPage() {
       { name: 'Completed', value: appSummary.completed || 0, fill: PIE_COLORS.completed },
       { name: 'Confirmed', value: appSummary.confirmed || 0, fill: PIE_COLORS.confirmed },
       { name: 'Pending',   value: appSummary.pending || 0,   fill: PIE_COLORS.pending },
+      { name: 'No Show',   value: appSummary.no_show || 0,   fill: PIE_COLORS.no_show },
       { name: 'Cancelled', value: appSummary.cancelled || 0, fill: PIE_COLORS.cancelled },
     ].filter(d => d.value > 0)
   }, [appSummary])
+
+  // "Case Frequency by Symptom": merge Other/Others, top 10 + one "Others" bar
+  const symptomBarRows = useMemo(() => {
+    const merged = new Map()
+    let total = 0
+    for (const d of allSymptomCategories) {
+      if (!d.count) continue
+      const key = d.name === 'Other' || d.name === 'Others' ? 'Others' : d.name
+      merged.set(key, (merged.get(key) || 0) + d.count)
+      total += d.count
+    }
+    const sorted = [...merged.entries()]
+      .map(([name, count]) => ({ name, count, percentage: total > 0 ? +((count / total) * 100).toFixed(1) : 0 }))
+      .sort((a, b) => b.count - a.count)
+    const top = sorted.slice(0, 10)
+    const restCount = sorted.slice(10).reduce((sum, r) => sum + r.count, 0)
+    const topOthers = top.find(r => r.name === 'Others')
+    const rows = top.filter(r => r.name !== 'Others')
+    const othersCount = (topOthers?.count || 0) + restCount
+    if (othersCount > 0) {
+      rows.push({ name: 'Others', count: othersCount, percentage: total > 0 ? +((othersCount / total) * 100).toFixed(1) : 0 })
+    }
+    return rows
+  }, [allSymptomCategories])
 
   return (
     <DashboardLayout
@@ -452,7 +468,7 @@ export default function ReportsPage() {
                     value={status}
                     onChange={setStatus}
                     options={[
-                      { value: 'all', label: 'All Statuses' },
+                      { value: 'all', label: 'All Status' },
                       { value: 'completed', label: 'Completed' },
                       { value: 'confirmed', label: 'Confirmed' },
                       { value: 'pending', label: 'Pending' },
@@ -538,6 +554,9 @@ export default function ReportsPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             
             {/* Stat Cards */}
+            <p style={{ margin: '-0.7rem 0 -0.7rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              Showing data for <strong>{dateFrom}</strong> – <strong>{dateTo}</strong>
+            </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
               <div className="stat-card">
                 <div className="stat-icon-badge" style={{ color: 'var(--accent)', background: 'var(--accent-light)' }}>
@@ -571,7 +590,7 @@ export default function ReportsPage() {
                   </svg>
                 </div>
                 <div className="stat-info">
-                  <span className="stat-value">{loading ? EMPTY : (appSummary.confirmed ?? 0)}</span>
+                  <span className="stat-value">{loading ? EMPTY : (appSummary.confirmed_upcoming ?? appSummary.confirmed ?? 0)}</span>
                   <span className="stat-label">Confirmed Upcoming</span>
                 </div>
               </div>
@@ -748,6 +767,9 @@ export default function ReportsPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             
             {/* Stat Cards */}
+            <p style={{ margin: '-0.7rem 0 -0.7rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              Showing data for <strong>{dateFrom}</strong> – <strong>{dateTo}</strong>
+            </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
               <div className="stat-card">
                 <div className="stat-icon-badge" style={{ color: 'var(--accent)', background: 'var(--accent-light)' }}>
@@ -914,6 +936,9 @@ export default function ReportsPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             
             {/* Stat Cards */}
+            <p style={{ margin: '-0.7rem 0 -0.7rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              Showing data for <strong>{dateFrom}</strong> – <strong>{dateTo}</strong>
+            </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
               <div className="stat-card">
                 <div className="stat-icon-badge" style={{ color: 'var(--accent)', background: 'var(--accent-light)' }}>
@@ -1270,6 +1295,9 @@ export default function ReportsPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             
             {/* Stat Cards */}
+            <p style={{ margin: '-0.7rem 0 -0.7rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              Showing data for <strong>{dateFrom}</strong> – <strong>{dateTo}</strong>
+            </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
               <div className="stat-card">
                 <div className="stat-icon-badge" style={{ color: 'var(--accent)', background: 'var(--accent-light)' }}>
@@ -1319,77 +1347,6 @@ export default function ReportsPage() {
 
             {/* Charts Row */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
-              {/* Pie Distribution with Exact Count and Percentage */}
-              <div className="data-table-wrap" style={{ padding: '1.25rem' }}>
-                <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)' }}>
-                  Symptom Distribution (Top Categories)
-                </h3>
-                {loading ? (
-                  <div className="table-loading" style={{ height: '240px' }}><div className="loader-ring" /></div>
-                ) : symptomCategories.length === 0 ? (
-                  <div style={{ height: '240px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                    No symptoms recorded in this period.
-                  </div>
-                ) : (
-                  <div style={{ height: '240px', width: '100%' }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={symptomCategories.filter(d => d.count > 0)}
-                          dataKey="count"
-                          nameKey="name"
-                          cx="50%"
-                          cy="45%"
-                          innerRadius={55}
-                          outerRadius={80}
-                          paddingAngle={3}
-                        >
-                          {symptomCategories.map((entry, index) => {
-                            const color = entry.name === 'Others'
-                              ? '#CBD5E1'
-                              : BLUE_TINTS[index % (BLUE_TINTS.length - 1)]
-                            return <Cell key={`cell-${index}`} fill={color} />
-                          })}
-                        </Pie>
-                        <Tooltip
-                          content={({ active, payload }) => {
-                            if (active && payload && payload.length) {
-                              const item = payload[0]
-                              const count = item.payload?.count ?? item.value ?? 0
-                              const pct = item.payload?.percentage ?? 0
-                              return (
-                                <div style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: 6, padding: '6px 12px', fontSize: '0.78rem', boxShadow: '0 4px 12px rgba(0,0,0,0.06)' }}>
-                                  <div style={{ fontWeight: 600, color: '#0F172A' }}>{item.name}</div>
-                                  <div style={{ color: '#2563EB', fontWeight: 700, marginTop: 2 }}>
-                                    {count} record{count === 1 ? '' : 's'} ({pct}%)
-                                  </div>
-                                </div>
-                              )
-                            }
-                            return null
-                          }}
-                        />
-                        <Legend
-                          verticalAlign="bottom"
-                          height={42}
-                          iconSize={8}
-                          iconType="circle"
-                          formatter={(val, entry) => {
-                            const count = entry.payload?.count ?? entry.payload?.value ?? 0
-                            const pct = entry.payload?.percentage ?? 0
-                            return (
-                              <span style={{ fontSize: '0.74rem', color: '#334155', fontWeight: 500, marginRight: 8 }}>
-                                {val} <strong style={{ color: '#0F172A' }}>({count} · {pct}%)</strong>
-                              </span>
-                            )
-                          }}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </div>
-
               {/* Volume Bar Chart */}
               <div className="data-table-wrap" style={{ padding: '1.25rem' }}>
                 <h3 style={{ margin: '0 0 1rem 0', fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)' }}>
@@ -1397,18 +1354,38 @@ export default function ReportsPage() {
                 </h3>
                 {loading ? (
                   <div className="table-loading" style={{ height: '240px' }}><div className="loader-ring" /></div>
-                ) : allSymptomCategories.length === 0 ? (
+                ) : symptomBarRows.length === 0 ? (
                   <div style={{ height: '240px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                     No case volume data available.
                   </div>
                 ) : (
                   <div style={{ height: '240px', width: '100%' }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={allSymptomCategories} layout="vertical" margin={{ top: 5, right: 20, left: 35, bottom: 5 }}>
+                      <BarChart data={symptomBarRows} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} />
                         <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} allowDecimals={false} />
-                        <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={95} />
-                        <Tooltip cursor={{ fill: 'rgba(0,0,0,0.03)' }} contentStyle={{ borderRadius: '6px', border: '1px solid var(--border)' }} />
-                        <Bar dataKey="count" fill="var(--accent)" radius={[0, 4, 4, 0]} name="Cases" />
+                        <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={120} />
+                        <Tooltip
+                          cursor={{ fill: 'rgba(0,0,0,0.03)' }}
+                          contentStyle={{ borderRadius: '6px', border: '1px solid var(--border)' }}
+                          content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null
+                            const item = payload[0].payload
+                            return (
+                              <div style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: 6, padding: '6px 12px', fontSize: '0.78rem', boxShadow: '0 4px 12px rgba(0,0,0,0.06)' }}>
+                                <div style={{ fontWeight: 600, color: '#0F172A' }}>{item.name}</div>
+                                <div style={{ color: '#2563EB', fontWeight: 700, marginTop: 2 }}>
+                                  {item.count} record{item.count === 1 ? '' : 's'} ({item.percentage}%)
+                                </div>
+                              </div>
+                            )
+                          }}
+                        />
+                        <Bar dataKey="count" radius={[0, 4, 4, 0]} name="Cases">
+                          {symptomBarRows.map((row) => (
+                            <Cell key={row.name} fill={row.name === 'Others' ? '#CBD5E1' : 'var(--accent)'} />
+                          ))}
+                        </Bar>
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -1529,6 +1506,9 @@ export default function ReportsPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
             {/* Stat Cards Row */}
+            <p style={{ margin: '-0.7rem 0 -0.7rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              Showing data for <strong>{dateFrom}</strong> – <strong>{dateTo}</strong>
+            </p>
             <div
               style={{
                 display: 'grid',

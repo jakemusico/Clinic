@@ -20,6 +20,7 @@ class ClinicRecord extends Model
         'vitals',
         'chief_complaint',
         'complaint_category',
+        'complaint_category_id',
         'symptoms',
         'assessment',
         'recommendation',
@@ -42,6 +43,11 @@ class ClinicRecord extends Model
     public function appointment(): BelongsTo
     {
         return $this->belongsTo(Appointment::class);
+    }
+
+    public function complaintCategory(): BelongsTo
+    {
+        return $this->belongsTo(ComplaintCategory::class, 'complaint_category_id');
     }
 
     public function createdBy(): BelongsTo

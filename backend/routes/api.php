@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ChatbotController;
 use App\Http\Controllers\Api\CountersController;
 use App\Http\Controllers\Api\ChatbotFaqController;
+use App\Http\Controllers\Api\ChatbotCategoryController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\ReportController;
@@ -23,6 +24,7 @@ use App\Http\Controllers\CalendarEventController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\ChatController;
+use App\Http\Controllers\Api\ComplaintCategoryController;
 
 /*
 |--------------------------------------------------------------------------
@@ -140,6 +142,9 @@ Route::middleware(['auth:sanctum', 'active', 'password.changed'])->group(functio
     Route::get('appointments/available-dates', [ClinicStaffScheduleController::class, 'availableDates']);
     Route::get('appointments/slots',           [ClinicStaffScheduleController::class, 'slots']);
 
+    // ── Complaint Categories — read by all authenticated users (consultation forms), managed by admin ──
+    Route::get('complaint-categories', [ComplaintCategoryController::class, 'index']);
+
     // ── Chatbot — all authenticated users can chat & view FAQ list ──────
     Route::prefix('chatbot')->group(function () {
         Route::get('menu',                [ChatbotController::class,    'menu']);
@@ -148,13 +153,21 @@ Route::middleware(['auth:sanctum', 'active', 'password.changed'])->group(functio
         Route::get('faqs',                [ChatbotFaqController::class, 'index']);
         Route::get('faqs/{chatbotFaq}',   [ChatbotFaqController::class, 'show']);
 
-        // FAQ management — clinic_staff, dentist + admin
+        // Categories — read by all, manage by clinic_staff, dentist + admin
+        Route::get('categories', [ChatbotCategoryController::class, 'index']);
+
+        // FAQ & Category management — clinic_staff, dentist + admin
         Route::middleware('role:clinic_staff,dentist,admin')->group(function () {
             Route::post('faqs',                      [ChatbotFaqController::class, 'store']);
             Route::put('faqs/{chatbotFaq}',          [ChatbotFaqController::class, 'update']);
             Route::delete('faqs/{chatbotFaq}',       [ChatbotFaqController::class, 'destroy']);
             Route::patch('faqs/{chatbotFaq}/toggle', [ChatbotFaqController::class, 'toggle']);
             Route::patch('faqs/{chatbotFaq}/help',   [ChatbotFaqController::class, 'toggleHelp']);
+
+            Route::post('categories',                          [ChatbotCategoryController::class, 'store']);
+            Route::put('categories/{chatbotCategory}',         [ChatbotCategoryController::class, 'update']);
+            Route::delete('categories/{chatbotCategory}',      [ChatbotCategoryController::class, 'destroy']);
+            Route::patch('categories/{chatbotCategory}/toggle', [ChatbotCategoryController::class, 'toggle']);
         });
 
         // Chatbot Support Admin Statistics — admin only
@@ -232,6 +245,14 @@ Route::middleware(['auth:sanctum', 'active', 'password.changed'])->group(functio
         Route::post('sections', [SectionController::class, 'store']);
         Route::put('sections/{section}', [SectionController::class, 'update']);
         Route::delete('sections/{section}', [SectionController::class, 'destroy']);
+
+        // Complaint Categories
+        Route::prefix('complaint-categories')->group(function () {
+            Route::post('', [ComplaintCategoryController::class, 'store']);
+            Route::post('reorder', [ComplaintCategoryController::class, 'reorder']);
+            Route::put('{complaintCategory}', [ComplaintCategoryController::class, 'update']);
+            Route::patch('{complaintCategory}/toggle', [ComplaintCategoryController::class, 'toggle']);
+        });
     });
 
     // ── Dashboards ────────────────────────────────────────────────────────

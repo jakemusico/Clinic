@@ -57,6 +57,16 @@ export function AuthProvider({ children }) {
     } catch (_) {
       // Ignore — clear locally regardless
     } finally {
+      // Clear chatbot history for this user
+      const userId = user?.id
+      if (userId) {
+        try {
+          localStorage.removeItem(`chatbot_history_${userId}`)
+        } catch (_) {
+          // ignore
+        }
+      }
+      
       localStorage.removeItem('auth_token')
       localStorage.removeItem('auth_user')
       clearAllConsultationDrafts()   // unfinished consultation drafts contain patient details

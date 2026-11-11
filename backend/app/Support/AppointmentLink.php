@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Appointment;
+use Carbon\Carbon;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -56,6 +57,11 @@ final class AppointmentLink
 
         if ($requireOpen && ! in_array($appointment->status, ['pending', 'confirmed'], true)) {
             self::fail("That appointment is {$appointment->status} and cannot be linked to a new consultation.");
+        }
+
+        // A booking dated in the future has not happened yet: no consultation can be held for it.
+        if ($appointment->scheduled_at && Carbon::parse($appointment->scheduled_at)->toDateString() > Carbon::today()->toDateString()) {
+            self::fail('That appointment is scheduled in the future and cannot have a consultation yet.');
         }
 
         return $appointment;

@@ -698,3 +698,102 @@ input[type="date"].profile-input {
   color-scheme: light;
 }
 
+
+/* ── Bottom Edit / Save Action Row ───────────────────────────────────────
+   Mirrors the top buttons; sits at the bottom of the form after all fields.
+   Desktop: right-aligned row. Mobile: full-width side-by-side (or single).
+   ─────────────────────────────────────────────────────────────────────── */
+.profile-bottom-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  border-top: 1px solid var(--border, #E2E8F0);
+  margin-top: 24px;
+  padding-top: 20px;
+}
+
+.profile-bottom-btn {
+  font-size: 0.82rem;
+  padding: 0.45rem 1rem;
+  min-height: 38px;
+  border-radius: var(--radius-sm, 8px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all var(--transition, 0.2s ease);
+}
+
+@media (max-width: 767px) {
+  .profile-container,
+  .profile-container-staff {
+    padding-bottom: calc(var(--bottom-nav-height, 64px) + 90px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .profile-bottom-action-row {
+    display: flex !important;
+    gap: 10px !important;
+    margin-top: 20px !important;
+    padding-top: 16px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* In edit mode: Cancel + Save sit side by side, equal width */
+  .profile-bottom-action-row .btn-secondary.profile-bottom-btn,
+  .profile-bottom-action-row .btn-primary.profile-bottom-btn {
+    flex: 1 1 0% !important;
+    width: 100% !important;
+    min-height: 44px !important;
+    height: 44px !important;
+    font-size: 0.875rem !important;
+    justify-content: center !important;
+    border-radius: var(--radius-sm, 8px) !important;
+    box-sizing: border-box !important;
+  }
+
+  /* In view mode: single Edit Profile button is full width */
+  .profile-bottom-action-row:has(.btn-primary:only-child) .btn-primary.profile-bottom-btn,
+  .profile-bottom-action-row .btn-primary.profile-bottom-btn:only-child {
+    width: 100% !important;
+    flex: 1 1 100% !important;
+    min-height: 44px !important;
+    height: 44px !important;
+    font-size: 0.875rem !important;
+    justify-content: center !important;
+    border-radius: var(--radius-sm, 8px) !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Staff profile card footer mobile responsiveness */
+  .staff-card-footer {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+
+  .staff-footer-actions {
+    display: flex !important;
+    gap: 10px !important;
+    width: 100% !important;
+  }
+
+  .staff-footer-actions .btn-secondary,
+  .staff-footer-actions .btn-primary {
+    flex: 1 1 0% !important;
+    min-height: 44px !important;
+    height: 44px !important;
+    font-size: 0.875rem !important;
+    justify-content: center !important;
+    border-radius: var(--radius-sm, 8px) !important;
+  }
+
+  .staff-footer-actions:has(.btn-primary:only-child) .btn-primary,
+  .staff-footer-actions .btn-primary:only-child {
+    width: 100% !important;
+    flex: 1 1 100% !important;
+  }
+}

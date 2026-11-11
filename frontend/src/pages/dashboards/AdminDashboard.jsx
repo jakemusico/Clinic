@@ -12,7 +12,7 @@ import useLatestRequest, { isRequestCanceled } from '../../hooks/useLatestReques
 // The charts (recharts) and the calendar are the heaviest parts of the page: load them as
 // separate chunks so the stat cards and the table can appear first.
 const VisitTrendsChart = lazy(() => import('../../components/dashboard/VisitTrendsChart'))
-const FrequentSymptomsChart = lazy(() => import('../../components/dashboard/FrequentSymptomsChart'))
+const FrequentSymptomsChart = lazy(() => import('../../components/dashboard/FrequentSymptomsBarChart'))
 const CalendarWidget = lazy(() => import('../../components/CalendarWidget'))
 
 export default function AdminDashboard() {
@@ -25,6 +25,7 @@ export default function AdminDashboard() {
   const [period, setPeriod] = useState('monthly') // 'daily' | 'monthly' | 'yearly'
   const [month, setMonth] = useState(today.getMonth() + 1)
   const [year, setYear] = useState(today.getFullYear())
+  const [symptomType, setSymptomType] = useState('all') // 'all' | 'medical' | 'dental'
 
   const latest = useLatestRequest()
 
@@ -33,7 +34,7 @@ export default function AdminDashboard() {
     try {
       setLoading(true)
       setError('')
-      const res = await dashboardApi.admin({ period, month, year }, { signal: req.signal })
+      const res = await dashboardApi.admin({ period, month, year, ...(symptomType !== 'all' && { type: symptomType }) }, { signal: req.signal })
       if (!req.isCurrent()) return
       setData(res.data)
     } catch (err) {
@@ -43,7 +44,7 @@ export default function AdminDashboard() {
     } finally {
       if (req.isCurrent()) setLoading(false)
     }
-  }, [latest, period, month, year])
+  }, [latest, period, month, year, symptomType])
 
   useEffect(() => {
     fetchDashboardData()
@@ -96,12 +97,33 @@ export default function AdminDashboard() {
                   loading={loading}
                   period={period}
                 />
-                <FrequentSymptomsChart
-                  data={chartData.frequent_symptoms || []}
-                  categorized={chartData.categorized_consultations}
-                  total={chartData.total_consultations}
-                  loading={loading}
-                />
+                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                  <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end', marginBottom: '0.4rem' }}>
+                    {[['all', 'All'], ['medical', 'Medical'], ['dental', 'Dental']].map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setSymptomType(value)}
+                        style={{
+                          padding: '0.22rem 0.7rem',
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          borderRadius: 999,
+                          border: `1px solid ${symptomType === value ? 'var(--accent)' : 'var(--border)'}`,
+                          background: symptomType === value ? 'var(--accent)' : '#FFFFFF',
+                          color: symptomType === value ? '#FFFFFF' : 'var(--text-muted)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <FrequentSymptomsChart
+                    data={chartData.frequent_symptoms || []}
+                    loading={loading}
+                  />
+                </div>
               </div>
             </Suspense>
           </div>

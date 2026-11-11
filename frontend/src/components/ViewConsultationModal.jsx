@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { recordsApi } from '../api/records'
-import PrintableRecord from './PrintableRecord'
+import { ModalFooter } from './ModalFooter'
 import { toast } from 'react-hot-toast'
 import { EMPTY, serviceLabel } from '../utils/emptyValue'
 import { formatDateLong } from '../utils/dateUtils'
@@ -181,9 +181,6 @@ export function ViewConsultationModal({ record: recordProp, recordId, onClose, o
         <div className="modal-header" style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ fontSize: '1rem', margin: 0, fontWeight: 700 }}>Consultation Details</h2>
           <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
-            {record && (
-              <PrintableRecord record={record} buttonLabel="Print" buttonClass="btn-outline" />
-            )}
             {record && onEdit && (
               <button className="btn-primary" style={{ padding: '0.35rem 0.85rem', fontSize: '0.8rem' }} onClick={() => onEdit(record)}>
                 Edit
@@ -210,7 +207,15 @@ export function ViewConsultationModal({ record: recordProp, recordId, onClose, o
               <p>{error}</p>
             </div>
           ) : record ? (
-            <RecordDetail record={record} />
+            <>
+              <RecordDetail record={record} />
+              <ModalFooter
+                record={record}
+                patientUser={record.patient?.user}
+                isDental={false}
+                onClose={onClose}
+              />
+            </>
           ) : null}
         </div>
       </div>

@@ -1,46 +1,193 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import DashboardLayout from '../../components/DashboardLayout'
 import PrintableRecord from '../../components/PrintableRecord'
 import Pagination from '../../components/Pagination'
+import SearchToolbar from '../../components/SearchToolbar'
+import Avatar from '../../components/Avatar'
+import Dropdown from '../../components/Dropdown'
 import { recordsApi } from '../../api/records'
 import { dentalApi } from '../../api/dental'
 import { toast } from 'react-hot-toast'
-import { EMPTY } from '../../utils/emptyValue'
-import { formatDateLong as formatDate } from '../../utils/dateUtils'
+import { EMPTY, serviceLabel } from '../../utils/emptyValue'
+import { formatDateLong as formatDate, toDateKey } from '../../utils/dateUtils'
+import { buildRoleOptions, filterPatientsByRole } from '../../utils/roleHelper'
+
+const byNewestVisit = (a, b) => (toDateKey(b.consultation_date) || '').localeCompare(toDateKey(a.consultation_date) || '')
+
+function ViewPatientProfileModal({ patient, onClose }) {
+  const navigate = useNavigate()
+  const user = patient.user || patient
+  const sortedConsultations = [...(patient.consultations || [])].sort(byNewestVisit)
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-card" style={{ maxWidth: '720px' }}>
+        <div className="modal-header">
+          <h2>Patient Dental Profile</h2>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+
+        <div className="modal-body read-only-record">
+          {/* Patient Basic Info */}
+          <div className="detail-section">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <h3 style={{ color: 'var(--accent)', fontWeight: 700, margin: 0 }}>Patient Information</h3>
+              <button
+                onClick={() => {
+                  onClose()
+                  navigate('/dental/chart', { state: { patientId: patient.id } })
+                }}
+                className="btn-secondary"
+              >
+                Open Dental Chart
+              </button>
+            </div>
+            <div className="detail-grid">
+              <div><strong>Name:</strong> {user.name || 'N/A'}</div>
+              <div><strong>Student / Employee ID:</strong> {user.student_id || 'N/A'}</div>
+              <div><strong>Email:</strong> {user.email || 'N/A'}</div>
+              <div><strong>Department:</strong> {user.department || 'N/A'}</div>
+              <div><strong>Contact Number:</strong> {user.contact_no || 'N/A'}</div>
+              <div><strong>Total Consultations:</strong> <span className="status-badge completed">{sortedConsultations.length}</span></div>
+            </div>
+          </div>
+
+          {/* Consultation History */}
+          <div className="detail-section">
+            <h3 style={{ color: 'var(--accent)', fontWeight: 700, marginBottom: '0.6rem' }}>
+              Dental Consultation History ({sortedConsultations.length})
+            </h3>
+
+            {sortedConsultations.length === 0 ? (
+              <div className="empty-state" style={{ padding: '1.5rem 1rem' }}>
+                <p>No past dental consultations recorded for this patient.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                {sortedConsultations.map(c => (
+                  <div
+                    key={c.id}
+                    style={{
+                      padding: '1rem',
+                      borderRadius: 'var(--radius-sm)',
+                      background: '#FFFFFF',
+                      border: '1px solid var(--border)',
+                      boxShadow: 'var(--shadow-xs)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <div>
+                        <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--accent)', marginRight: '0.5rem' }}>
+                          {c.service_name || 'Dental Service'}
+                        </span>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                          • {formatDate(c.consultation_date)}
+                        </span>
+                      </div>
+                      <PrintableRecord
+                        record={c}
+                        isDental={true}
+                        patientUser={user}
+                        buttonLabel="Print Record"
+                      />
+                    </div>
+
+                    {c.affected_teeth && c.affected_teeth.length > 0 && (
+                      <div style={{ fontSize: '0.8rem', marginBottom: '0.35rem' }}>
+                        <strong>Affected Teeth:</strong>{' '}
+                        <span className="status-badge pending" style={{ fontSize: '0.68rem' }}>
+                          #{c.affected_teeth.join(', #')}
+                        </span>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem 1rem', fontSize: '0.82rem', marginBottom: '0.5rem' }}>
+                      <div><strong>Reason for Visit:</strong> {c.reason_for_visit || EMPTY}</div>
+                      <div><strong>Diagnosis:</strong> <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{c.diagnosis || EMPTY}</span></div>
+                      <div><strong>Treatment:</strong> {c.treatment_performed || EMPTY}</div>
+                      <div><strong>Attending Dentist:</strong> {c.dentist?.name || 'Dental Staff'}</div>
+                    </div>
+
+                    {c.recommendations && (
+                      <div style={{ fontSize: '0.8rem', background: '#F8FAFC', padding: '0.45rem 0.65rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', marginTop: '0.35rem' }}>
+                        <strong>Recommendations:</strong> {c.recommendations}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
+            <button className="btn-primary" onClick={onClose}>Close Profile</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function DentalPatientRecordsPage() {
-  const navigate                    = useNavigate()
   const [loading, setLoading]       = useState(true)
   const [patients, setPatients]     = useState([])
   const [allConsultations, setAllConsultations] = useState([])
   const [search, setSearch]         = useState('')
-  const [rosterPage, setRosterPage] = useState(1)
-  const [rosterPageSize, setRosterPageSize] = useState(10)
+  const [roleFilter, setRoleFilter] = useState('all')
+  const [filterPopoverOpen, setFilterPopoverOpen] = useState(false)
+  const filterRef = useRef(null)
+  const [page, setPage]             = useState(1)
+  const [pageSize, setPageSize]     = useState(10)
   const [selectedPatient, setSelectedPatient] = useState(null)
-  const [patientConsultations, setPatientConsultations] = useState([])
-
-  const rosterTotalPages = Math.max(1, Math.ceil(patients.length / rosterPageSize))
-  const paginatedPatients = patients.slice((rosterPage - 1) * rosterPageSize, rosterPage * rosterPageSize)
 
   useEffect(() => {
     fetchData()
   }, [])
 
-  const fetchData = async (query = '') => {
+  const fetchData = async () => {
     try {
       setLoading(true)
       const [pRes, cRes] = await Promise.all([
-        recordsApi.patients({ search: query }),
+        recordsApi.patients(),
         dentalApi.listConsultations(),
       ])
-      const list = pRes.data.patients || []
-      setPatients(list)
-      setAllConsultations(cRes.data.consultations || [])
 
-      if (list.length > 0 && !selectedPatient) {
-        handleSelectPatient(list[0])
-      }
+      const patientsList = pRes.data.patients || []
+      const consultationsList = cRes.data.consultations || []
+
+      setAllConsultations(consultationsList)
+
+      // Build patient map with consultation counts
+      const patientMap = new Map()
+
+      patientsList.forEach(p => {
+        patientMap.set(p.id, {
+          id: p.id,
+          user: p.user || p,
+          consultations: []
+        })
+      })
+
+      consultationsList.forEach(c => {
+        const pId = c.patient_id || c.patient?.id
+        if (pId && patientMap.has(pId)) {
+          patientMap.get(pId).consultations.push(c)
+        } else if (c.patient) {
+          const existing = patientMap.get(c.patient.id)
+          if (existing) {
+            existing.consultations.push(c)
+          } else {
+            patientMap.set(c.patient.id, {
+              id: c.patient.id,
+              user: c.patient.user || c.patient,
+              consultations: [c]
+            })
+          }
+        }
+      })
+
+      setPatients(Array.from(patientMap.values()))
     } catch {
       toast.error('Failed to load dental patient directory.')
     } finally {
@@ -48,24 +195,43 @@ export default function DentalPatientRecordsPage() {
     }
   }
 
-  const handleSearch = (e) => {
-    e.preventDefault()
-    fetchData(search)
+  const roleOptions = useMemo(() => {
+    return [{ value: 'all', label: 'All Roles' }, ...buildRoleOptions(patients)]
+  }, [patients])
+
+  const activeFilterCount = roleFilter !== 'all' ? 1 : 0
+
+  const resetFilters = () => {
+    setRoleFilter('all')
   }
 
-  const handleSelectPatient = async (p) => {
-    setSelectedPatient(p)
-    try {
-      const res = await dentalApi.listConsultations({ patient_id: p.id })
-      setPatientConsultations(res.data.consultations || [])
-    } catch {
-      toast.error('Failed to load patient dental history.')
-    }
-  }
+  const filteredPatients = useMemo(() => {
+    let results = patients.filter(p => {
+      const u = p.user || {}
+      const nameStr = (u.name || '').toLowerCase()
+      const idStr = (u.student_id || '').toLowerCase()
+      const emailStr = (u.email || '').toLowerCase()
+      const deptStr = (u.department || '').toLowerCase()
+      const q = search.toLowerCase()
+      return nameStr.includes(q) || idStr.includes(q) || emailStr.includes(q) || deptStr.includes(q)
+    })
+
+    // Apply role filter
+    results = filterPatientsByRole(results, roleFilter)
+
+    return results
+  }, [patients, search, roleFilter])
+
+  useEffect(() => {
+    setPage(1)
+  }, [search, roleFilter])
+
+  const totalPages = Math.max(1, Math.ceil(filteredPatients.length / pageSize))
+  const paginatedPatients = filteredPatients.slice((page - 1) * pageSize, page * pageSize)
 
   const stats = [
     { value: patients.length, label: 'Registered Patients' },
-    { value: allConsultations.length, label: 'Total Dental Records' },
+    { value: allConsultations.length, label: 'Total Records' },
   ]
 
   return (
@@ -74,191 +240,149 @@ export default function DentalPatientRecordsPage() {
       subtitle="View student and staff dental profiles, consultation history, and dental charts."
       stats={stats}
     >
-      {/* Search Bar */}
-      <div className="page-toolbar" style={{ marginBottom: '1.25rem' }}>
-        <form onSubmit={handleSearch} style={{ display: 'flex', gap: '0.5rem', width: '100%', maxWidth: '500px' }}>
-          <input
-            type="text"
-            className="search-input"
-            placeholder="Search patient name, student ID, or email..."
+      <div className="page-fixed-list fixed-list-layout">
+        {/* Fixed Top Section */}
+        <div className="fixed-list-top">
+          <SearchToolbar
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ flex: 1 }}
+            onChange={setSearch}
+            placeholder="Search by patient name, student/staff ID, department, or email..."
+            filterContent={(
+              <div className="search-toolbar-filter-section">
+                <label className="search-toolbar-filter-label">Patient Role</label>
+                <Dropdown
+                  variant="filter"
+                  value={roleFilter}
+                  onChange={setRoleFilter}
+                  options={roleOptions}
+                />
+              </div>
+            )}
+            activeFilterCount={activeFilterCount}
+            filterOpen={filterPopoverOpen}
+            onFilterToggle={() => setFilterPopoverOpen(!filterPopoverOpen)}
+            filterRef={filterRef}
           />
-          <button type="submit" className="btn-primary">
-            Search
-          </button>
-        </form>
-      </div>
+          {activeFilterCount > 0 && (
+            <button
+              type="button"
+              className="search-toolbar-filter-reset"
+              style={{
+                marginTop: '0.75rem',
+                padding: '0.5rem',
+                width: '100%',
+              }}
+              onClick={resetFilters}
+            >
+              Reset filters
+            </button>
+          )}
+        </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: '1.25rem' }}>
-        
-        {/* Left: Patient Roster */}
-        <div className="data-table-wrap">
-          <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)' }}>
-            <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)' }}>
-              Patient Roster ({patients.length})
-            </span>
+        {loading ? (
+          <div className="table-loading"><span className="loader-ring" /></div>
+        ) : filteredPatients.length === 0 ? (
+          <div className="empty-state">
+            <p>{search || activeFilterCount > 0 ? 'No patients match your filters.' : 'No registered patients found.'}</p>
+            {(search || activeFilterCount > 0) && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setSearch('')
+                  resetFilters()
+                }}
+              >
+                Clear Filters
+              </button>
+            )}
           </div>
+        ) : (
+          <div className="fixed-list-body">
+            {/* Scrollable Table */}
+            <div className="fixed-list-scroll">
+              <div className="data-table-wrap">
+                <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Patient Name</th>
+                  <th>Student / Staff ID</th>
+                  <th>Department</th>
+                  <th>Total Consultations</th>
+                  <th>Last Visit Date</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedPatients.map(p => {
+                  const user = p.user || {}
+                  const total = p.consultations.length
 
-          {loading ? (
-            <div className="table-loading"><span className="loader-ring" /></div>
-          ) : patients.length === 0 ? (
-            <div className="empty-state">
-              <p>No patients found.</p>
-            </div>
-          ) : (
-            <>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {paginatedPatients.map((p) => {
-                  const isSelected = selectedPatient?.id === p.id
+                  let lastVisit = EMPTY
+                  if (p.consultations.length > 0) {
+                    const sorted = [...p.consultations].sort(byNewestVisit)
+                    lastVisit = formatDate(sorted[0].consultation_date)
+                  }
+
                   return (
-                    <div
-                      key={p.id}
-                      onClick={() => handleSelectPatient(p)}
-                      style={{
-                        padding: '0.85rem 1.25rem',
-                        borderBottom: '1px solid var(--border)',
-                        background: isSelected ? 'var(--sidebar-active)' : '#FFFFFF',
-                        borderLeft: isSelected ? '3px solid var(--accent)' : '3px solid transparent',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        transition: 'background var(--transition)',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: '0.875rem', color: isSelected ? 'var(--accent)' : 'var(--text)' }}>
-                          {p.name}
+                    <tr key={p.id}>
+                      <td className="td-name">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                          <Avatar src={user.avatar_url} name={user.name} size={30} />
+                          <div>
+                            <div>{user.name || 'Unknown Patient'}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{user.email || ''}</div>
+                          </div>
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
-                          ID: {p.student_id || 'N/A'} • {p.department || 'FSUU'}
-                        </div>
-                      </div>
-                      <span className="status-badge active" style={{ fontSize: '0.62rem' }}>
-                        {p.role}
-                      </span>
-                    </div>
+                      </td>
+                      <td>{user.student_id || 'N/A'}</td>
+                      <td>{user.department || 'N/A'}</td>
+                      <td>
+                        <span className={`status-badge ${total > 0 ? 'completed' : 'pending'}`}>
+                          {total} {total === 1 ? 'record' : 'records'}
+                        </span>
+                      </td>
+                      <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{lastVisit}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button
+                          className="btn-secondary"
+                          onClick={() => setSelectedPatient(p)}
+                        >
+                          View Profile
+                        </button>
+                      </td>
+                    </tr>
                   )
                 })}
+              </tbody>
+            </table>
               </div>
+            </div>
 
+            {/* Pinned Pagination */}
+            <div className="fixed-list-bottom">
               <Pagination
-                currentPage={rosterPage}
-                totalPages={rosterTotalPages}
-                totalItems={patients.length}
-                pageSize={rosterPageSize}
-                onPageChange={setRosterPage}
+                currentPage={page}
+                totalPages={totalPages}
+                totalItems={filteredPatients.length}
+                pageSize={pageSize}
+                onPageChange={setPage}
                 onPageSizeChange={(newSize) => {
-                  setRosterPageSize(newSize)
-                  setRosterPage(1)
+                  setPageSize(newSize)
+                  setPage(1)
                 }}
               />
-            </>
-          )}
-        </div>
-
-        {/* Right: Selected Patient Details & Dental History */}
-        <div className="data-table-wrap" style={{ padding: '1.25rem' }}>
-          {!selectedPatient ? (
-            <div className="empty-state">
-              <p>Select a patient from the directory on the left to view their profile.</p>
             </div>
-          ) : (
-            <div>
-              {/* Header Info */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', paddingBottom: '0.85rem', borderBottom: '1px solid var(--border)' }}>
-                <div>
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text)' }}>
-                    {selectedPatient.name}
-                  </h3>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
-                    {selectedPatient.email}
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => navigate('/dental/chart', { state: { patientId: selectedPatient.id } })}
-                  className="btn-secondary"
-                >
-                  Open Dental Chart
-                </button>
-              </div>
-
-              {/* Patient Bio Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem 1rem', padding: '0.85rem 1rem', background: 'var(--bg-crust)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', marginBottom: '1.5rem', fontSize: '0.82rem' }}>
-                <div><strong>Student/Staff ID:</strong> {selectedPatient.student_id || 'N/A'}</div>
-                <div><strong>Department:</strong> {selectedPatient.department || 'N/A'}</div>
-                <div><strong>Contact Number:</strong> {selectedPatient.contact_no || 'N/A'}</div>
-                <div><strong>System Role:</strong> {selectedPatient.role}</div>
-              </div>
-
-              {/* Consultation History Timeline */}
-              <div className="quick-links-section-title" style={{ marginBottom: '1rem' }}>
-                Dental Consultation History ({patientConsultations.length})
-              </div>
-
-              {patientConsultations.length === 0 ? (
-                <div className="empty-state" style={{ padding: '2rem 1rem' }}>
-                  <p>No past dental consultations recorded for this patient.</p>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  {patientConsultations.map((c) => (
-                    <div
-                      key={c.id}
-                      style={{
-                        padding: '1rem',
-                        borderRadius: 'var(--radius-sm)',
-                        background: '#FFFFFF',
-                        border: '1px solid var(--border)',
-                        boxShadow: 'var(--shadow-xs)',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                        <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--accent)' }}>
-                          {c.diagnosis || EMPTY}
-                        </span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <span className="status-badge completed">
-                            {formatDate(c.consultation_date)}
-                          </span>
-                          <PrintableRecord
-                            record={c}
-                            isDental={true}
-                            patientUser={selectedPatient}
-                            buttonLabel="Print"
-                          />
-                        </div>
-                      </div>
-
-                      {c.affected_teeth && c.affected_teeth.length > 0 && (
-                        <div style={{ fontSize: '0.8rem', marginBottom: '0.35rem' }}>
-                          <strong>Affected Teeth:</strong> <span className="status-badge pending" style={{ fontSize: '0.68rem' }}>#{c.affected_teeth.join(', #')}</span>
-                        </div>
-                      )}
-
-                      {c.treatment_performed && (
-                        <div style={{ fontSize: '0.82rem', color: 'var(--text-sub)', marginBottom: '0.25rem' }}>
-                          <strong>Treatment:</strong> {c.treatment_performed}
-                        </div>
-                      )}
-
-                      {c.recommendations && (
-                        <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                          <strong>Recommendations:</strong> {c.recommendations}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
+          </div>
+        )}
       </div>
+
+      {selectedPatient && (
+        <ViewPatientProfileModal
+          patient={selectedPatient}
+          onClose={() => setSelectedPatient(null)}
+        />
+      )}
     </DashboardLayout>
   )
 }

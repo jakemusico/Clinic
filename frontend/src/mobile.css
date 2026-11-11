@@ -5,6 +5,21 @@
    ========================================================================== */
 
 /* ────────────────────────────────────────────────────────────────────────────
+   0. GLOBAL FIXES
+   ────────────────────────────────────────────────────────────────────────────*/
+@media (max-width: 767px) {
+  /* Reduce excessive bottom padding on dashboard-page-body to prevent huge gaps */
+  .dashboard-page-body {
+    padding-bottom: 72px !important;
+  }
+  
+  .dashboard-page-body::after {
+    display: none !important;
+    height: 0 !important;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
    1. PASSWORD FORMS  (ProfilePage, StaffProfile, SettingsPage, ChangePasswordPage)
    ────────────────────────────────────────────────────────────────────────────*/
 @media (max-width: 767px) {
@@ -79,14 +94,7 @@
 /* ────────────────────────────────────────────────────────────────────────────
    3. HEADER NOTIFICATION DROPDOWN
    ────────────────────────────────────────────────────────────────────────────*/
-@media (max-width: 767px) {
-  .header-notif-dropdown {
-    right: 0 !important;
-    left: auto !important;
-    width: calc(100vw - 1rem) !important;
-    max-width: 95vw !important;
-  }
-}
+
 
 /* ────────────────────────────────────────────────────────────────────────────
    4. DATA TABLES — horizontal scroll + sticky first column
@@ -144,30 +152,294 @@
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
-   7. CHATBOT — full-screen on mobile, FAB above bottom nav
+   7. CHATBOT — chat head anchor + floating window
    ────────────────────────────────────────────────────────────────────────────*/
 @media (max-width: 767px) {
-  /* Make the chat window fill the entire screen */
+  /* ========================================
+     CHAT HEAD (Always visible anchor)
+     ======================================== */
+  
+  .chatbot-head {
+    position: fixed;
+    right: 12px;
+    bottom: calc(var(--bottom-nav-h, 64px) + 12px);
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    border: 2px solid white;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 1201;
+    touch-action: none;
+    user-select: none;
+    transition: transform 0.2s ease;
+  }
+  
+  .chatbot-head:active {
+    transform: scale(0.95);
+  }
+  
+  .chatbot-head.active {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 0 0 2px var(--accent);
+  }
+  
+  .chatbot-head-avatar {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+  }
+  
+  .chatbot-head-status {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid white;
+  }
+  
+  .chatbot-head-status.online {
+    background: #22c55e;
+  }
+  
+  .chatbot-head-status.offline {
+    background: #9ca3af;
+  }
+  
+  .chatbot-head-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    background: #ef4444;
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    border: 2px solid white;
+  }
+  
+  /* ========================================
+     CHATBOT WINDOW (Floating above head)
+     ======================================== */
+  
   .chatbot-window {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    max-height: 100vh !important;
-    /* dvh excludes the mobile browser's address bar so the input stays visible */
-    height: 100dvh !important;
-    max-height: 100dvh !important;
-    bottom: 0 !important;
-    right: 0 !important;
-    top: 0 !important;
-    left: 0 !important;
-    border-radius: 0 !important;
-    z-index: 9999 !important;
+    position: fixed;
+    right: 12px;
+    left: auto;
+    top: auto;
+    bottom: calc(var(--bottom-nav-h, 64px) + 12px + 52px + 10px);
+    transform: none;
+    margin: 0;
+    width: min(400px, calc(100vw - 24px));
+    height: min(560px, calc(100dvh - var(--dashboard-header-h, 56px) - var(--bottom-nav-h, 64px) - 90px));
+    border-radius: 16px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    z-index: 1200;
+    box-sizing: border-box;
+  }
+  
+  .chatbot-window.expanded {
+    height: calc(100dvh - var(--dashboard-header-h, 56px) - var(--bottom-nav-h, 64px) - 24px);
+  }
+  
+  /* Header */
+  .chatbot-header {
+    flex: 0 0 auto;
+  }
+  
+  /* Messages area */
+  .chatbot-messages {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 16px;
+    box-sizing: border-box;
   }
 
-  /* Push FAB above the mobile bottom nav bar (height ~68px) */
+  .chat-bubble.bot {
+    max-width: 90% !important;
+    padding: 16px !important;
+    box-sizing: border-box !important;
+  }
+
+  .chat-bubble.bot:has(.chat-btn-grid),
+  .chat-bubble.bot:has(.chat-btn-row) {
+    width: 100% !important;
+    max-width: 90% !important;
+    padding: 16px !important;
+  }
+  
+  /* Chat button groups (quick actions) */
+  .chat-btn-group,
+  .chat-btn-row {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+  }
+
+  /* A. Greeting suggestion buttons (2x2 grid) */
+  .chat-btn-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-auto-rows: 1fr;
+    gap: 10px !important;
+    width: 100% !important;
+    margin-top: 12px !important;
+    box-sizing: border-box !important;
+  }
+
+  .chat-btn-grid .chat-menu-btn {
+    width: 100% !important;
+    min-height: 44px !important;
+    height: 100% !important;
+    min-width: 0 !important;
+    display: flex !important;
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+    gap: 10px !important;
+    padding: 8px 12px !important;
+    box-sizing: border-box !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    line-height: 1.35 !important;
+    white-space: normal !important;
+    text-align: left !important;
+    border-radius: var(--radius-full);
+  }
+
+  .chat-btn-grid .chat-menu-btn span {
+    white-space: normal !important;
+    text-align: left !important;
+    line-height: 1.35 !important;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    flex: 1;
+  }
+
+  .chat-btn-grid .chat-menu-btn svg {
+    flex-shrink: 0 !important;
+    width: 18px !important;
+    height: 18px !important;
+    margin-top: 2px !important;
+  }
+
+  /* C. Bottom action buttons (Chat with Nurse / Chat with Dentist) */
+  .chatbot-live-actions {
+    flex: 0 0 auto;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-auto-rows: 1fr;
+    gap: 10px !important;
+    padding: 12px 16px !important;
+    border-top: 1px solid var(--border);
+    background: var(--bg, #f8fafc);
+    box-sizing: border-box !important;
+    width: 100% !important;
+  }
+
+  .chat-btn-group.chat-btn-row {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-auto-rows: 1fr;
+    gap: 10px !important;
+    width: 100% !important;
+    margin-top: 12px !important;
+    box-sizing: border-box !important;
+  }
+
+  .chatbot-live-actions .chat-menu-btn,
+  .chat-menu-btn.chat-btn-outline,
+  .chat-btn-group.chat-btn-row .chat-menu-btn {
+    width: 100% !important;
+    min-height: 44px !important;
+    height: 100% !important;
+    min-width: 0 !important;
+    display: flex !important;
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+    gap: 10px !important;
+    padding: 8px 12px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    line-height: 1.35 !important;
+    white-space: normal !important;
+    text-align: left !important;
+    box-sizing: border-box !important;
+  }
+
+  .chatbot-live-actions .chat-menu-btn span,
+  .chat-menu-btn.chat-btn-outline span,
+  .chat-btn-group.chat-btn-row .chat-menu-btn span {
+    white-space: normal !important;
+    text-align: left !important;
+    line-height: 1.35 !important;
+    flex: 1;
+  }
+
+  .chatbot-live-actions .chat-menu-btn svg,
+  .chat-menu-btn.chat-btn-outline svg,
+  .chat-btn-group.chat-btn-row .chat-menu-btn svg {
+    flex-shrink: 0 !important;
+    width: 18px !important;
+    height: 18px !important;
+    margin-top: 2px !important;
+  }
+  
+  /* D. Input area */
+  .chatbot-input-area {
+    flex: 0 0 auto;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 12px 16px !important;
+    border-top: 1px solid var(--border);
+    background: #FFFFFF;
+    box-sizing: border-box !important;
+    width: 100% !important;
+  }
+  
+  .chatbot-input-area .chatbot-input {
+    flex: 1 !important;
+    min-height: 44px !important;
+    height: 44px !important;
+    padding: 0 14px !important;
+    font-size: 16px !important;
+    border-radius: var(--radius-full);
+    box-sizing: border-box !important;
+  }
+  
+  .chatbot-send-btn {
+    min-height: 44px !important;
+    height: 44px !important;
+    padding: 0 16px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    flex-shrink: 0 !important;
+    box-sizing: border-box !important;
+    border-radius: var(--radius-full);
+  }
+
+  /* Hide desktop FAB */
   .chatbot-fab {
-    bottom: 80px !important;
+    display: none;
   }
 }
 
@@ -242,6 +514,17 @@
   .content-area {
     overflow-x: hidden;
     max-width: 100%;
+  }
+}
+
+
+/* ────────────────────────────────────────────────────────────────────────────
+   12. NOTIFICATIONS PAGE — mobile optimizations
+   ────────────────────────────────────────────────────────────────────────────*/
+@media (max-width: 767px) {
+  /* Notification card: ensure proper spacing */
+  [style*="marginBottom: '10px'"][style*="borderRadius: '12px'"] {
+    margin-bottom: 8px !important;
   }
 }
 

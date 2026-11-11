@@ -12,7 +12,7 @@ import useLatestRequest, { isRequestCanceled } from '../../hooks/useLatestReques
 // The charts (recharts) and the calendar are the heaviest parts of the page: load them as
 // separate chunks so the stat cards and the table can appear first.
 const VisitTrendsChart = lazy(() => import('../../components/dashboard/VisitTrendsChart'))
-const FrequentSymptomsChart = lazy(() => import('../../components/dashboard/FrequentSymptomsChart'))
+const FrequentSymptomsChart = lazy(() => import('../../components/dashboard/FrequentSymptomsBarChart'))
 const CalendarWidget = lazy(() => import('../../components/CalendarWidget'))
 
 export default function DentistDashboard() {
@@ -97,8 +97,6 @@ export default function DentistDashboard() {
                 />
                 <FrequentSymptomsChart
                   data={chartData.frequent_symptoms || []}
-                  categorized={chartData.categorized_consultations}
-                  total={chartData.total_consultations}
                   loading={loading}
                 />
               </div>

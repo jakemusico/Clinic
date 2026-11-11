@@ -37,6 +37,7 @@ const InventoryItemsPage = lazy(() => import('./pages/admin/InventoryItemsPage')
 const StockInPage = lazy(() => import('./pages/admin/StockInPage'))
 const StockOutPage = lazy(() => import('./pages/admin/StockOutPage'))
 const InventoryTransactionsPage = lazy(() => import('./pages/admin/InventoryTransactionsPage'))
+const ComplaintCategoriesPage = lazy(() => import('./pages/admin/ComplaintCategoriesPage'))
 const ReportsPage = lazy(() => import('./pages/clinic/ReportsPage'))
 const ProfilePage = lazy(() => import('./pages/ProfilePage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
@@ -311,6 +312,13 @@ export default function App() {
                 element={
                   <ProtectedRoute roles={['admin']}>
                     <AdminAnnouncementsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="/admin/complaint-categories"
+                element={
+                  <ProtectedRoute roles={['admin']}>
+                    <ComplaintCategoriesPage />
                   </ProtectedRoute>
                 }
               />

@@ -361,162 +361,182 @@ export default function MyRecordsPage() {
 
   return (
     <DashboardLayout title="My Health Records" subtitle="View your medical and dental consultation history." stats={stats}>
-      
-      {/* Category Tabs & Search Bar Container Card */}
-      <div className="data-table-wrap" style={{ padding: '1rem 1.25rem', marginBottom: '1.25rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-          {/* Segmented Control Filter Tabs */}
-          <div className="tab-bar" style={{ margin: 0 }}>
-            <button
-              className={`tab-btn ${activeTab === 'medical' ? 'active' : ''}`}
-              onClick={() => setActiveTab('medical')}
-            >
-              <Icon d={ICONS.records} size={16} />
-              Medical Records ({medicalRecords.length})
-            </button>
-            <button
-              className={`tab-btn ${activeTab === 'dental' ? 'active' : ''}`}
-              onClick={() => setActiveTab('dental')}
-            >
-              <DentalIcon size={16} />
-              Dental Records ({dentalRecords.length})
-            </button>
-          </div>
+      <div className="records-page-container page-fixed-list fixed-list-layout">
+        {/* Category Tabs & Search Bar Container Card */}
+        <div className="fixed-list-top">
+          <div className="data-table-wrap records-filter-card">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+              {/* Segmented Control Filter Tabs */}
+              <div className="tab-bar">
+                <button
+                  className={`tab-btn ${activeTab === 'medical' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('medical')}
+                >
+                  <Icon d={ICONS.records} size={16} />
+                  Medical Records ({medicalRecords.length})
+                </button>
+                <button
+                  className={`tab-btn ${activeTab === 'dental' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('dental')}
+                >
+                  <DentalIcon size={16} />
+                  Dental Records ({dentalRecords.length})
+                </button>
+              </div>
 
-          {/* Search Input */}
-          <div style={{ flex: 1, maxWidth: '380px', minWidth: '240px' }}>
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Search diagnosis, treatment, reason for visit..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              style={{ width: '100%' }}
-            />
+              {/* Search Input */}
+              <div style={{ flex: 1, maxWidth: '380px', minWidth: '240px' }}>
+                <input
+                  type="text"
+                  className="search-input"
+                  placeholder="Search diagnosis, treatment, reason for visit..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                />
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      {loading ? (
-        <div className="table-loading"><span className="loader-ring" /></div>
-      ) : activeTab === 'medical' ? (
-        filteredMedical.length === 0 ? (
-          <div className="empty-state">
-            <p>{search ? 'No medical records match your search.' : 'You do not have any completed medical consultation records yet.'}</p>
+        {loading ? (
+          <div className="table-loading"><span className="loader-ring" /></div>
+        ) : activeTab === 'medical' ? (
+          <div className="fixed-list-body">
+            {filteredMedical.length === 0 ? (
+              <div className="empty-state">
+                <p>{search ? 'No medical records match your search.' : 'You do not have any completed medical consultation records yet.'}</p>
+              </div>
+            ) : (
+              <>
+                <div className="fixed-list-scroll">
+                  <div className="data-table-wrap">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Consultation Date</th>
+                          <th>Clinic Service</th>
+                          <th>Diagnosis / Findings</th>
+                          <th>Attending Staff</th>
+                          <th style={{ textAlign: 'right' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paginatedMedical.map(r => (
+                          <tr key={r.id}>
+                            <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                              {formatDate(r.visit_date)}
+                            </td>
+                            <td>{serviceLabel(r)}</td>
+                            <td className="td-name">{r.diagnosis || r.assessment || EMPTY}</td>
+                            <td>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <Avatar src={r.created_by?.avatar_url} name={r.created_by?.name} size={24} />
+                                {r.created_by?.name || 'Nurse'}
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'right' }}>
+                              <button className="btn-secondary" onClick={() => setViewMedicalRecord(r)}>
+                                View Record
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="fixed-list-bottom">
+                  <Pagination
+                    currentPage={medPage}
+                    totalPages={medTotalPages}
+                    totalItems={filteredMedical.length}
+                    pageSize={medPageSize}
+                    onPageChange={setMedPage}
+                    onPageSizeChange={(newSize) => {
+                      setMedPageSize(newSize)
+                      setMedPage(1)
+                    }}
+                  />
+                </div>
+              </>
+            )}
           </div>
         ) : (
-          <div className="data-table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Consultation Date</th>
-                  <th>Clinic Service</th>
-                  <th>Diagnosis / Findings</th>
-                  <th>Attending Staff</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedMedical.map(r => (
-                  <tr key={r.id}>
-                    <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
-                      {formatDate(r.visit_date)}
-                    </td>
-                    <td>{serviceLabel(r)}</td>
-                    <td className="td-name">{r.diagnosis || r.assessment || EMPTY}</td>
-                    <td>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <Avatar src={r.created_by?.avatar_url} name={r.created_by?.name} size={24} />
-                        {r.created_by?.name || 'Nurse'}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <button className="btn-secondary" onClick={() => setViewMedicalRecord(r)}>
-                        View Record
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <Pagination
-              currentPage={medPage}
-              totalPages={medTotalPages}
-              totalItems={filteredMedical.length}
-              pageSize={medPageSize}
-              onPageChange={setMedPage}
-              onPageSizeChange={(newSize) => {
-                setMedPageSize(newSize)
-                setMedPage(1)
-              }}
-            />
+          /* Dental Records Tab */
+          <div className="fixed-list-body">
+            {filteredDental.length === 0 ? (
+              <div className="empty-state">
+                <p>{search ? 'No dental records match your search.' : 'You do not have any completed dental consultation records yet.'}</p>
+              </div>
+            ) : (
+              <>
+                <div className="fixed-list-scroll">
+                  <div className="data-table-wrap">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Reason for Visit</th>
+                          <th>Affected Teeth</th>
+                          <th>Diagnosis</th>
+                          <th>Treatment Performed</th>
+                          <th>Dentist</th>
+                          <th style={{ textAlign: 'right' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paginatedDental.map(r => (
+                          <tr key={r.id}>
+                            <td style={{ fontWeight: 600, whiteSpace: 'nowrap', fontSize: '0.82rem' }}>
+                              {formatDate(r.consultation_date)}
+                            </td>
+                            <td className="td-name">{r.reason_for_visit || EMPTY}</td>
+                            <td>
+                              {r.affected_teeth && r.affected_teeth.length > 0 ? (
+                                <span className="status-badge completed">#{r.affected_teeth.join(', #')}</span>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>None</span>
+                              )}
+                            </td>
+                            <td style={{ fontWeight: 600 }}>{r.diagnosis || EMPTY}</td>
+                            <td style={{ fontSize: '0.82rem', color: 'var(--text-sub)' }}>{r.treatment_performed || EMPTY}</td>
+                            <td style={{ fontSize: '0.82rem' }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <Avatar src={r.dentist?.avatar_url} name={r.dentist?.name} size={24} />
+                                {r.dentist?.name || 'Dentist'}
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'right' }}>
+                              <button className="btn-secondary" onClick={() => setViewDentalRecord(r)}>
+                                View Record
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="fixed-list-bottom">
+                  <Pagination
+                    currentPage={dentPage}
+                    totalPages={dentTotalPages}
+                    totalItems={filteredDental.length}
+                    pageSize={dentPageSize}
+                    onPageChange={setDentPage}
+                    onPageSizeChange={(newSize) => {
+                      setDentPageSize(newSize)
+                      setDentPage(1)
+                    }}
+                  />
+                </div>
+              </>
+            )}
           </div>
-        )
-      ) : (
-        /* Dental Records Tab */
-        filteredDental.length === 0 ? (
-          <div className="empty-state">
-            <p>{search ? 'No dental records match your search.' : 'You do not have any completed dental consultation records yet.'}</p>
-          </div>
-        ) : (
-          <div className="data-table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Reason for Visit</th>
-                  <th>Affected Teeth</th>
-                  <th>Diagnosis</th>
-                  <th>Treatment Performed</th>
-                  <th>Dentist</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedDental.map(r => (
-                  <tr key={r.id}>
-                    <td style={{ fontWeight: 600, whiteSpace: 'nowrap', fontSize: '0.82rem' }}>
-                      {formatDate(r.consultation_date)}
-                    </td>
-                    <td className="td-name">{r.reason_for_visit || EMPTY}</td>
-                    <td>
-                      {r.affected_teeth && r.affected_teeth.length > 0 ? (
-                        <span className="status-badge completed">#{r.affected_teeth.join(', #')}</span>
-                      ) : (
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>None</span>
-                      )}
-                    </td>
-                    <td style={{ fontWeight: 600 }}>{r.diagnosis || EMPTY}</td>
-                    <td style={{ fontSize: '0.82rem', color: 'var(--text-sub)' }}>{r.treatment_performed || EMPTY}</td>
-                    <td style={{ fontSize: '0.82rem' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <Avatar src={r.dentist?.avatar_url} name={r.dentist?.name} size={24} />
-                        {r.dentist?.name || 'Dentist'}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <button className="btn-secondary" onClick={() => setViewDentalRecord(r)}>
-                        View Record
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <Pagination
-              currentPage={dentPage}
-              totalPages={dentTotalPages}
-              totalItems={filteredDental.length}
-              pageSize={dentPageSize}
-              onPageChange={setDentPage}
-              onPageSizeChange={(newSize) => {
-                setDentPageSize(newSize)
-                setDentPage(1)
-              }}
-            />
-          </div>
-        )
-      )}
+        )}
+      </div>
 
       {viewMedicalRecord && (
         <ViewMedicalRecordModal

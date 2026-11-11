@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from 'react'
+import { useRef, useEffect, useState, useCallback, Component } from 'react'
 import { toast } from 'react-hot-toast'
 import {
   MessageActionSheet,
@@ -15,6 +15,90 @@ import { useChatbot } from '../context/ChatbotContext'
 import { useAuth } from '../context/AuthContext'
 import Avatar from './Avatar'
 import DentalIcon from './DentalIcon'
+
+/* ─────────────────────────────────────────────────────────────────────────
+   CHATBOT CONVERSATION PERSISTENCE
+   ───────────────────────────────────────────────────────────────────────── */
+
+const STORAGE_KEY_PREFIX = 'chatbot_history_'
+const STORAGE_EXPIRY_MS = 24 * 60 * 60 * 1000 // 24 hours
+
+/**
+ * Save chatbot conversation to localStorage
+ */
+function saveChatbotHistory(userId, messages, isOpen) {
+  if (!userId) return
+  try {
+    const data = {
+      messages,
+      isOpen,
+      timestamp: Date.now(),
+    }
+    localStorage.setItem(`${STORAGE_KEY_PREFIX}${userId}`, JSON.stringify(data))
+  } catch (err) {
+    console.warn('Failed to save chatbot history:', err)
+  }
+}
+
+/**
+ * Load chatbot conversation from localStorage
+ */
+function loadChatbotHistory(userId) {
+  if (!userId) return null
+  try {
+    const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}${userId}`)
+    if (!stored) return null
+
+    const data = JSON.parse(stored)
+    if (!data || typeof data !== 'object') {
+      localStorage.removeItem(`${STORAGE_KEY_PREFIX}${userId}`)
+      return null
+    }
+
+    const age = Date.now() - (data.timestamp || 0)
+
+    // Discard if older than 24 hours
+    if (age > STORAGE_EXPIRY_MS) {
+      localStorage.removeItem(`${STORAGE_KEY_PREFIX}${userId}`)
+      return null
+    }
+
+    // Safeguard: validate messages is a non-empty array
+    if (!Array.isArray(data.messages) || data.messages.length === 0) {
+      localStorage.removeItem(`${STORAGE_KEY_PREFIX}${userId}`)
+      return null
+    }
+
+    // Validate that messages are valid message objects
+    const validMessages = data.messages.every(
+      m => m && typeof m === 'object' && typeof m.from === 'string' && (typeof m.text === 'string' || typeof m.body === 'string')
+    )
+    if (!validMessages) {
+      localStorage.removeItem(`${STORAGE_KEY_PREFIX}${userId}`)
+      return null
+    }
+
+    return data
+  } catch (err) {
+    console.warn('Failed to load chatbot history:', err)
+    try {
+      localStorage.removeItem(`${STORAGE_KEY_PREFIX}${userId}`)
+    } catch {}
+    return null
+  }
+}
+
+/**
+ * Clear chatbot conversation from localStorage
+ */
+function clearChatbotHistory(userId) {
+  if (!userId) return
+  try {
+    localStorage.removeItem(`${STORAGE_KEY_PREFIX}${userId}`)
+  } catch (err) {
+    console.warn('Failed to clear chatbot history:', err)
+  }
+}
 
 /* ─────────────────────────────────────────────────────────────────────────
    CATEGORY → NAVIGATION ACTIONS
@@ -59,9 +143,6 @@ const NAV_ACTIONS = {
     dental:  [],
     admin:   [],
   },
-  hours:        { patient: [], staff: [], dental: [], admin: [] },
-  requirements: { patient: [], staff: [], dental: [], admin: [] },
-  general:      { patient: [], staff: [], dental: [], admin: [] },
 }
 
 /* Category → follow-up suggestion chips shown after an FAQ answer */
@@ -115,6 +196,11 @@ function getNavActions(category, role) {
   return map[roleGroup(role)] || []
 }
 
+function getSuggestions(category, navActions = []) {
+  const list = SUGGESTIONS[category] || []
+  return list.filter(chip => !isDuplicateSuggestion(chip, navActions)).slice(0, 3)
+}
+
 /**
  * Normalizes a label for deduplication comparison.
  */
@@ -145,11 +231,6 @@ function isDuplicateSuggestion(chip, navActions = []) {
 
     return false
   })
-}
-
-function getSuggestions(category, navActions = []) {
-  const list = SUGGESTIONS[category] || []
-  return list.filter(chip => !isDuplicateSuggestion(chip, navActions)).slice(0, 3)
 }
 
 /* ── Time-of-day greeting ──────────────────────────────────── */
@@ -189,15 +270,13 @@ function SvgIcon({ name, size = 15 }) {
       <DentalIcon
         size={size}
         strokeWidth={2.1}
-        style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0 }}
       />
     )
   }
   const d = paths[name] || paths.general
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"
-      style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0 }}>
+      stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
       <path d={d} />
     </svg>
   )
@@ -244,7 +323,7 @@ function getDateLabel(ts) {
 }
 
 /* ── Message bubble ──────────────────────────────────────────── */
-function Bubble({ msg, onCategoryChip, onStartChat }) {
+function Bubble({ msg, onCategoryChip, onStartChat, onCategorySelect, onFaqSelect, onNavAction }) {
   const isBot = msg.from === 'bot'
   const [hovered, setHovered] = useState(false)
 
@@ -263,14 +342,14 @@ function Bubble({ msg, onCategoryChip, onStartChat }) {
 
         {/* Category / subtopic buttons */}
         {msg.buttons?.length > 0 && (
-          <div className="chat-btn-group chat-btn-grid" style={{ marginTop: '0.75rem' }}>
+          <div className="chat-btn-group chat-btn-grid">
             {msg.buttons.map(btn => (
               <button
                 key={btn.value}
                 className="chat-menu-btn"
-                onClick={() => msg.onButtonClick?.(btn)}
+                onClick={() => (msg.onButtonClick ? msg.onButtonClick(btn) : onCategorySelect?.(btn))}
               >
-                <SvgIcon name={btn.value} size={14} />
+                <SvgIcon name={btn.value} size={16} />
                 <span>{btn.label}</span>
               </button>
             ))}
@@ -279,19 +358,19 @@ function Bubble({ msg, onCategoryChip, onStartChat }) {
 
         {/* Fallback Live Chat Options */}
         {msg.chatButtons && (
-          <div className="chat-btn-group chat-btn-row" style={{ marginTop: '0.75rem' }}>
+          <div className="chat-btn-group chat-btn-row">
             <button
               className="chat-menu-btn chat-btn-outline"
               onClick={() => onStartChat?.('nurse')}
             >
-              <SvgIcon name="nurse" size={13} />
+              <SvgIcon name="nurse" size={16} />
               <span>Chat with Nurse</span>
             </button>
             <button
               className="chat-menu-btn chat-btn-outline"
               onClick={() => onStartChat?.('dentist')}
             >
-              <SvgIcon name="tooth" size={13} />
+              <SvgIcon name="tooth" size={16} />
               <span>Chat with Dentist</span>
             </button>
           </div>
@@ -299,14 +378,14 @@ function Bubble({ msg, onCategoryChip, onStartChat }) {
 
         {/* FAQ question list */}
         {msg.faqs?.length > 0 && (
-          <div className="chat-btn-group" style={{ marginTop: '0.6rem' }}>
+          <div className="chat-btn-group">
             {msg.faqs.map(faq => (
               <button
                 key={faq.id}
                 className="chat-faq-btn"
-                onClick={() => msg.onFaqClick?.(faq)}
+                onClick={() => (msg.onFaqClick ? msg.onFaqClick(faq) : onFaqSelect?.(faq))}
               >
-                <SvgIcon name={faq.category || 'clinic_faqs'} size={13} />
+                <SvgIcon name={faq.category || 'clinic_faqs'} size={14} />
                 <span>{faq.question}</span>
               </button>
             ))}
@@ -320,7 +399,7 @@ function Bubble({ msg, onCategoryChip, onStartChat }) {
               <button
                 key={action.path}
                 className="chatbot-send-btn"
-                onClick={() => action.onClick?.()}
+                onClick={() => (action.onClick ? action.onClick() : onNavAction?.(action.path))}
                 style={{
                   width: '100%', padding: '0.5rem 0.85rem',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -467,8 +546,31 @@ function mergeLiveMessages(prev, incoming) {
   return merged
 }
 
+/* ── Error Boundary for ChatbotWidget ────────────────────── */
+class ChatbotErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('ChatbotWidget error caught by boundary:', error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return null
+    }
+    return this.props.children
+  }
+}
+
 /* ── Main ChatbotWidget ──────────────────────────────────── */
-export default function ChatbotWidget() {
+function ChatbotWidgetInner() {
   const { open, setOpen, messages, setMessages, chatRole, setChatRole } = useChatbot()
   const { user } = useAuth()
   const navigate  = useNavigate()
@@ -514,6 +616,56 @@ export default function ChatbotWidget() {
   const [isDeletingMessage, setIsDeletingMessage]   = useState(false)
   const touchStartRef = useRef(null)
   const touchTimerRef = useRef(null)
+
+  // ── Chat Head State (Mobile) ──────────────────────────────────
+  const chatHeadRef = useRef(null)
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 767
+
+  // ── Visual viewport tracking (on-screen keyboard resize) ──────
+  const [vvHeight, setVvHeight] = useState(() =>
+    typeof window !== 'undefined' ? (window.visualViewport?.height ?? window.innerHeight) : 0
+  )
+  const maxVvHeightRef = useRef(0)
+  const lastVvWidthRef = useRef(0)
+  const [keyboardOpen, setKeyboardOpen] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const vv = window.visualViewport
+    const update = () => {
+      const h = vv ? vv.height : window.innerHeight
+      const w = vv ? vv.width : window.innerWidth
+      // Reset baseline on orientation / viewport width change
+      if (lastVvWidthRef.current && Math.abs(w - lastVvWidthRef.current) > 50) {
+        maxVvHeightRef.current = 0
+      }
+      lastVvWidthRef.current = w
+      if (h > maxVvHeightRef.current) maxVvHeightRef.current = h
+      setVvHeight(h)
+      setKeyboardOpen(h < maxVvHeightRef.current - 120)
+    }
+    vv?.addEventListener('resize', update)
+    vv?.addEventListener('scroll', update)
+    window.addEventListener('resize', update)
+    update()
+    return () => {
+      vv?.removeEventListener('resize', update)
+      vv?.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [])
+
+  // When the keyboard opens, pin the panel to the visible area so the
+  // input bar sits right above the keyboard (works with both
+  // interactive-widget=resizes-content and overlay keyboards).
+  const vvOffsetTop = typeof window !== 'undefined' ? (window.visualViewport?.offsetTop || 0) : 0
+  const keyboardStyle = isMobile && open && keyboardOpen ? {
+    height: `${vvHeight}px`,
+    bottom: `${Math.max(0, window.innerHeight - vvHeight - vvOffsetTop)}px`,
+  } : undefined
+
+  // ── Help Assistant FAB width tracking (Desktop) ───────────────
+  const fabRef = useRef(null)
 
   // Scroll listener for live messages container
   const handleLiveScroll = useCallback(() => {
@@ -719,6 +871,16 @@ export default function ChatbotWidget() {
     }
   }, [chatMessages, chatRole, open, scrollToLiveBottom])
 
+  // Keep the latest message visible when the keyboard resizes the panel
+  useEffect(() => {
+    if (!open) return
+    if (chatRole) {
+      if (liveIsNearBottomRef.current) scrollToLiveBottom('auto')
+    } else {
+      scrollToBottom('auto')
+    }
+  }, [vvHeight, open, chatRole, scrollToBottom, scrollToLiveBottom])
+
   // ── Online / Offline Network Listeners ───────────────────────
   useEffect(() => {
     const handleOnline = () => setIsOnline(true)
@@ -784,66 +946,11 @@ export default function ChatbotWidget() {
     }
   }, [open, chatRole, canUseChat, user?.id, isOnline])
 
-  // Scroll to bottom each time Q&A opens
-  useEffect(() => {
-    if (!open || chatRole) return
-
-    isOpeningRef.current = true
-    scrollToBottom('auto')
-
-    const rafId = requestAnimationFrame(() => {
-      scrollToBottom('auto')
-      requestAnimationFrame(() => scrollToBottom('auto'))
-    })
-
-    const t1 = setTimeout(() => scrollToBottom('auto'), 50)
-    const t2 = setTimeout(() => scrollToBottom('auto'), 150)
-    const t3 = setTimeout(() => {
-      scrollToBottom('auto')
-      isOpeningRef.current = false
-    }, 350)
-
-    const focusTimer = setTimeout(() => inputRef.current?.focus(), 200)
-
-    if (messages.length === 0) {
-      initMenu()
-    }
-
-    return () => {
-      cancelAnimationFrame(rafId)
-      clearTimeout(t1)
-      clearTimeout(t2)
-      clearTimeout(t3)
-      clearTimeout(focusTimer)
-    }
-  }, [open, chatRole, scrollToBottom])
-
-  // Track layout changes during opening
-  useEffect(() => {
-    if (!open || !messagesContainerRef.current || chatRole) return
-    const container = messagesContainerRef.current
-    const ro = new ResizeObserver(() => {
-      if (isOpeningRef.current) {
-        scrollToBottom('auto')
-      }
-    })
-    ro.observe(container)
-    return () => ro.disconnect()
-  }, [open, chatRole, scrollToBottom])
-
-  // Scroll to bottom on Q&A messages/typing
-  useEffect(() => {
-    if (!open || chatRole) return
-    scrollToBottom('smooth')
-    const t = setTimeout(() => scrollToBottom('smooth'), 60)
-    return () => clearTimeout(t)
-  }, [messages, typing, open, chatRole, scrollToBottom])
-
-  const buildNavActions = (category) => {
+  const buildNavActions = useCallback((category) => {
     const role = user?.role || 'student'
     const actions = getNavActions(category, role)
     return actions.map(a => ({ ...a, onClick: () => navigate(a.path) }))
-  }
+  }, [user?.role, navigate])
 
   const pushBotWithDelay = useCallback((msg, delay = 600) => {
     setTyping(true)
@@ -853,11 +960,11 @@ export default function ChatbotWidget() {
     }, delay)
   }, [setMessages])
 
-  const pushUser = (text) => {
+  const pushUser = useCallback((text) => {
     setMessages(prev => [...prev, { id: Date.now() + '_user', from: 'user', ts: Date.now(), text }])
-  }
+  }, [setMessages])
 
-  const pushErr = (text = 'Something went wrong. Please try again.') => {
+  const pushErr = useCallback((text = 'Something went wrong. Please try again.') => {
     setTyping(false)
     setMessages(prev => [
       ...prev,
@@ -869,63 +976,10 @@ export default function ChatbotWidget() {
         chatButtons: canUseChat && chatEnabled,
       },
     ])
-  }
-
-  /* ── Load top-level menu ──────────────────────────────────── */
-  const initMenu = async () => {
-    try {
-      const { data } = await chatbotApi.menu()
-      const greeting = `${getGreeting()}, ${firstName}!`
-      setMessages([{
-        id: 'welcome',
-        from: 'bot',
-        ts: Date.now(),
-        text: `${greeting} What can I help you with today?`,
-        buttons: (data.buttons || []).map(b => ({ label: b.label, value: b.value ?? b.category })),
-        onButtonClick: handleCategorySelect,
-      }])
-    } catch {
-      setMessages([{
-        id: 'err',
-        from: 'bot',
-        ts: Date.now(),
-        text: 'Unable to connect right now. Please try again later.',
-      }])
-    }
-  }
-
-  /* ── Category selected ────────────────────────────────────── */
-  const handleCategorySelect = async (btn) => {
-    pushUser(btn.label)
-    try {
-      const { data } = await chatbotApi.category(btn.value)
-      if (data.type === 'subtopics') {
-        pushBotWithDelay({
-          text: `Here are the areas under **${btn.label}**:`,
-          buttons: (data.buttons || []).map(b => ({ label: b.label, value: b.value ?? b.category })),
-          onButtonClick: handleCategorySelect,
-        })
-      } else {
-        pushBotWithDelay({
-          text: data.faqs?.length
-            ? `Here's what I know about **${btn.label}** — pick a question:`
-            : `No FAQs found for **${btn.label}** yet.`,
-          faqs: data.faqs || [],
-          onFaqClick: handleFaqSelect,
-        })
-      }
-    } catch {
-      pushErr('Could not load that topic. Try again.')
-    }
-  }
-
-  /* ── Suggestion chip clicked ──────────────────────────────── */
-  const handleCategoryChip = (chip) => {
-    handleCategorySelect({ label: chip.label, value: chip.value })
-  }
+  }, [setMessages, canUseChat, chatEnabled])
 
   /* ── FAQ item selected ────────────────────────────────────── */
-  const handleFaqSelect = async (faq) => {
+  const handleFaqSelect = useCallback(async (faq) => {
     pushUser(faq.question)
 
     const buildAnswer = (item) => {
@@ -950,7 +1004,53 @@ export default function ChatbotWidget() {
     } catch {
       pushErr('Could not load that answer. Please try again.')
     }
-  }
+  }, [pushUser, buildNavActions, pushBotWithDelay, pushErr])
+
+  /* ── Category selected ────────────────────────────────────── */
+  const handleCategorySelect = useCallback(async (btn) => {
+    pushUser(btn.label)
+    try {
+      const { data } = await chatbotApi.category(btn.value)
+      // Backend now only returns FAQ list (no more subtopics)
+      pushBotWithDelay({
+        text: data.faqs?.length
+          ? `Here's what I know about **${btn.label}** — pick a question:`
+          : `No FAQs found for **${btn.label}** yet.`,
+        faqs: data.faqs || [],
+        onFaqClick: handleFaqSelect,
+      })
+    } catch {
+      pushErr('Could not load that topic. Try again.')
+    }
+  }, [pushUser, pushBotWithDelay, handleFaqSelect, pushErr])
+
+  /* ── Suggestion chip clicked ──────────────────────────────── */
+  const handleCategoryChip = useCallback((chip) => {
+    handleCategorySelect({ label: chip.label, value: chip.value })
+  }, [handleCategorySelect])
+
+  /* ── Load top-level menu ──────────────────────────────────── */
+  const initMenu = useCallback(async () => {
+    try {
+      const { data } = await chatbotApi.menu()
+      const greeting = `${getGreeting()}, ${firstName}!`
+      setMessages([{
+        id: 'welcome',
+        from: 'bot',
+        ts: Date.now(),
+        text: `${greeting} What can I help you with today?`,
+        buttons: (data.buttons || []).map(b => ({ label: b.label, value: b.value ?? b.category })),
+        onButtonClick: handleCategorySelect,
+      }])
+    } catch {
+      setMessages([{
+        id: 'err',
+        from: 'bot',
+        ts: Date.now(),
+        text: 'Unable to connect right now. Please try again later.',
+      }])
+    }
+  }, [firstName, handleCategorySelect, setMessages])
 
   /* ── Q&A Free-text send ───────────────────────────────────── */
   const handleSend = async () => {
@@ -975,12 +1075,6 @@ export default function ChatbotWidget() {
           text: data.message,
           faqs: data.faqs || [],
           onFaqClick: handleFaqSelect,
-        })
-      } else if (data.type === 'subtopics') {
-        pushBotWithDelay({
-          text: data.message,
-          buttons: (data.buttons || []).map(b => ({ label: b.label, value: b.value ?? b.category })),
-          onButtonClick: handleCategorySelect,
         })
       } else if (data.type === 'answer') {
         const navActions = buildNavActions(data.category)
@@ -1010,8 +1104,108 @@ export default function ChatbotWidget() {
   const handleReset = async () => {
     setMessages([])
     setTyping(false)
+    clearChatbotHistory(user?.id)
     await initMenu()
   }
+
+  // Scroll to bottom each time Q&A opens
+  useEffect(() => {
+    if (!open || chatRole) return
+
+    isOpeningRef.current = true
+    scrollToBottom('auto')
+
+    const rafId = requestAnimationFrame(() => {
+      scrollToBottom('auto')
+      requestAnimationFrame(() => scrollToBottom('auto'))
+    })
+
+    const t1 = setTimeout(() => scrollToBottom('auto'), 50)
+    const t2 = setTimeout(() => scrollToBottom('auto'), 150)
+    const t3 = setTimeout(() => {
+      scrollToBottom('auto')
+      isOpeningRef.current = false
+    }, 350)
+
+    const focusTimer = setTimeout(() => inputRef.current?.focus(), 200)
+
+    // Load saved conversation on first open (only for Q&A mode, not live chat)
+    if (messages.length === 0 && user?.id) {
+      const saved = loadChatbotHistory(user.id)
+      if (saved && saved.messages && saved.messages.length > 0) {
+        setMessages(saved.messages)
+      } else {
+        initMenu()
+      }
+    } else if (messages.length === 0) {
+      initMenu()
+    }
+
+    return () => {
+      cancelAnimationFrame(rafId)
+      clearTimeout(t1)
+      clearTimeout(t2)
+      clearTimeout(t3)
+      clearTimeout(focusTimer)
+    }
+  }, [open, chatRole, scrollToBottom, user?.id, initMenu])
+
+  // Save Q&A messages to localStorage whenever they change (not live chat)
+  useEffect(() => {
+    if (!chatRole && messages.length > 0 && user?.id) {
+      saveChatbotHistory(user.id, messages, open)
+    }
+  }, [messages, open, chatRole, user?.id])
+
+  // Restore open/closed state on mount
+  useEffect(() => {
+    if (user?.id && !chatRole) {
+      const saved = loadChatbotHistory(user.id)
+      if (saved && saved.isOpen && !open) {
+        setOpen(true)
+      }
+    }
+  }, [user?.id, chatRole, open, setOpen])
+
+  // Track layout changes during opening
+  useEffect(() => {
+    if (!open || !messagesContainerRef.current || chatRole) return
+    const container = messagesContainerRef.current
+    const ro = new ResizeObserver(() => {
+      if (isOpeningRef.current) {
+        scrollToBottom('auto')
+      }
+    })
+    ro.observe(container)
+    return () => ro.disconnect()
+  }, [open, chatRole, scrollToBottom])
+
+  // Scroll to bottom on Q&A messages/typing
+  useEffect(() => {
+    if (!open || chatRole) return
+    scrollToBottom('smooth')
+    const t = setTimeout(() => scrollToBottom('smooth'), 60)
+    return () => clearTimeout(t)
+  }, [messages, typing, open, chatRole, scrollToBottom])
+
+  // ── Publish Help Assistant FAB width as CSS variable (Desktop) ─────────────────
+  useEffect(() => {
+    const el = fabRef.current
+    if (!el) return undefined
+    const root = document.documentElement
+    const publish = () => {
+      const width = Math.ceil(el.getBoundingClientRect().width)
+      root.style.setProperty('--assistant-width', `${width}px`)
+    }
+    publish()
+    if (typeof ResizeObserver === 'undefined') return undefined
+    const ro = new ResizeObserver(publish)
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+      root.style.removeProperty('--assistant-width')
+    }
+  }, [])
 
   /* ── Live Chat Optimistic Send & Retry (Student) ─────────── */
   const sendPendingMessage = async (msgToRetry) => {
@@ -1141,9 +1335,40 @@ export default function ChatbotWidget() {
 
   return (
     <>
-      {/* FAB trigger */}
-      {!open && (
+      {/* Chat Head - Always visible on mobile */}
+      {isMobile && (
+        <div
+          ref={chatHeadRef}
+          className={`chatbot-head ${open ? 'active' : ''}`}
+          onClick={() => setOpen(!open)}
+          role="button"
+          tabIndex={0}
+          aria-label="Open Clinic Chatbot"
+        >
+          {chatRole && conversation?.staff?.photo_url ? (
+            <img 
+              src={conversation.staff.photo_url} 
+              alt={conversation.staff.name}
+              className="chatbot-head-avatar"
+            />
+          ) : (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+            </svg>
+          )}
+          <div className={`chatbot-head-status ${chatStatus?.is_online || !chatRole ? 'online' : 'offline'}`} />
+          {unreadCount > 0 && (
+            <div className="chatbot-head-badge">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* FAB trigger - Desktop only */}
+      {!isMobile && !open && (
         <button
+          ref={fabRef}
           id="chatbot-fab"
           className="chatbot-fab"
           onClick={() => setOpen(true)}
@@ -1182,7 +1407,7 @@ export default function ChatbotWidget() {
 
       {/* Chat window */}
       {open && (
-        <div className="chatbot-window" role="dialog" aria-label="FSUU Clinic Chatbot">
+        <div className="chatbot-window" role="dialog" aria-label="FSUU Clinic Chatbot" style={keyboardStyle}>
 
           {/* ═════════════════════════════════════════════════════════
              VIEW A: LIVE CHAT VIEW (Student <-> Nurse/Dentist)
@@ -1634,10 +1859,9 @@ export default function ChatbotWidget() {
                   type="submit"
                   className="chatbot-send-btn"
                   disabled={sendingMessage || !chatInput.trim()}
-                  style={{ width: 'auto', padding: '0 0.85rem', gap: '5px' }}
                 >
                   <SvgIcon name="send" size={14} />
-                  {sendingMessage ? 'Sending...' : 'Send'}
+                  <span>{sendingMessage ? 'Sending...' : 'Send'}</span>
                 </button>
               </form>
             </>
@@ -1675,6 +1899,9 @@ export default function ChatbotWidget() {
                     key={msg.id}
                     msg={msg}
                     onCategoryChip={handleCategoryChip}
+                    onCategorySelect={handleCategorySelect}
+                    onFaqSelect={handleFaqSelect}
+                    onNavAction={(path) => navigate(path)}
                     onStartChat={(role) => setChatRole(role)}
                   />
                 ))}
@@ -1690,7 +1917,7 @@ export default function ChatbotWidget() {
                     className="chat-menu-btn chat-btn-outline"
                     onClick={() => setChatRole('nurse')}
                   >
-                    <SvgIcon name="nurse" size={13} />
+                    <SvgIcon name="nurse" size={16} />
                     <span>Chat with Nurse</span>
                   </button>
                   <button
@@ -1698,7 +1925,7 @@ export default function ChatbotWidget() {
                     className="chat-menu-btn chat-btn-outline"
                     onClick={() => setChatRole('dentist')}
                   >
-                    <SvgIcon name="tooth" size={13} />
+                    <SvgIcon name="tooth" size={16} />
                     <span>Chat with Dentist</span>
                   </button>
                 </div>
@@ -1721,10 +1948,9 @@ export default function ChatbotWidget() {
                   onClick={handleSend}
                   title="Send"
                   disabled={typing}
-                  style={{ width: 'auto', padding: '0 0.85rem', gap: '5px' }}
                 >
                   <SvgIcon name="send" size={14} />
-                  Send
+                  <span>Send</span>
                 </button>
               </div>
             </>
@@ -1759,5 +1985,13 @@ export default function ChatbotWidget() {
         </div>
       )}
     </>
+  )
+}
+
+export default function ChatbotWidget(props) {
+  return (
+    <ChatbotErrorBoundary>
+      <ChatbotWidgetInner {...props} />
+    </ChatbotErrorBoundary>
   )
 }

@@ -9,6 +9,7 @@ use App\Models\Role;
 use App\Services\AuditLogger;
 use App\Rules\PhilippineMobile;
 use App\Support\NameRules;
+use App\Support\ProfileReadiness;
 use Laravel\Sanctum\PersonalAccessToken;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -290,48 +291,23 @@ class AuthController extends Controller
         $userData['role_name'] = $user->role_name;
         $userData['patient'] = $user->patient;
 
-        $readiness = $this->calculateReadiness($user);
+        $readiness = ProfileReadiness::for($user);
 
         return response()->json([
-            'user'      => $userData,
-            'patient'   => $user->patient,
-            'readiness' => $readiness,
+            'user'           => $userData,
+            'patient'        => $user->patient,
+            'readiness'      => $readiness['percent'],
+            'missing_fields' => $readiness['missing'],
         ]);
     }
 
     /**
      * Calculate Clinic Record Readiness (share of required fields filled).
+     * Delegates to the shared ProfileReadiness source of truth.
      */
     public function calculateReadiness(User $user): int
     {
-        $patient = $user->patient;
-        $fields = [
-            $user->first_name,
-            $user->last_name,
-            $user->student_id,
-            $user->grade_level,
-            $user->section,
-            $user->date_of_birth ?: $patient?->date_of_birth,
-            $user->sex ?: $patient?->gender,
-            $user->contact_no,
-            $user->address,
-            $patient?->guardian_name,
-            $patient?->guardian_contact,
-            $patient?->emergency_name,
-            $patient?->emergency_contact_no ?: $patient?->emergency_contact,
-            $patient?->blood_type,
-            $patient?->allergies,
-            $patient?->medical_history,
-        ];
-
-        $filled = 0;
-        foreach ($fields as $val) {
-            if ($val !== null && trim((string) $val) !== '') {
-                $filled++;
-            }
-        }
-
-        return (int) round(($filled / count($fields)) * 100);
+        return ProfileReadiness::percent($user);
     }
 
     /**

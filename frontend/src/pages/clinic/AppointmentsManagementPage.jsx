@@ -4,18 +4,23 @@ import { toast } from 'react-hot-toast'
 import DashboardLayout from '../../components/DashboardLayout'
 import { appointmentsApi } from '../../api/appointments'
 import { ViewConsultationModal } from '../../components/ViewConsultationModal'
+import { ConsultationModal } from '../../components/ConsultationModal'
 import { useAuth } from '../../context/AuthContext'
 import { formatAppointmentDateTime, todayISO } from '../../utils/dateUtils'
 import Pagination from '../../components/Pagination'
+import DateRangeFilter from '../../components/DateRangeFilter'
+import { defaultRange } from '../../utils/dateRange'
 import Avatar from '../../components/Avatar'
 import { EMPTY } from '../../utils/emptyValue'
 import useSubmitLock from '../../hooks/useSubmitLock'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 
 const STATUS_BADGES = {
   pending:   'status-badge inactive',
   confirmed: 'status-badge active',
   completed: 'status-badge role-blue',
   cancelled: 'status-badge danger',
+  no_show:   'status-badge inactive',
 }
 
 function RescheduleModal({ appointment, onClose, onRescheduled }) {
@@ -163,22 +168,36 @@ export default function AppointmentsManagementPage() {
   const canConsult = user?.role === 'clinic_staff' || (user?.role === 'admin' && Boolean(user?.has_medical_access))
   const [appointments, setAppointments] = useState([])
   const [loading, setLoading]         = useState(true)
-  const [filter, setFilter]           = useState(initialStatus) // 'all'|'pending'|'confirmed'|'completed'|'cancelled'
+  const [filter, setFilter]           = useState(initialStatus) // 'all'|status value
+  const [searchQuery, setSearchQuery] = useState('')
+  const debouncedSearch = useDebouncedValue(searchQuery)
   const [reschedTarget, setReschedTarget] = useState(null)
   const [cancelTarget, setCancelTarget]   = useState(null)
   const [viewRecord, setViewRecord]       = useState(null)
+  const [editModal, setEditModal]         = useState(null)
   const [page, setPage]               = useState(1)
   const [pageSize, setPageSize]       = useState(10)
   const [lastPage, setLastPage]       = useState(1)
   const [total, setTotal]             = useState(0)
+  const [statusCounts, setStatusCounts] = useState({})
+  const [range, setRange]             = useState(defaultRange)
 
   const load = async () => {
     setLoading(true)
     try {
-      const { data } = await appointmentsApi.list({ appointment_type: 'medical', page, per_page: pageSize })
+      const { data } = await appointmentsApi.list({
+        appointment_type: 'medical',
+        page,
+        per_page: pageSize,
+        ...(filter !== 'all' && { status: filter }),
+        ...(debouncedSearch.trim() && { search: debouncedSearch.trim() }),
+        ...(range.from && { date_from: range.from }),
+        ...(range.to && { date_to: range.to }),
+      })
       setAppointments(data.appointments || [])
       setLastPage(data.last_page || 1)
       setTotal(data.total || 0)
+      setStatusCounts(data.status_counts || {})
       // Mark medical appointments as read for staff/admin and update badge
       try {
         await appointmentsApi.markAllRead({ appointment_type: 'medical' })
@@ -188,7 +207,7 @@ export default function AppointmentsManagementPage() {
     finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [page, pageSize])
+  useEffect(() => { load() }, [page, pageSize, filter, debouncedSearch, range.from, range.to])
 
   useEffect(() => {
     if (highlightId && appointments.length > 0) {
@@ -203,6 +222,7 @@ export default function AppointmentsManagementPage() {
     try {
       const { data } = await appointmentsApi.updateStatus(id, { status })
       setAppointments(p => p.map(a => a.id === id ? data.appointment : a))
+      load()   // refresh the status counts too
       toast.success(`Appointment marked as ${status}.`)
       window.dispatchEvent(new Event('appointments-updated'))
     } catch { toast.error(`Failed to mark appointment as ${status}.`) }
@@ -220,156 +240,213 @@ export default function AppointmentsManagementPage() {
     window.dispatchEvent(new Event('appointments-updated'))
   }
 
-  const filtered = appointments.filter(a => {
-    if (filter === 'all') return true
-    return a.status === filter
-  })
+  const handleEditSaved = (savedRecord) => {
+    // Update appointment's clinic_record with new data
+    setAppointments(p => p.map(a => a.clinic_record?.id === savedRecord.id ? { ...a, clinic_record: savedRecord } : a))
+    setViewRecord(null)
+    setEditModal(null)
+  }
 
+  // The list is already filtered server-side (status + search), so render it directly
+  const filtered = appointments
+
+  useEffect(() => {
+    setPage(1)
+  }, [filter, searchQuery, range.from, range.to])
+
+  // Counts come from the API for the whole desk, not just the current page
   const stats = [
-    { value: appointments.filter(a => a.status === 'pending').length,   label: 'Pending' },
-    { value: appointments.filter(a => a.status === 'confirmed').length, label: 'Confirmed' },
-    { value: appointments.filter(a => a.status === 'completed').length, label: 'Completed' },
+    { value: statusCounts.pending   ?? 0, label: 'Pending' },
+    { value: statusCounts.confirmed ?? 0, label: 'Confirmed' },
+    { value: statusCounts.completed ?? 0, label: 'Completed' },
+    { value: statusCounts.cancelled ?? 0, label: 'Cancelled' },
+    { value: statusCounts.no_show   ?? 0, label: 'No Show' },
   ]
 
   return (
-    <DashboardLayout title="Medical Appointments Dashboard" subtitle="Confirm, reschedule, or cancel patient medical bookings." stats={stats}>
-      <div className="page-toolbar">
-        <div className="tab-bar" style={{ margin: 0 }}>
-          <button className={`tab-btn ${filter === 'all' ? 'active' : ''}`} onClick={() => { setFilter('all'); setPage(1) }}>All</button>
-          <button className={`tab-btn ${filter === 'pending' ? 'active' : ''}`} onClick={() => { setFilter('pending'); setPage(1) }}>Pending</button>
-          <button className={`tab-btn ${filter === 'confirmed' ? 'active' : ''}`} onClick={() => { setFilter('confirmed'); setPage(1) }}>Confirmed</button>
-          <button className={`tab-btn ${filter === 'completed' ? 'active' : ''}`} onClick={() => { setFilter('completed'); setPage(1) }}>Completed</button>
-          <button className={`tab-btn ${filter === 'cancelled' ? 'active' : ''}`} onClick={() => { setFilter('cancelled'); setPage(1) }}>Cancelled</button>
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="table-loading"><span className="loader-ring" /></div>
-      ) : filtered.length === 0 ? (
-        <div className="empty-state">
-          <p>No medical appointments match the selected filter.</p>
+    <DashboardLayout title="Medical Appointments Dashboard" subtitle="Confirm, reschedule, or cancel patient medical bookings." stats={editModal ? [] : stats}>
+      {editModal ? (
+        // Edit form: normal scrollable layout
+        <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
+          <ConsultationModal
+            initialData={editModal}
+            onClose={() => setEditModal(null)}
+            onSaved={handleEditSaved}
+            inline
+          />
         </div>
       ) : (
-        <div className="data-table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Scheduled Date & Time</th>
-                <th>Patient Name</th>
-                <th>Service</th>
-                <th>Attending Nurse</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(a => (
-                <tr
-                  key={a.id}
-                  id={`appt-row-${a.id}`}
-                  style={String(a.id) === String(highlightId) ? { backgroundColor: 'rgba(59, 130, 246, 0.12)', outline: '2px solid var(--accent)', transition: 'all 0.5s ease' } : {}}
-                >
-                  <td className="td-name">
-                    {formatAppointmentDateTime(a)}
-                  </td>
-                  <td>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <Avatar src={a.patient?.user?.avatar_url} name={a.patient?.user?.name} size={28} />
-                      {a.patient?.user?.name || 'Deleted User'}
-                    </span>
-                  </td>
-                  <td>{a.service?.name}</td>
-                  <td>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <Avatar src={a.staff?.avatar_url} name={a.staff?.name} size={28} />
-                      {a.staff?.name}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={STATUS_BADGES[a.status] || 'status-badge inactive'}>
-                      {a.status}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="action-btns">
-                      {a.status === 'pending' && (
-                        <>
-                          <button
-                            className="btn-primary"
-                            style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }}
-                            onClick={() => handleUpdateStatus(a.id, 'confirmed')}
-                          >
-                            Confirm
-                          </button>
-                          <button
-                            className="btn-secondary"
-                            style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }}
-                            title="Reschedule"
-                            onClick={() => setReschedTarget(a)}
-                          >
-                            Reschedule
-                          </button>
-                          <button
-                            className="btn-danger"
-                            style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }}
-                            title="Cancel"
-                            onClick={() => setCancelTarget(a)}
-                          >
-                            Cancel
-                          </button>
-                        </>
-                      )}
+        // List view: fixed layout
+        <div className="page-fixed-list fixed-list-layout">
+        {/* Fixed Top Section */}
+        <div className="fixed-list-top">
+          {/* Date range (shared with Consultations/Reports) + admin type filter */}
+          <div style={{ marginBottom: '0.75rem', maxWidth: '640px' }}>
+            <DateRangeFilter value={range} onChange={setRange} />
+          </div>
+          {/* Toolbar: Search + Status Tabs + Refresh */}
+          <div className="page-toolbar" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            <input
+              type="text"
+              className="search-input"
+              placeholder="Search by patient name or student ID..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ flex: 1, minWidth: '260px' }}
+            />
 
-                      {a.status === 'confirmed' && canConsult && (
-                        <button
-                          className="btn-primary"
-                          style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }}
-                          title="Start patient check-up consultation"
-                          onClick={() => navigate(`/clinic/consultations?appointment_id=${a.id}&patient_id=${a.patient_id}`, { state: { appointment: a } })}
-                        >
-                          Start Consultation
-                        </button>
-                      )}
+            <div className="tab-bar" style={{ margin: 0 }}>
+              <button className={`tab-btn ${filter === 'all' ? 'active' : ''}`} onClick={() => { setFilter('all'); setPage(1) }}>All</button>
+              <button className={`tab-btn ${filter === 'pending' ? 'active' : ''}`} onClick={() => { setFilter('pending'); setPage(1) }}>Pending</button>
+              <button className={`tab-btn ${filter === 'confirmed' ? 'active' : ''}`} onClick={() => { setFilter('confirmed'); setPage(1) }}>Confirmed</button>
+              <button className={`tab-btn ${filter === 'completed' ? 'active' : ''}`} onClick={() => { setFilter('completed'); setPage(1) }}>Completed</button>
+              <button className={`tab-btn ${filter === 'cancelled' ? 'active' : ''}`} onClick={() => { setFilter('cancelled'); setPage(1) }}>Cancelled</button>
+              <button className={`tab-btn ${filter === 'no_show' ? 'active' : ''}`} onClick={() => { setFilter('no_show'); setPage(1) }}>No Show</button>
+            </div>
 
-                      {a.status === 'completed' && (
-                        <button
-                          className="btn-secondary"
-                          style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }}
-                          onClick={() => {
-                            const recordId = a.clinic_record?.id
-                            if (recordId) {
-                              setViewRecord(recordId)
-                            } else {
-                              toast.error('Consultation record not found for this appointment.')
-                            }
-                          }}
-                        >
-                          View
-                        </button>
-                      )}
+            <button onClick={load} className="btn-secondary">
+              Refresh
+            </button>
+          </div>
+        </div>
 
-                      {a.status === 'cancelled' && (
-                        <span className="text-muted" style={{ fontSize: '0.8rem' }}>
-                          {a.cancellation_reason ? `Reason: ${a.cancellation_reason}` : EMPTY}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {loading ? (
+          <div className="table-loading"><span className="loader-ring" /></div>
+        ) : filtered.length === 0 ? (
+          <div className="empty-state">
+            <p>No medical appointments match the selected filter.</p>
+          </div>
+        ) : (
+          <div className="fixed-list-body">
+            {/* Scrollable Table */}
+            <div className="fixed-list-scroll">
+              <div className="data-table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Scheduled Date & Time</th>
+                      <th>Patient Name</th>
+                      <th>Service</th>
+                      <th>Attending Nurse</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map(a => (
+                      <tr
+                        key={a.id}
+                        id={`appt-row-${a.id}`}
+                        style={String(a.id) === String(highlightId) ? { backgroundColor: 'rgba(59, 130, 246, 0.12)', outline: '2px solid var(--accent)', transition: 'all 0.5s ease' } : {}}
+                      >
+                        <td className="td-name">
+                          {formatAppointmentDateTime(a)}
+                        </td>
+                        <td>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <Avatar src={a.patient?.user?.avatar_url} name={a.patient?.user?.name} size={28} />
+                            {a.patient?.user?.name || 'Deleted User'}
+                          </span>
+                        </td>
+                        <td>{a.service?.name}</td>
+                        <td>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <Avatar src={a.staff?.avatar_url} name={a.staff?.name} size={28} />
+                            {a.staff?.name}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={STATUS_BADGES[a.status] || 'status-badge inactive'}>
+                            {a.status}
+                          </span>
+                        </td>
+                        <td>
+                          <div className="action-btns">
+                            {a.status === 'pending' && (
+                              <>
+                                <button
+                                  className="btn-primary"
+                                  style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }}
+                                  onClick={() => handleUpdateStatus(a.id, 'confirmed')}
+                                >
+                                  Confirm
+                                </button>
+                                <button
+                                  className="btn-secondary"
+                                  style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }}
+                                  title="Reschedule"
+                                  onClick={() => setReschedTarget(a)}
+                                >
+                                  Reschedule
+                                </button>
+                                <button
+                                  className="btn-danger"
+                                  style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }}
+                                  title="Cancel"
+                                  onClick={() => setCancelTarget(a)}
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            )}
+
+                            {a.status === 'confirmed' && canConsult && (
+                              <button
+                                className="btn-primary"
+                                style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }}
+                                title="Start patient check-up consultation"
+                                onClick={() => navigate(`/clinic/consultations?appointment_id=${a.id}&patient_id=${a.patient_id}`, { state: { appointment: a } })}
+                              >
+                                Start Consultation
+                              </button>
+                            )}
+
+                            {a.status === 'completed' && (
+                              <button
+                                className="btn-secondary"
+                                style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }}
+                                onClick={() => {
+                                  const recordId = a.clinic_record?.id
+                                  if (recordId) {
+                                    setViewRecord(recordId)
+                                  } else {
+                                    toast.error('Consultation record not found for this appointment.')
+                                  }
+                                }}
+                              >
+                                View
+                              </button>
+                            )}
+
+                            {a.status === 'cancelled' && (
+                              <span className="text-muted" style={{ fontSize: '0.8rem' }}>
+                                {a.cancellation_reason ? `Reason: ${a.cancellation_reason}` : EMPTY}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Pinned Pagination */}
+            <div className="fixed-list-bottom">
+              <Pagination
+                currentPage={page}
+                totalPages={lastPage}
+                totalItems={total}
+                pageSize={pageSize}
+                onPageChange={setPage}
+                onPageSizeChange={(s) => { setPageSize(s); setPage(1) }}
+              />
+            </div>
+          </div>
+        )}
         </div>
       )}
-
-      <Pagination
-        currentPage={page}
-        totalPages={lastPage}
-        totalItems={total}
-        pageSize={pageSize}
-        onPageChange={setPage}
-        onPageSizeChange={(s) => { setPageSize(s); setPage(1) }}
-      />
 
       {reschedTarget && (
         <RescheduleModal
@@ -391,6 +468,10 @@ export default function AppointmentsManagementPage() {
         <ViewConsultationModal
           recordId={viewRecord}
           onClose={() => setViewRecord(null)}
+          onEdit={canConsult ? (rec) => {
+            setViewRecord(null)
+            setEditModal(rec)
+          } : null}
         />
       )}
     </DashboardLayout>

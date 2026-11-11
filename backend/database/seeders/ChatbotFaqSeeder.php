@@ -62,7 +62,7 @@ class ChatbotFaqSeeder extends Seeder
                 'sort_order' => 1,
                 'keywords'   => 'services, offered, available, consultation, medical, dental',
                 'question'   => 'What services does the clinic offer?',
-                'answer'     => "The University Clinic offers:\n• Medical Consultation (30m)\n• Blood Pressure Monitoring (15m)\n• First Aid Treatment (20m)\n• Physical Examination (60m)\n• Issuance of Medical Certificate (30m)\n• Dental Consultation (45m)\n• Dental Cleaning (30m)\n• Tooth Extraction (30m)\n• Tooth Filling (30m)",
+                'answer'     => "The University Clinic offers:\n• Medical Consultation\n• Blood Pressure Monitoring\n• First Aid Treatment\n• Physical Examination\n• Issuance of Medical Certificate\n• Dental Consultation\n• Dental Cleaning\n• Tooth Extraction\n• Tooth Filling",
             ],
             [
                 'category'   => 'services',

@@ -46,13 +46,14 @@ class DashboardController extends Controller
     private function categorizeComplaint(?string $category, ?string $complaint, ?string $diagnosis, string $type = 'medical'): string
     {
         if (!empty($category) && trim($category) !== '') {
-            return trim($category);
+            $cat = trim($category);
+            return mb_strtolower($cat) === 'other' ? 'Others' : $cat;
         }
 
         $text = strtolower(trim(($complaint ?? '') . ' ' . ($diagnosis ?? '')));
 
         if (empty($text)) {
-            return $type === 'dental' ? 'Dental Checkup' : 'Other';
+            return $type === 'dental' ? 'Dental Checkup' : 'Others';
         }
 
         if (str_contains($text, 'fever') || str_contains($text, 'flu') || str_contains($text, 'trangkaso') || str_contains($text, 'temperature') || str_contains($text, 'lagnat')) {
@@ -92,7 +93,7 @@ class DashboardController extends Controller
             return 'Gum Problem';
         }
 
-        return 'Other';
+        return 'Others';
     }
 
     /**
@@ -118,15 +119,15 @@ class DashboardController extends Controller
             : $query;
     }
 
-    /** The consultation tables a role's dashboard counts: [table, date column, text column, type]. */
+    /** The consultation tables a role's dashboard counts: [table, date column, text column, type, category id column]. */
     private function consultationSources(string $role): array
     {
         $sources = [];
         if ($role === 'admin' || $role === 'clinic_staff') {
-            $sources[] = ['clinic_records', 'visit_date', 'chief_complaint', 'medical'];
+            $sources[] = ['clinic_records', 'visit_date', 'chief_complaint', 'medical', 'complaint_category_id'];
         }
         if ($role === 'admin' || $role === 'dentist') {
-            $sources[] = ['dental_consultations', 'consultation_date', 'reason_for_visit', 'dental'];
+            $sources[] = ['dental_consultations', 'consultation_date', 'reason_for_visit', 'dental', 'complaint_category_id'];
         }
 
         return $sources;
@@ -155,15 +156,15 @@ class DashboardController extends Controller
     /**
      * Visit trends and frequent symptoms for a role and period (cached for CHART_TTL seconds).
      */
-    private function getTrendsAndSymptoms(string $role, string $period, int $month, int $year): array
+    private function getTrendsAndSymptoms(string $role, string $period, int $month, int $year, ?string $symptomType = null): array
     {
         // role is part of the key: each role's charts count different consultation tables
-        $key = CacheVersion::key('dashboard', 'charts', $role, $period, (string) $month, (string) $year, Carbon::today()->toDateString());
+        $key = CacheVersion::key('dashboard', 'charts', $role, $period, (string) $month, (string) $year, (string) $symptomType, Carbon::today()->toDateString());
 
-        return Cache::remember($key, self::CHART_TTL, fn () => $this->buildTrendsAndSymptoms($role, $period, $month, $year));
+        return Cache::remember($key, self::CHART_TTL, fn () => $this->buildTrendsAndSymptoms($role, $period, $month, $year, $symptomType));
     }
 
-    private function buildTrendsAndSymptoms(string $role, string $period, int $month, int $year): array
+    private function buildTrendsAndSymptoms(string $role, string $period, int $month, int $year, ?string $symptomType = null): array
     {
         $today = Carbon::today();
         $trendData = [];
@@ -224,25 +225,64 @@ class DashboardController extends Controller
 
         // Frequent symptoms in the same range. Identical complaint/diagnosis text is grouped in
         // SQL so only the distinct combinations are categorised in PHP.
+        // Category names come from the complaint_categories table (by id, then by name);
+        // rows without a category still fall back to keyword matching.
         $categoryCounts = [];
         $totalSymptomsCount = 0;
+        $uncategorizedCount = 0;
 
-        foreach ($this->consultationSources($role) as [$table, $dateColumn, $textColumn, $type]) {
-            $rows = $this->onlyCompleted($this->inRange(DB::table($table), $dateColumn, $startDate, $endDate), $table)
-                ->select('complaint_category', "{$textColumn} AS complaint", 'diagnosis')
-                ->selectRaw('COUNT(*) AS c')
-                ->groupBy('complaint_category', $textColumn, 'diagnosis')
-                ->get();
-
-            foreach ($rows as $row) {
-                $cat = $this->categorizeComplaint($row->complaint_category, $row->complaint, $row->diagnosis, $type);
-                $categoryCounts[$cat] = ($categoryCounts[$cat] ?? 0) + (int) $row->c;
-                $totalSymptomsCount += (int) $row->c;
-            }
+        $catById   = DB::table('complaint_categories')->pluck('name', 'id')->all();
+        $catByName = [];
+        foreach ($catById as $catName) {
+            $catByName[mb_strtolower($catName)] = $catName;
         }
 
-        // Consultations that fell into the catch-all buckets (no category and nothing recognisable in the text)
-        $uncategorizedCount = ($categoryCounts['Other'] ?? 0) + ($categoryCounts['Dental Checkup'] ?? 0);
+        $resolveCategory = function ($row, string $type) use ($catById, $catByName): string {
+            $cid = $row->complaint_category_id ?? null;
+            if ($cid !== null && isset($catById[$cid])) {
+                return $catById[$cid];
+            }
+
+            $cat = trim((string) ($row->complaint_category ?? ''));
+            if ($cat !== '') {
+                $key = mb_strtolower($cat);
+                if ($key === 'other') {
+                    $key = 'others';   // merge the legacy "Other" into "Others"
+                }
+
+                return $catByName[$key] ?? $cat;
+            }
+
+            return $this->categorizeComplaint(null, $row->complaint, $row->diagnosis, $type);
+        };
+
+        foreach ($this->consultationSources($role) as [$table, $dateColumn, $textColumn, $type, $categoryIdColumn]) {
+            if ($symptomType !== null && $type !== $symptomType) {
+                continue;   // admin's symptoms toggle: count only the asked-for care type
+            }
+            $query = $this->onlyCompleted($this->inRange(DB::table($table), $dateColumn, $startDate, $endDate), $table)
+                ->select('complaint_category', "{$textColumn} AS complaint", 'diagnosis')
+                ->selectRaw($categoryIdColumn ? "{$categoryIdColumn} AS complaint_category_id, COUNT(*) AS c" : 'NULL AS complaint_category_id, COUNT(*) AS c')
+                ->groupBy('complaint_category', $textColumn, 'diagnosis');
+            if ($categoryIdColumn) {
+                $query->groupBy($categoryIdColumn);
+            }
+            $rows = $query->get();
+
+            foreach ($rows as $row) {
+                $cat = $resolveCategory($row, $type);
+                $categoryCounts[$cat] = ($categoryCounts[$cat] ?? 0) + (int) $row->c;
+                $totalSymptomsCount += (int) $row->c;
+
+                // Catch-all buckets only count as uncategorized when the record stored no category at all
+                // (a real "Others" pick must not be lumped in with unmatched consultations)
+                $hasStoredCategory = ($row->complaint_category_id !== null && $row->complaint_category_id !== '')
+                    || trim((string) ($row->complaint_category ?? '')) !== '';
+                if (! $hasStoredCategory && ($cat === 'Others' || $cat === 'Dental Checkup')) {
+                    $uncategorizedCount += (int) $row->c;
+                }
+            }
+        }
 
         arsort($categoryCounts);
 
@@ -405,6 +445,9 @@ class DashboardController extends Controller
         $period = $request->query('period', 'monthly'); // 'daily' | 'monthly' | 'yearly'
         $month = (int) $request->query('month', Carbon::today()->month);
         $year = (int) $request->query('year', Carbon::today()->year);
+        // Optional symptoms-chart filter: 'medical' | 'dental' (default: both)
+        $symptomType = $request->query('type');
+        $symptomType = is_string($symptomType) && in_array($symptomType, ['medical', 'dental'], true) ? $symptomType : null;
         [$from, $to] = $this->todayBounds();
 
         // 1. Stats cards
@@ -433,7 +476,7 @@ class DashboardController extends Controller
                 'unanswered_conversations'  => $unansweredConversations,
             ],
             'inventory_alert' => $invAlerts,
-            'charts'          => $this->getTrendsAndSymptoms('admin', $period, $month, $year),
+            'charts'          => $this->getTrendsAndSymptoms('admin', $period, $month, $year, $symptomType),
             'recent_visits'   => $this->getRecentVisits('admin', 8),
             'calendar_events' => CalendarEventController::visibleEvents($request->user()),
         ]);

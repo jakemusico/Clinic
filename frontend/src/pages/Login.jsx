@@ -17,6 +17,10 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const { lock, unlock } = useSubmitLock()
 
+  const handleFocusScroll = (e) => {
+    e.target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }
+
   const handleChange = (e) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }))
     setErrors((prev) => ({ ...prev, [e.target.name]: '' }))
@@ -44,7 +48,7 @@ export default function Login() {
   }
 
   return (
-    <div className="login-page-wrapper">
+    <div className="login-page-wrapper login-centered">
       {/* Background image layer with subtle soft blur to smooth resolution */}
       <div
         className="login-bg-layer"
@@ -78,6 +82,7 @@ export default function Login() {
               placeholder="you@university.edu"
               value={form.email}
               onChange={handleChange}
+              onFocus={handleFocusScroll}
               className={errors.email ? 'input-error' : ''}
               required
             />
@@ -94,6 +99,7 @@ export default function Login() {
               placeholder="••••••••"
               value={form.password}
               onChange={handleChange}
+              onFocus={handleFocusScroll}
               className={errors.password ? 'input-error' : ''}
               required
             />

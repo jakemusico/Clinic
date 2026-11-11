@@ -6,6 +6,7 @@ import DashboardLayout from '../../components/DashboardLayout'
 import Pagination from '../../components/Pagination'
 import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/ConfirmModal'
+import SearchToolbar from '../../components/SearchToolbar'
 import { adminApi } from '../../api/admin'
 import { useSectionsAndGradeLevels } from '../../hooks/useReferenceData'
 import { DEPARTMENTS, GRADE_LEVELS } from '../../constants/schoolData'
@@ -309,9 +310,7 @@ export default function UsersPage() {
     }
   }, [page, pageSize, search, filterRole, filterStat])
 
-  useEffect(() => { load() }, [page, pageSize, filterRole, filterStat])
-
-  const handleSearchSubmit = (e) => { e.preventDefault(); setPage(1); load() }
+  useEffect(() => { load() }, [page, pageSize, search, filterRole, filterStat])
 
   // ---------------------------------------------------------------------------
   // Open modals
@@ -469,18 +468,12 @@ export default function UsersPage() {
     <DashboardLayout title="User Management" subtitle="Manage accounts, system roles, and access permissions.">
 
       {/* Toolbar */}
-      <div className="page-toolbar" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
-        <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: '0.5rem', flex: 1, minWidth: '260px' }}>
-          <input
-            id="user-search-input"
-            className="search-input"
-            placeholder="Search by name, email, ID..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{ width: '100%' }}
-          />
-          <button type="submit" className="btn-secondary">Search</button>
-        </form>
+      <div className="page-toolbar" style={{ flexWrap: 'wrap', gap: '0.75rem', alignItems: 'flex-start' }}>
+        <SearchToolbar
+          value={search}
+          onChange={(val) => { setSearch(val); setPage(1) }}
+          placeholder="Search by name, email, ID..."
+        />
 
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ minWidth: '150px' }}>

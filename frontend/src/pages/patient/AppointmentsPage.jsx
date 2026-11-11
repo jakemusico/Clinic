@@ -6,6 +6,7 @@ import Pagination from '../../components/Pagination'
 import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/ConfirmModal'
 import { appointmentsApi } from '../../api/appointments'
+import { authApi } from '../../api/auth'
 import { servicesApi } from '../../api/services'
 import { formatAppointmentDate, formatAppointmentTime, todayISO } from '../../utils/dateUtils'
 import Avatar from '../../components/Avatar'
@@ -445,6 +446,152 @@ function MonthCalendar({ currentMonthDate, onMonthChange, availableDates, select
   )
 }
 
+/**
+ * Custom dropdown for Filters panel that matches the Clinic Service dropdown styling
+ * (.dd-wrap, .dd-trigger--filter, .dd-panel, .dd-option, etc.)
+ */
+function FilterCustomDropdown({
+  options = [],
+  value = '',
+  onChange,
+  placeholder = 'Select…',
+  ariaLabel,
+  isOpen,
+  onToggle,
+  onClose,
+}) {
+  const wrapRef = useRef(null)
+
+  const selected = useMemo(() => {
+    return options.find(o => String(o.value) === String(value))
+  }, [options, value])
+
+  // Close on outside click or Escape
+  useEffect(() => {
+    if (!isOpen) return
+    const onDown = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        onClose?.()
+      }
+    }
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        onClose?.()
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [isOpen, onClose])
+
+  const handleSelect = (val) => {
+    onChange?.(val)
+    onClose?.()
+  }
+
+  return (
+    <div
+      ref={wrapRef}
+      className={`dd-wrap dd-wrap--filter dd-wrap-filter filter-custom-dd ${isOpen ? 'is-open' : ''}`}
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '44px',
+        minHeight: '44px',
+        maxHeight: '44px',
+        margin: 0,
+        padding: 0,
+        flex: '0 0 44px',
+        boxSizing: 'border-box',
+      }}
+    >
+      <button
+        type="button"
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-label={ariaLabel}
+        className={`dd-trigger dd-trigger--filter ${isOpen ? 'is-open' : ''}`}
+        onClick={onToggle}
+        style={{
+          height: '44px',
+          minHeight: '44px',
+          maxHeight: '44px',
+          width: '100%',
+          boxSizing: 'border-box',
+          fontSize: '16px',
+        }}
+      >
+        <span className="dd-value">
+          {selected ? selected.label : placeholder}
+        </span>
+        <svg
+          className="dd-chevron"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          style={{ transform: `translateY(-50%) rotate(${isOpen ? 180 : 0}deg)` }}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div
+          className="dd-panel filter-custom-dd-panel is-down"
+          role="listbox"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 6px)',
+            left: 0,
+            right: 0,
+            width: '100%',
+            zIndex: 80,
+            background: '#ffffff',
+            borderRadius: 'var(--radius-md, 8px)',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05)',
+            maxHeight: '180px',
+            overflowY: 'auto',
+            margin: 0,
+            padding: 0,
+            boxSizing: 'border-box',
+          }}
+        >
+          <div className="dd-list" style={{ maxHeight: '180px', overflowY: 'auto', margin: 0, padding: 0 }}>
+            {options.map((opt) => {
+              const isSelected = String(opt.value) === String(value)
+              return (
+                <div
+                  key={opt.value}
+                  role="option"
+                  aria-selected={isSelected}
+                  className={`dd-option ${isSelected ? 'is-selected' : ''}`}
+                  onClick={() => handleSelect(opt.value)}
+                  style={{ minHeight: '40px', height: '40px' }}
+                >
+                  <div className="dd-option-main">
+                    <div className="dd-option-name">{opt.label}</div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    Main AppointmentsPage Component
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -465,9 +612,10 @@ export default function AppointmentsPage() {
   const [statusFilter, setStatusFilter] = useState(initStatus) // 'all' | 'confirmed' | 'pending' | 'completed' | 'cancelled'
   const [searchQuery, setSearchQuery]   = useState('')
   const debouncedSearchQuery = useDebouncedValue(searchQuery)
-  const [typeFilter, setTypeFilter]     = useState('all') // 'all' | 'medical' | 'dental'
+  const [careCategory, setCareCategory] = useState('all') // 'all' | 'medical' | 'dental'
   const [sortOrder, setSortOrder]       = useState('newest') // 'newest' | 'oldest'
   const [filterPopoverOpen, setFilterPopoverOpen] = useState(false)
+  const [openFilterDropdown, setOpenFilterDropdown] = useState(null) // 'category' | 'sort' | null
   const filterPopoverRef = useRef(null)
   const [cancelConfirm, setCancelConfirm] = useState({ open: false, id: null, loading: false })
   const bookingLock = useSubmitLock()
@@ -498,20 +646,56 @@ export default function AppointmentsPage() {
   const [loadingSlots, setLoadingSlots]   = useState(false)
   const [selectedSlot, setSelectedSlot]   = useState(null)
   const [booking, setBooking]             = useState(false)
+  const [readiness, setReadiness]         = useState(null) // { percent, missing[] } | null
 
   // Reschedule State
   const [reschedTarget, setReschedTarget] = useState(null)
 
-  // Close filter popover on outside click
+  // Close filter popover on outside click or Escape key
   useEffect(() => {
+    if (!filterPopoverOpen) return
+
     const handleClickOutside = (e) => {
       if (filterPopoverRef.current && !filterPopoverRef.current.contains(e.target)) {
         setFilterPopoverOpen(false)
       }
     }
+
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        setFilterPopoverOpen(false)
+      }
+    }
+
+    const handleRouteChange = () => setFilterPopoverOpen(false)
+
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+    document.addEventListener('keydown', handleEscape)
+    window.addEventListener('popstate', handleRouteChange)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleEscape)
+      window.removeEventListener('popstate', handleRouteChange)
+    }
+  }, [filterPopoverOpen])
+
+  // Reset only resets category and sort (not search or tab)
+  const handleResetFilters = () => {
+    setCareCategory('all')
+    setSortOrder('newest')
+    setOpenFilterDropdown(null)
+  }
+
+  // Clear all filters resets query, status tab, care category, and sort
+  const handleClearAllFilters = () => {
+    setSearchQuery('')
+    setStatusFilter('all')
+    setCareCategory('all')
+    setSortOrder('newest')
+  }
+
+  const isFilterActive = careCategory !== 'all' || sortOrder !== 'newest'
+  const hasActiveFilters = searchQuery.trim() !== '' || statusFilter !== 'all' || isFilterActive
 
   // Load initial appointments and clinic services
   const loadInitialData = async () => {
@@ -519,6 +703,10 @@ export default function AppointmentsPage() {
     try {
       const appRes = await appointmentsApi.list()
       setAppointments(appRes.data.appointments || [])
+      try {
+        const pRes = await authApi.getProfile()
+        setReadiness({ percent: pRes.data.readiness ?? 100, missing: pRes.data.missing_fields || [] })
+      } catch { /* readiness check is best-effort; the API still enforces it */ }
     } catch {
       toast.error('Failed to load appointments data.')
     } finally {
@@ -656,7 +844,12 @@ export default function AppointmentsPage() {
       setActiveTab('list')
       window.dispatchEvent(new Event('appointments-updated'))
     } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to book appointment.')
+      const missing = err?.response?.data?.missing_fields
+      if (missing?.length) {
+        toast.error('Finish your profile first to book an appointment.')
+      } else {
+        toast.error(err?.response?.data?.message || 'Failed to book appointment.')
+      }
     } finally {
       setBooking(false)
       bookingLock.unlock()
@@ -703,15 +896,35 @@ export default function AppointmentsPage() {
     return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
   }, [selectedDate])
 
-  /* ── Status Counts Calculation ────────────────────────────────────────── */
-  const counts = useMemo(() => {
-    const c = { all: appointments.length, confirmed: 0, pending: 0, completed: 0, cancelled: 0 }
+  // Helper to get appointment timestamp reliably for sorting
+  const getApptTimestamp = (a) => {
+    const raw = a.scheduled_at || a.appointment_date || a.date
+    if (!raw) return 0
+    const d = new Date(raw)
+    return Number.isNaN(d.getTime()) ? 0 : d.getTime()
+  }
+
+  /* ── Care Category Options (dynamically from actual appointment data) ─── */
+  const careCategoryOptions = useMemo(() => {
+    const uniqueTypes = new Set()
     appointments.forEach(a => {
-      if (c[a.status] !== undefined) {
-        c[a.status]++
+      const type = (a.appointment_type || a.service?.care_type || '').toLowerCase()
+      if (type) uniqueTypes.add(type)
+    })
+
+    const options = [{ value: 'all', label: 'All Care Types' }]
+    if (uniqueTypes.has('medical')) {
+      options.push({ value: 'medical', label: 'Medical Care' })
+    }
+    if (uniqueTypes.has('dental')) {
+      options.push({ value: 'dental', label: 'Dental Care' })
+    }
+    uniqueTypes.forEach(t => {
+      if (t !== 'medical' && t !== 'dental') {
+        options.push({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1) })
       }
     })
-    return c
+    return options
   }, [appointments])
 
   /* ── Filtered & Searched Appointments List ────────────────────────────── */
@@ -722,39 +935,83 @@ export default function AppointmentsPage() {
         return false
       }
 
-      // 2. Type Filter
-      if (typeFilter !== 'all' && a.appointment_type !== typeFilter) {
-        return false
+      // 2. Care Category Filter
+      if (careCategory !== 'all') {
+        const type = (a.appointment_type || a.service?.care_type || '').toLowerCase()
+        if (type !== careCategory.toLowerCase()) {
+          return false
+        }
       }
 
       // 3. Search Query Filter
       if (debouncedSearchQuery.trim()) {
-        const q = debouncedSearchQuery.toLowerCase()
-        const idMatch = String(a.id).includes(q) || `#${a.id}`.includes(q)
-        const serviceMatch = a.service?.name?.toLowerCase().includes(q)
-        const staffMatch = a.staff?.name?.toLowerCase().includes(q)
-        const notesMatch = a.notes?.toLowerCase().includes(q)
-        const dateMatch = new Date(a.scheduled_at).toLocaleDateString().includes(q)
+        const q = debouncedSearchQuery.trim().toLowerCase()
+        const idMatch = String(a.id || '').toLowerCase().includes(q) || `#${a.id}`.includes(q)
+        const serviceMatch = (a.service?.name || '').toLowerCase().includes(q)
+        const staffMatch = (a.staff?.name || a.provider || '').toLowerCase().includes(q)
+        const notesMatch = (a.notes || a.reason || '').toLowerCase().includes(q)
+        const typeMatch = (a.appointment_type || a.service?.care_type || '').toLowerCase().includes(q)
+        const dateFormatted = formatAppointmentDate(a).toLowerCase()
+        const timeFormatted = formatAppointmentTime(a).toLowerCase()
+        const rawDateMatch = String(a.scheduled_at || a.appointment_date || '').toLowerCase().includes(q)
 
-        if (!idMatch && !serviceMatch && !staffMatch && !notesMatch && !dateMatch) {
+        if (!idMatch && !serviceMatch && !staffMatch && !notesMatch && !typeMatch && !dateFormatted.includes(q) && !timeFormatted.includes(q) && !rawDateMatch) {
           return false
         }
       }
 
       return true
     }).sort((a, b) => {
-      const dateA = new Date(a.scheduled_at).getTime()
-      const dateB = new Date(b.scheduled_at).getTime()
+      const dateA = getApptTimestamp(a)
+      const dateB = getApptTimestamp(b)
       return sortOrder === 'newest' ? dateB - dateA : dateA - dateB
     })
-  }, [appointments, statusFilter, typeFilter, debouncedSearchQuery, sortOrder])
+  }, [appointments, statusFilter, careCategory, debouncedSearchQuery, sortOrder])
+
+  /* ── Status Counts (reflect active careCategory + search filter) ─────── */
+  const counts = useMemo(() => {
+    const baseFiltered = appointments.filter(a => {
+      // Care category filter
+      if (careCategory !== 'all') {
+        const type = (a.appointment_type || a.service?.care_type || '').toLowerCase()
+        if (type !== careCategory.toLowerCase()) {
+          return false
+        }
+      }
+      // Search filter
+      if (debouncedSearchQuery.trim()) {
+        const q = debouncedSearchQuery.trim().toLowerCase()
+        const idMatch = String(a.id || '').toLowerCase().includes(q) || `#${a.id}`.includes(q)
+        const serviceMatch = (a.service?.name || '').toLowerCase().includes(q)
+        const staffMatch = (a.staff?.name || a.provider || '').toLowerCase().includes(q)
+        const notesMatch = (a.notes || a.reason || '').toLowerCase().includes(q)
+        const typeMatch = (a.appointment_type || a.service?.care_type || '').toLowerCase().includes(q)
+        const dateFormatted = formatAppointmentDate(a).toLowerCase()
+        const timeFormatted = formatAppointmentTime(a).toLowerCase()
+        const rawDateMatch = String(a.scheduled_at || a.appointment_date || '').toLowerCase().includes(q)
+
+        if (!idMatch && !serviceMatch && !staffMatch && !notesMatch && !typeMatch && !dateFormatted.includes(q) && !timeFormatted.includes(q) && !rawDateMatch) {
+          return false
+        }
+      }
+      return true
+    })
+
+    const c = { all: baseFiltered.length, confirmed: 0, pending: 0, completed: 0, cancelled: 0 }
+    baseFiltered.forEach(a => {
+      if (c[a.status] !== undefined) {
+        c[a.status]++
+      }
+    })
+    return c
+  }, [appointments, careCategory, debouncedSearchQuery])
 
   const [apptPage, setApptPage] = useState(1)
   const [apptPageSize, setApptPageSize] = useState(10)
 
   useEffect(() => {
     setApptPage(1)
-  }, [statusFilter, typeFilter, debouncedSearchQuery, sortOrder])
+  }, [statusFilter, careCategory, debouncedSearchQuery, sortOrder])
 
   const apptTotalPages = Math.max(1, Math.ceil(filteredAppointments.length / apptPageSize))
   const paginatedAppointments = filteredAppointments.slice((apptPage - 1) * apptPageSize, apptPage * apptPageSize)
@@ -765,89 +1022,85 @@ export default function AppointmentsPage() {
       subtitle="Track and manage your clinic visits"
       stats={[]}
     >
-      {/* Top Header / Action Row */}
-      <div className="my-appointments-header-wrap">
-        <div className="my-appointments-title-group">
-          <h1>{activeTab === 'book' ? 'Book an Appointment' : 'My Appointments'}</h1>
-          <p>
-            {activeTab === 'book'
-              ? 'Schedule a medical or dental visit in a few steps'
-              : 'Track and manage your clinic visits'}
-          </p>
-        </div>
+      <div className={`appointments-page-container ${activeTab === 'list' ? 'page-fixed-list fixed-list-layout' : 'page-book-tab'}`}>
+        {/* Fixed Top Section: Title + Subtitle + Toggle + Status Tabs + Search/Filters */}
+        <div className={activeTab === 'list' ? 'fixed-list-top' : 'book-fixed-top'}>
+          {/* Top Header / Action Row */}
+          <div className="my-appointments-header-wrap">
+            <div className="my-appointments-title-group">
+              <h1>{activeTab === 'book' ? 'Book an Appointment' : 'My Appointments'}</h1>
+              <p>
+                {activeTab === 'book'
+                  ? 'Schedule a medical or dental visit in a few steps'
+                  : 'Track and manage your clinic visits'}
+              </p>
+            </div>
 
-        {/* Two Tabs: Book / My Appointments */}
-        <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: '0.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-          <button
-            type="button"
-            className={`btn-tab-mode ${activeTab === 'book' ? 'active' : ''}`}
-            onClick={() => setActiveTab('book')}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.45rem',
-              padding: '0.5rem 1.1rem',
-              fontSize: '0.875rem',
-              fontWeight: 600,
-              borderRadius: 'var(--radius-sm)',
-              border: 'none',
-              cursor: 'pointer',
-              background: activeTab === 'book' ? 'var(--accent)' : 'transparent',
-              color: activeTab === 'book' ? '#ffffff' : 'var(--text-sub)',
-              boxShadow: activeTab === 'book' ? '0 1px 3px rgba(37,99,235,0.2)' : 'none',
-              transition: 'all var(--transition)',
-            }}
-          >
-            <PlusIcon size={15} />
-            <span>Book</span>
-          </button>
-          <button
-            type="button"
-            className={`btn-tab-mode ${activeTab === 'list' ? 'active' : ''}`}
-            onClick={() => setActiveTab('list')}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.45rem',
-              padding: '0.5rem 1.1rem',
-              fontSize: '0.875rem',
-              fontWeight: 600,
-              borderRadius: 'var(--radius-sm)',
-              border: 'none',
-              cursor: 'pointer',
-              background: activeTab === 'list' ? 'var(--accent)' : 'transparent',
-              color: activeTab === 'list' ? '#ffffff' : 'var(--text-sub)',
-              boxShadow: activeTab === 'list' ? '0 1px 3px rgba(37,99,235,0.2)' : 'none',
-              transition: 'all var(--transition)',
-            }}
-          >
-            <CalendarIcon size={15} />
-            <span>My Appointments</span>
-            {appointments.length > 0 && (
-              <span style={{
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                padding: '0.1rem 0.5rem',
-                borderRadius: '999px',
-                background: activeTab === 'list' ? 'rgba(255,255,255,0.3)' : 'var(--border)',
-                color: activeTab === 'list' ? '#ffffff' : 'var(--text-muted)',
-              }}>
-                {appointments.length}
-              </span>
-            )}
-          </button>
-        </div>
-      </div>
+            {/* Two Tabs: Book / My Appointments */}
+            <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: '0.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
+              <button
+                type="button"
+                className={`btn-tab-mode ${activeTab === 'book' ? 'active' : ''}`}
+                onClick={() => setActiveTab('book')}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.45rem',
+                  padding: '0.5rem 1.1rem',
+                  fontSize: '0.875rem',
+                  fontWeight: 600,
+                  borderRadius: 'var(--radius-sm)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: activeTab === 'book' ? 'var(--accent)' : 'transparent',
+                  color: activeTab === 'book' ? '#ffffff' : 'var(--text-sub)',
+                  boxShadow: activeTab === 'book' ? '0 1px 3px rgba(37,99,235,0.2)' : 'none',
+                  transition: 'all var(--transition)',
+                }}
+              >
+                <PlusIcon size={15} />
+                <span>Book</span>
+              </button>
+              <button
+                type="button"
+                className={`btn-tab-mode ${activeTab === 'list' ? 'active' : ''}`}
+                onClick={() => setActiveTab('list')}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.45rem',
+                  padding: '0.5rem 1.1rem',
+                  fontSize: '0.875rem',
+                  fontWeight: 600,
+                  borderRadius: 'var(--radius-sm)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: activeTab === 'list' ? 'var(--accent)' : 'transparent',
+                  color: activeTab === 'list' ? '#ffffff' : 'var(--text-sub)',
+                  boxShadow: activeTab === 'list' ? '0 1px 3px rgba(37,99,235,0.2)' : 'none',
+                  transition: 'all var(--transition)',
+                }}
+              >
+                <CalendarIcon size={15} />
+                <span>My Appointments</span>
+                {appointments.length > 0 && (
+                  <span style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    padding: '0.1rem 0.5rem',
+                    borderRadius: '999px',
+                    background: activeTab === 'list' ? 'rgba(255,255,255,0.3)' : 'var(--border)',
+                    color: activeTab === 'list' ? '#ffffff' : 'var(--text-muted)',
+                  }}>
+                    {appointments.length}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
 
-      {loading ? (
-        <div className="table-loading"><span className="loader-ring" /></div>
-      ) : (
-        <>
-          {/* ═══════════════════════════════════════════════════════════════
-             MY APPOINTMENTS LIST TAB
-             ═══════════════════════════════════════════════════════════════ */}
           {activeTab === 'list' && (
-            <div>
+            <>
               {/* Status Filter Tabs */}
               <div className="status-tabs-bar">
                 {[
@@ -885,206 +1138,255 @@ export default function AppointmentsPage() {
                 <div className="appointments-filter-actions" ref={filterPopoverRef}>
                   <button
                     type="button"
-                    className={`filter-btn-pill ${filterPopoverOpen || typeFilter !== 'all' || sortOrder !== 'newest' ? 'active' : ''}`}
-                    onClick={() => setFilterPopoverOpen(!filterPopoverOpen)}
+                    className={`filter-btn-pill ${isFilterActive ? 'active' : ''}`}
+                    onClick={() => setFilterPopoverOpen(prev => !prev)}
+                    aria-expanded={filterPopoverOpen}
+                    aria-label="Filter and sort appointments"
                   >
                     <FilterIcon size={15} />
                     <span>Filters</span>
-                    {(typeFilter !== 'all' || sortOrder !== 'newest') && (
-                      <span className="status-tab-count" style={{ background: 'var(--accent)', color: '#fff' }}>1</span>
-                    )}
+                    {isFilterActive && <span className="filter-active-dot" aria-hidden="true" />}
                   </button>
 
-                  {/* Filters Dropdown Popover */}
+                  {/* Filters Dropdown Popover (anchored under Filters button on all screen sizes) */}
                   {filterPopoverOpen && (
-                    <div className="filter-popover-card">
-                      <div className="filter-popover-group">
-                        <div className="filter-popover-title">Care Category</div>
-                        <Dropdown
-                          variant="filter"
-                          ariaLabel="Care category"
-                          value={typeFilter}
-                          onChange={setTypeFilter}
-                          options={[
-                            { value: 'all', label: 'All Care Types' },
-                            { value: 'medical', label: 'Medical Care Only' },
-                            { value: 'dental', label: 'Dental Care Only' },
-                          ]}
-                        />
+                    <div
+                      className="filter-popover-card"
+                      role="dialog"
+                      aria-label="Filter and sort appointments"
+                    >
+                      <div className="filter-popover-body">
+                        <div
+                          className={`filter-popover-group ${openFilterDropdown === 'category' ? 'is-open' : ''}`}
+                          style={{ position: 'relative', zIndex: openFilterDropdown === 'category' ? 90 : 30 }}
+                        >
+                          <label className="filter-popover-title">Care Category</label>
+                          <FilterCustomDropdown
+                            ariaLabel="Care category"
+                            value={careCategory}
+                            onChange={setCareCategory}
+                            options={careCategoryOptions}
+                            isOpen={openFilterDropdown === 'category'}
+                            onToggle={() => setOpenFilterDropdown(prev => prev === 'category' ? null : 'category')}
+                            onClose={() => setOpenFilterDropdown(null)}
+                          />
+                        </div>
+
+                        <div
+                          className={`filter-popover-group ${openFilterDropdown === 'sort' ? 'is-open' : ''}`}
+                          style={{ position: 'relative', zIndex: openFilterDropdown === 'sort' ? 90 : 20 }}
+                        >
+                          <label className="filter-popover-title">Sort By Date</label>
+                          <FilterCustomDropdown
+                            ariaLabel="Sort by date"
+                            value={sortOrder}
+                            onChange={setSortOrder}
+                            options={[
+                              { value: 'newest', label: 'Newest to Oldest' },
+                              { value: 'oldest', label: 'Oldest to Newest' },
+                            ]}
+                            isOpen={openFilterDropdown === 'sort'}
+                            onToggle={() => setOpenFilterDropdown(prev => prev === 'sort' ? null : 'sort')}
+                            onClose={() => setOpenFilterDropdown(null)}
+                          />
+                        </div>
                       </div>
 
-                      <div className="filter-popover-group">
-                        <div className="filter-popover-title">Sort By Date</div>
-                        <Dropdown
-                          variant="filter"
-                          ariaLabel="Sort by date"
-                          value={sortOrder}
-                          onChange={setSortOrder}
-                          options={[
-                            { value: 'newest', label: 'Newest to Oldest' },
-                            { value: 'oldest', label: 'Oldest to Newest' },
-                          ]}
-                        />
-                      </div>
-
-                      {(typeFilter !== 'all' || sortOrder !== 'newest') && (
+                      <div className="filter-popover-footer" style={{ position: 'relative', zIndex: 10 }}>
                         <button
                           type="button"
-                          className="view-appointments-link"
-                          style={{ textAlign: 'left', marginTop: '0.25rem', fontSize: '0.8rem' }}
+                          className="btn-filter-secondary"
+                          onClick={handleResetFilters}
+                        >
+                          Reset
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-filter-primary filter-popover-apply-btn"
                           onClick={() => {
-                            setTypeFilter('all')
-                            setSortOrder('newest')
+                            setOpenFilterDropdown(null)
+                            setFilterPopoverOpen(false)
                           }}
                         >
-                          Reset filters
+                          Apply
                         </button>
-                      )}
+                      </div>
                     </div>
                   )}
                 </div>
               </div>
-
-              {/* Appointments Data Table */}
-              {filteredAppointments.length === 0 ? (
-                <div className="empty-state" style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '3.5rem 1.5rem', textAlign: 'center' }}>
-                  <CalendarIcon size={36} />
-                  <h3 style={{ marginTop: '0.75rem', marginBottom: '0.35rem', fontSize: '1.1rem' }}>No appointments found</h3>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                    {searchQuery || statusFilter !== 'all' || typeFilter !== 'all'
-                      ? 'No appointments matched your current search or filter criteria.'
-                      : 'You do not have any appointments scheduled yet.'}
-                  </p>
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    style={{ marginTop: '1.25rem' }}
-                    onClick={() => {
-                      if (searchQuery || statusFilter !== 'all' || typeFilter !== 'all') {
-                        setSearchQuery('')
-                        setStatusFilter('all')
-                        setTypeFilter('all')
-                      } else {
-                        setActiveTab('book')
-                      }
-                    }}
-                  >
-                    {searchQuery || statusFilter !== 'all' || typeFilter !== 'all' ? 'Clear Filters' : 'Book an Appointment'}
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="data-table-wrap" style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Service</th>
-                        <th>Date & Time</th>
-                        <th>Provider</th>
-                        <th>Status</th>
-                        <th style={{ textAlign: 'right' }}>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedAppointments.map(a => {
-                        const isDental = a.appointment_type === 'dental'
-                        const dateLine = formatAppointmentDate(a)
-                        const timeLine = formatAppointmentTime(a)
-
-                        return (
-                          <tr
-                            key={a.id}
-                            id={`patient-appt-row-${a.id}`}
-                            style={String(a.id) === String(highlightId) ? { backgroundColor: 'rgba(59, 130, 246, 0.12)', outline: '2px solid var(--accent)', transition: 'all 0.5s ease' } : {}}
-                          >
-                            {/* Service Column */}
-                            <td>
-                              <div className="service-table-cell">
-                                <div className={`service-icon-cell-wrap ${isDental ? 'dental' : 'medical'}`}>
-                                  {isDental ? <ToothIcon size={18} /> : <StethoscopeIcon size={18} />}
-                                </div>
-                                <div className="service-cell-info">
-                                  <span className="service-cell-name">{a.service?.name || 'Clinic Consultation'}</span>
-                                  <span className="service-cell-type">
-                                    {isDental ? 'Dental Care' : 'Medical Care'}
-                                  </span>
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Date & Time Column (Two Lines) */}
-                            <td>
-                              <div className="datetime-table-cell">
-                                <span className="datetime-cell-date">{dateLine}</span>
-                                <span className="datetime-cell-time">{timeLine}</span>
-                                <span className={`status-badge-mobile ${STATUS_BADGES[a.status] || 'status-badge inactive'}`.replace('status-badge ', '')}>
-                                  {a.status}
-                                </span>
-                              </div>
-                            </td>
-
-                            {/* Provider Column */}
-                            <td>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                                <Avatar src={a.staff?.avatar_url} name={a.staff?.name} size={32} />
-                                <div className="provider-table-cell">
-                                  <span className="provider-cell-name">{a.staff?.name || 'Attending Staff'}</span>
-                                  <span className="provider-cell-role">
-                                    {isDental ? 'Dentist' : 'Clinic Nurse'}
-                                  </span>
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Status Column */}
-                            <td>
-                              <span className={STATUS_BADGES[a.status] || 'status-badge inactive'}>
-                                {a.status}
-                              </span>
-                            </td>
-
-                            {/* Action Column */}
-                            <td style={{ textAlign: 'right' }}>
-                              <button
-                                type="button"
-                                className="btn-view-pill"
-                                onClick={() => setViewingAppointment(a)}
-                                title="View Appointment Details"
-                              >
-                                <EyeIcon size={14} />
-                                <span>View</span>
-                              </button>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                  </div>
-
-                  <Pagination
-                    currentPage={apptPage}
-                    totalPages={apptTotalPages}
-                    totalItems={filteredAppointments.length}
-                    pageSize={apptPageSize}
-                    onPageChange={setApptPage}
-                    onPageSizeChange={(newSize) => {
-                      setApptPageSize(newSize)
-                      setApptPage(1)
-                    }}
-                  />
-                </>
-              )}
-            </div>
+            </>
           )}
+        </div>
 
-          {/* ═══════════════════════════════════════════════════════════════
-             BOOK APPOINTMENT TAB (2-COLUMN MODERN REDESIGN)
-             ═══════════════════════════════════════════════════════════════ */}
-          {activeTab === 'book' && (
-            <div className="book-appointment-layout">
+        {loading ? (
+          <div className="table-loading"><span className="loader-ring" /></div>
+        ) : (
+          <>
+            {/* ═══════════════════════════════════════════════════════════════
+               MY APPOINTMENTS LIST TAB
+               ═══════════════════════════════════════════════════════════════ */}
+            {activeTab === 'list' && (
+              <div className="fixed-list-body">
+                {/* Scroll Section: ONLY the cards list */}
+                <div className="fixed-list-scroll">
+                  {filteredAppointments.length === 0 ? (
+                    <div className="empty-state" style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '3.5rem 1.5rem', textAlign: 'center' }}>
+                      <CalendarIcon size={36} />
+                      <h3 style={{ marginTop: '0.75rem', marginBottom: '0.35rem', fontSize: '1.1rem' }}>
+                        {hasActiveFilters ? 'No appointments match your filters' : 'No appointments found'}
+                      </h3>
+                      <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                        {hasActiveFilters
+                          ? 'No appointments matched your current search or filter criteria.'
+                          : 'You do not have any appointments scheduled yet.'}
+                      </p>
+                      {hasActiveFilters && (
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          style={{ marginTop: '1.25rem' }}
+                          onClick={handleClearAllFilters}
+                        >
+                          Clear filters
+                        </button>
+                      )}
+                      {!hasActiveFilters && (
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          style={{ marginTop: '1.25rem' }}
+                          onClick={() => setActiveTab('book')}
+                        >
+                          Book an Appointment
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="data-table-wrap" style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Service</th>
+                            <th>Date & Time</th>
+                            <th>Provider</th>
+                            <th>Status</th>
+                            <th style={{ textAlign: 'right' }}>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {paginatedAppointments.map(a => {
+                            const isDental = a.appointment_type === 'dental'
+                            const dateLine = formatAppointmentDate(a)
+                            const timeLine = formatAppointmentTime(a)
+
+                            return (
+                              <tr
+                                key={a.id}
+                                id={`patient-appt-row-${a.id}`}
+                                style={String(a.id) === String(highlightId) ? { backgroundColor: 'rgba(59, 130, 246, 0.12)', outline: '2px solid var(--accent)', transition: 'all 0.5s ease' } : {}}
+                              >
+                                {/* Service Column */}
+                                <td>
+                                  <div className="service-table-cell">
+                                    <div className={`service-icon-cell-wrap ${isDental ? 'dental' : 'medical'}`}>
+                                      {isDental ? <ToothIcon size={18} /> : <StethoscopeIcon size={18} />}
+                                    </div>
+                                    <div className="service-cell-info">
+                                      <span className="service-cell-name">{a.service?.name || 'Clinic Consultation'}</span>
+                                      <span className="service-cell-type">
+                                        {isDental ? 'Dental Care' : 'Medical Care'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </td>
+
+                                {/* Date & Time Column (Two Lines) */}
+                                <td>
+                                  <div className="datetime-table-cell">
+                                    <span className="datetime-cell-date">{dateLine}</span>
+                                    <span className="datetime-cell-time">{timeLine}</span>
+                                    <span className={`status-badge-mobile ${STATUS_BADGES[a.status] || 'status-badge inactive'}`.replace('status-badge ', '')}>
+                                      {a.status}
+                                    </span>
+                                  </div>
+                                </td>
+
+                                {/* Provider Column */}
+                                <td>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                    <Avatar src={a.staff?.avatar_url} name={a.staff?.name} size={32} />
+                                    <div className="provider-table-cell">
+                                      <span className="provider-cell-name">{a.staff?.name || 'Attending Staff'}</span>
+                                      <span className="provider-cell-role">
+                                        {isDental ? 'Dentist' : 'Clinic Nurse'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </td>
+
+                                {/* Status Column */}
+                                <td>
+                                  <span className={STATUS_BADGES[a.status] || 'status-badge inactive'}>
+                                    {a.status}
+                                  </span>
+                                </td>
+
+                                {/* Action Column */}
+                                <td style={{ textAlign: 'right' }}>
+                                  <button
+                                    type="button"
+                                    className="btn-view-pill"
+                                    onClick={() => setViewingAppointment(a)}
+                                    title="View Appointment Details"
+                                  >
+                                    <EyeIcon size={14} />
+                                    <span>View</span>
+                                  </button>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Fixed Bottom Section: Pagination */}
+                {filteredAppointments.length > 0 && (
+                  <div className="fixed-list-bottom">
+                    <Pagination
+                      currentPage={apptPage}
+                      totalPages={apptTotalPages}
+                      totalItems={filteredAppointments.length}
+                      pageSize={apptPageSize}
+                      onPageChange={setApptPage}
+                      onPageSizeChange={(newSize) => {
+                        setApptPageSize(newSize)
+                        setApptPage(1)
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ═══════════════════════════════════════════════════════════════
+               BOOK APPOINTMENT TAB (2-COLUMN MODERN REDESIGN)
+               ═══════════════════════════════════════════════════════════════ */}
+            {activeTab === 'book' && (
+              <div className="book-scroll-section">
+              <div className="book-appointment-layout">
               {/* Left Column: Form Steps */}
               <div className="booking-form-card">
+                {readiness && readiness.percent < 100 && (
+                  <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', borderRadius: 'var(--radius-md)', border: '1px solid #F59E0B', background: '#FFFBEB', fontSize: '0.85rem', color: '#92400E' }}>
+                    <strong>Your profile isn't complete yet</strong>
+                    <div style={{ marginTop: '0.25rem' }}>Please add your {readiness.missing.join(', ')} in My Profile first, then you can book.</div>
+                    <a href="/profile" style={{ display: 'inline-block', marginTop: '0.4rem', color: 'var(--accent)', fontWeight: 600 }}>Go to My Profile</a>
+                  </div>
+                )}
                 {/* Step 1: Choose Service Type */}
                 <div className="booking-step">
                   <div className="booking-step-header">
@@ -1301,7 +1603,7 @@ export default function AppointmentsPage() {
                     type="button"
                     className="confirm-booking-btn"
                     onClick={handleConfirmBooking}
-                    disabled={booking || !selectedSlot || !selectedServiceId}
+                    disabled={booking || !selectedSlot || !selectedServiceId || (readiness != null && readiness.percent < 100)}
                   >
                     {booking ? (
                       <span className="btn-spinner" />
@@ -1322,9 +1624,11 @@ export default function AppointmentsPage() {
                 </div>
               </div>
             </div>
+            </div>
           )}
         </>
       )}
+      </div>
 
       {/* Appointment Details Modal */}
       {viewingAppointment && (

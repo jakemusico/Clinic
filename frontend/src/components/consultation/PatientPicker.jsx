@@ -46,15 +46,19 @@ export function PatientCard({ patient, careType = 'medical' }) {
  *   fallback   patient details to show when the list does not contain `value` (e.g. from the record being edited)
  */
 export default function PatientPicker({
-  patients, loading = false, value, onChange, locked = false, careType = 'medical', error, fallback,
+  patients, loading = false, value, onChange, locked = false, careType = 'medical', error, fallback, onSearch,
 }) {
   const options = useMemo(() => patients.map((p) => ({
     value: String(p.id),
     label: p.name,
     badge: `${p.student_id || 'No ID'} · ${roleLabel(p.role)}`,
+    ...(p.readiness != null && p.readiness < 100
+      ? { tag: `${p.readiness}% complete`, tagTone: 'warn' }
+      : {}),
   })), [patients])
 
   const selected = patients.find((p) => String(p.id) === String(value)) || (value ? fallback : null)
+  const incomplete = selected && selected.readiness != null && selected.readiness < 100
 
   return (
     <>
@@ -75,9 +79,19 @@ export default function PatientPicker({
             searchPlaceholder="Search by name or ID…"
             emptyMessage="No patient matches your search"
             noOptionsMessage="No patients available"
+            onSearch={onSearch}
           />
         )}
         {error && <span className="field-error">{error}</span>}
+        {!locked && incomplete && (
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0.4rem 0 0', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#F59E0B', flexShrink: 0 }} />
+            <span>
+              Profile {selected.readiness}% complete.
+              {selected.missing_fields?.length > 0 && <> Still needed: {selected.missing_fields.join(', ')}.</>}
+            </span>
+          </p>
+        )}
       </div>
       <PatientCard patient={selected} careType={careType} />
     </>

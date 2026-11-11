@@ -12,6 +12,8 @@ use App\Models\Appointment;
 use App\Services\AuditLogger;
 use App\Services\ConsultationServiceName;
 use App\Support\AppointmentLink;
+use App\Support\ComplaintCategoryResolver;
+use App\Support\ProfileReadiness;
 use App\Support\Roles;
 use App\Support\VitalsRules;
 use Illuminate\Http\JsonResponse;
@@ -136,12 +138,15 @@ class ClinicRecordController extends Controller
         $validated = $request->validate(array_merge([
             'patient_id'       => ['required', 'integer', 'exists:patients,id'],
             'appointment_id'   => ['nullable', 'integer', Rule::exists('appointments', 'id')->where('appointment_type', 'medical'), Rule::unique('clinic_records', 'appointment_id')],
+            'emergency_override' => ['nullable', 'boolean'],
+            'emergency_reason'  => ['nullable', 'string', 'max:500'],
             'service_name'     => ConsultationServiceName::rules('medical', locked: (bool) $appointmentId),
             'visit_date'       => ['required', 'date', 'date_format:Y-m-d'],
-            'chief_complaint'  => ['required', 'string', 'max:10000'],
+            'chief_complaint'  => ['nullable', 'string', 'max:10000'],
             'diagnosis'        => ['nullable', 'string', 'max:255'],
             'assessment'       => ['nullable', 'string', 'max:10000'],
             'complaint_category' => ['nullable', 'string', 'max:100'],
+            'complaint_category_id' => ['nullable', 'integer', 'exists:complaint_categories,id'],
             'symptoms'         => ['nullable', 'string', 'max:10000'],
             'treatment'        => ['nullable', 'string', 'max:10000'],
             'recommendation'   => ['nullable', 'string', 'max:10000'],
@@ -158,11 +163,12 @@ class ClinicRecordController extends Controller
             'appointment_id.exists'   => 'That appointment is not a medical appointment.',
             'appointment_id.unique'   => 'That appointment already has a consultation record.',
             'inventory_items.*.item_id.distinct' => 'Each medicine or supply can only be listed once.',
-            'chief_complaint.required' => 'Please enter the reason for the visit / chief complaint.',
         ]);
 
         // Now resolve service_name AFTER validation (fix #4)
         $validated['service_name'] = ConsultationServiceName::resolve($validated['service_name'], $validated['appointment_id'] ?? null);
+
+        $validated = array_merge($validated, ComplaintCategoryResolver::resolve($validated));
 
         // Compute BMI server-side (fix #5)
         if (isset($validated['vitals'])) {
@@ -170,6 +176,24 @@ class ClinicRecordController extends Controller
         }
 
         $inventoryItems = $validated['inventory_items'] ?? [];
+
+        // Walk-in readiness gate: a patient under 100% Clinic Record Readiness cannot be
+        // seen without a confirmed appointment, unless staff override with a reason.
+        $walkInPatient = Patient::find($validated['patient_id'] ?? null);
+        $walkInBlocker = ProfileReadiness::walkInBlocker(
+            $walkInPatient,
+            isset($validated['appointment_id']) ? (int) $validated['appointment_id'] : null
+        );
+        $emergencyReason = trim((string) ($validated['emergency_reason'] ?? ''));
+        $emergencyOverride = $request->boolean('emergency_override') && $emergencyReason !== '';
+        if ($walkInBlocker && ! $emergencyOverride) {
+            $patientName = $walkInPatient?->user?->name ?? 'This patient';
+            return response()->json([
+                'message'        => "{$patientName}'s profile is only {$walkInBlocker['percent']}% complete. Ask them to finish it in My Profile. Still needed: " . implode(', ', $walkInBlocker['missing']),
+                'missing_fields' => $walkInBlocker['missing'],
+                'readiness'      => $walkInBlocker['percent'],
+            ], 403);
+        }
 
         // ONE transaction: the record, the appointment, the patient history and the dispensed stock are
         // saved together. If stock is short or anything fails, none of it is kept and the API says so.
@@ -188,8 +212,9 @@ class ClinicRecordController extends Controller
                 'created_by'         => $user->id,
                 'diagnosis'          => $validated['diagnosis'] ?? null,
                 'assessment'         => $validated['assessment'] ?? null,
-                'chief_complaint'    => $validated['chief_complaint'],
+                'chief_complaint'    => $validated['chief_complaint'] ?? null,
                 'complaint_category' => $validated['complaint_category'] ?? null,
+                'complaint_category_id' => $validated['complaint_category_id'] ?? null,
                 'symptoms'           => $validated['symptoms'] ?? null,
                 'prescription'       => $validated['prescription'] ?? null,
                 'remarks'            => $validated['remarks'] ?? null,
@@ -231,6 +256,14 @@ class ClinicRecordController extends Controller
             return $record;
         }, 3);
 
+        if ($walkInBlocker && $emergencyOverride) {
+            AuditLogger::log('walk_in_emergency_override', ClinicRecord::class, $record->id, null, [
+                'patient_id' => $record->patient_id,
+                'reason'     => $emergencyReason,
+                'readiness'  => $walkInBlocker['percent'],
+            ]);
+        }
+
         return response()->json([
             'message' => 'Consultation record saved to patient medical record successfully.',
             'record'  => $record->load(['patient.user', 'appointment.service', 'createdBy:' . Appointment::staffColumns()]),
@@ -254,10 +287,11 @@ class ClinicRecordController extends Controller
             'appointment_id'   => ['nullable', 'integer', Rule::exists('appointments', 'id')->where('appointment_type', 'medical'), Rule::unique('clinic_records', 'appointment_id')->ignore($clinicRecord->id)],
             'service_name'     => ConsultationServiceName::rules('medical', locked: (bool) $appointmentId || ! $serviceChanged, required: false),
             'visit_date'       => ['required', 'date', 'date_format:Y-m-d'],
-            'chief_complaint'  => ['required', 'string', 'max:10000'],
+            'chief_complaint'  => ['nullable', 'string', 'max:10000'],
             'diagnosis'        => ['nullable', 'string', 'max:255'],
             'assessment'       => ['nullable', 'string', 'max:10000'],
             'complaint_category' => ['nullable', 'string', 'max:100'],
+            'complaint_category_id' => ['nullable', 'integer', 'exists:complaint_categories,id'],
             'symptoms'         => ['nullable', 'string', 'max:10000'],
             'treatment'        => ['nullable', 'string', 'max:10000'],
             'recommendation'   => ['nullable', 'string', 'max:10000'],
@@ -273,11 +307,12 @@ class ClinicRecordController extends Controller
             'appointment_id.exists'    => 'That appointment is not a medical appointment.',
             'appointment_id.unique'    => 'That appointment already has a consultation record.',
             'inventory_items.*.item_id.distinct' => 'Each medicine or supply can only be listed once.',
-            'chief_complaint.required' => 'Please enter the reason for the visit / chief complaint.',
         ]);
 
         // Resolve service_name AFTER validation (fix #4)
         $validated['service_name'] = ConsultationServiceName::resolve($validated['service_name'] ?? $clinicRecord->service_name, $validated['appointment_id'] ?? $appointmentId);
+
+        $validated = array_merge($validated, ComplaintCategoryResolver::resolve($validated));
 
         // Compute BMI server-side (fix #5)
         if (array_key_exists('vitals', $validated)) {
@@ -356,35 +391,44 @@ class ClinicRecordController extends Controller
 
         $search = $request->query('search');
 
-        $users = User::whereIn('role', ['student', 'faculty_staff'])
+        // ?pick=1 is the consultation-form dropdown: bounded, searchable, patient profile eager-loaded.
+        // Directory pages call this without pick and still get the full list.
+        $pick = $request->boolean('pick');
+
+        $users = User::with('patient')
+            ->whereIn('role', ['student', 'faculty_staff'])
             ->when($search, function ($query) use ($search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'like', "%{$search}%")
+                      ->orWhere('first_name', 'like', "%{$search}%")
+                      ->orWhere('last_name', 'like', "%{$search}%")
                       ->orWhere('email', 'like', "%{$search}%")
                       ->orWhere('student_id', 'like', "%{$search}%");
                 });
             })
+            // All columns ProfileReadiness reads must be selected, or they count as empty.
+            ->select(['id', 'name', 'first_name', 'last_name', 'email', 'student_id', 'role', 'contact_no', 'department', 'grade_level', 'section', 'avatar', 'date_of_birth', 'sex', 'address'])
             ->orderBy('name')
+            ->when($pick, fn ($q) => $q->limit(50))
             ->get();
 
-        // One query for the existing patient profiles, then create any that are missing
-        $profiles = Patient::whereIn('user_id', $users->pluck('id'))->get()->keyBy('user_id');
-        foreach ($users as $u) {
-            if (! $profiles->has($u->id)) {
-                $profiles[$u->id] = Patient::firstOrCreate(['user_id' => $u->id]);
-            }
-        }
+        // Patient profiles are created at registration (and by `patients:backfill`), never here.
+        // A user without one cannot be consulted anyway (consultations need patients.id), so skip them.
+        $users = $users->filter(fn ($u) => $u->patient !== null)->values();
+        $patientIds = $users->map(fn ($u) => $u->patient->id)->all();
 
         // Date of the last visit, per kind of care (shown on the consultation form)
-        $lastMedical = $showMedical
-            ? ClinicRecord::selectRaw('patient_id, MAX(visit_date) as last_visit')->groupBy('patient_id')->pluck('last_visit', 'patient_id')
+        $lastMedical = $showMedical && $patientIds
+            ? ClinicRecord::whereIn('patient_id', $patientIds)->selectRaw('patient_id, MAX(visit_date) as last_visit')->groupBy('patient_id')->pluck('last_visit', 'patient_id')
             : collect();
-        $lastDental = $showDental
-            ? DentalConsultation::selectRaw('patient_id, MAX(consultation_date) as last_visit')->groupBy('patient_id')->pluck('last_visit', 'patient_id')
+        $lastDental = $showDental && $patientIds
+            ? DentalConsultation::whereIn('patient_id', $patientIds)->selectRaw('patient_id, MAX(consultation_date) as last_visit')->groupBy('patient_id')->pluck('last_visit', 'patient_id')
             : collect();
 
-        $patients = $users->map(function ($u) use ($profiles, $lastMedical, $lastDental) {
-            $patient = $profiles[$u->id];
+        $patients = $users->map(function ($u) use ($lastMedical, $lastDental) {
+            $patient = $u->patient;
+            // patient is already eager-loaded: ProfileReadiness runs in memory, no extra queries.
+            $readiness = ProfileReadiness::for($u);
             return [
                 'id'                  => $patient->id,
                 'user_id'             => $u->id,
@@ -396,7 +440,10 @@ class ClinicRecordController extends Controller
                 'department'          => $u->department,
                 'grade_level'         => $u->grade_level,
                 'section'             => $u->section,
+                'avatar_url'          => $u->avatar_url,
                 'allergies'           => $patient->allergies,
+                'readiness'           => $readiness['percent'],
+                'missing_fields'      => $readiness['missing'],
                 'last_medical_visit'  => $lastMedical[$patient->id] ?? null,
                 'last_dental_visit'   => $lastDental[$patient->id] ?? null,
             ];

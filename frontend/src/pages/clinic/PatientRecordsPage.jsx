@@ -1,12 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { toast } from 'react-hot-toast'
 import DashboardLayout from '../../components/DashboardLayout'
 import PrintableRecord from '../../components/PrintableRecord'
 import Pagination from '../../components/Pagination'
+import SearchToolbar from '../../components/SearchToolbar'
+import Avatar from '../../components/Avatar'
+import Dropdown from '../../components/Dropdown'
 import { recordsApi } from '../../api/records'
 import { EMPTY, serviceLabel } from '../../utils/emptyValue'
 import { formatDateLong as formatDate, toDateKey, todayISO } from '../../utils/dateUtils'
-import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { buildRoleOptions, filterPatientsByRole } from '../../utils/roleHelper'
 
 const byNewestVisit = (a, b) => (toDateKey(b.visit_date) || '').localeCompare(toDateKey(a.visit_date) || '')
 
@@ -136,7 +139,9 @@ export default function PatientRecordsPage() {
   const [allRecords, setAllRecords]             = useState([])
   const [loading, setLoading]                   = useState(true)
   const [search, setSearch]                     = useState('')
-  const debouncedSearch = useDebouncedValue(search)
+  const [roleFilter, setRoleFilter]             = useState('all')
+  const [filterPopoverOpen, setFilterPopoverOpen] = useState(false)
+  const filterRef = useRef(null)
   const [page, setPage]                         = useState(1)
   const [pageSize, setPageSize]                 = useState(10)
   const [selectedPatient, setSelectedPatient]   = useState(null)
@@ -194,19 +199,36 @@ export default function PatientRecordsPage() {
     loadData()
   }, [])
 
-  const filteredPatients = patients.filter(p => {
-    const u = p.user || {}
-    const nameStr = (u.name || '').toLowerCase()
-    const idStr = (u.student_id || '').toLowerCase()
-    const emailStr = (u.email || '').toLowerCase()
-    const deptStr = (u.department || '').toLowerCase()
-    const q = debouncedSearch.toLowerCase()
-    return nameStr.includes(q) || idStr.includes(q) || emailStr.includes(q) || deptStr.includes(q)
-  })
+  const roleOptions = useMemo(() => {
+    return [{ value: 'all', label: 'All Roles' }, ...buildRoleOptions(patients)]
+  }, [patients])
+
+  const activeFilterCount = roleFilter !== 'all' ? 1 : 0
+
+  const resetFilters = () => {
+    setRoleFilter('all')
+  }
+
+  const filteredPatients = useMemo(() => {
+    let results = patients.filter(p => {
+      const u = p.user || {}
+      const nameStr = (u.name || '').toLowerCase()
+      const idStr = (u.student_id || '').toLowerCase()
+      const emailStr = (u.email || '').toLowerCase()
+      const deptStr = (u.department || '').toLowerCase()
+      const q = search.toLowerCase()
+      return nameStr.includes(q) || idStr.includes(q) || emailStr.includes(q) || deptStr.includes(q)
+    })
+
+    // Apply role filter
+    results = filterPatientsByRole(results, roleFilter)
+
+    return results
+  }, [patients, search, roleFilter])
 
   useEffect(() => {
     setPage(1)
-  }, [debouncedSearch])
+  }, [search, roleFilter])
 
   const totalPages = Math.max(1, Math.ceil(filteredPatients.length / pageSize))
   const paginatedPatients = filteredPatients.slice((page - 1) * pageSize, page * pageSize)
@@ -227,26 +249,69 @@ export default function PatientRecordsPage() {
       subtitle="View student and staff health profiles, consultation counts, and visit histories."
       stats={stats}
     >
-      <div className="page-toolbar" style={{ marginBottom: '1.25rem' }}>
-        <input
-          className="search-input"
-          placeholder="Search by patient name, student/staff ID, department, or email..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          style={{ width: '100%', maxWidth: '480px' }}
-        />
-      </div>
-
-      {loading ? (
-        <div className="table-loading"><span className="loader-ring" /></div>
-      ) : filteredPatients.length === 0 ? (
-        <div className="empty-state">
-          <p>{search ? 'No patient profiles match your search criteria.' : 'No registered patients found.'}</p>
+      <div className="page-fixed-list fixed-list-layout">
+        {/* Fixed Top Section */}
+        <div className="fixed-list-top">
+          <SearchToolbar
+            value={search}
+            onChange={setSearch}
+            placeholder="Search by patient name, student/staff ID, department, or email..."
+            filterContent={(
+              <div className="search-toolbar-filter-section">
+                <label className="search-toolbar-filter-label">Patient Role</label>
+                <Dropdown
+                  variant="filter"
+                  value={roleFilter}
+                  onChange={setRoleFilter}
+                  options={roleOptions}
+                />
+              </div>
+            )}
+            activeFilterCount={activeFilterCount}
+            filterOpen={filterPopoverOpen}
+            onFilterToggle={() => setFilterPopoverOpen(!filterPopoverOpen)}
+            filterRef={filterRef}
+          />
+          {activeFilterCount > 0 && (
+            <button
+              type="button"
+              className="search-toolbar-filter-reset"
+              style={{
+                marginTop: '0.75rem',
+                padding: '0.5rem',
+                width: '100%',
+              }}
+              onClick={resetFilters}
+            >
+              Reset filters
+            </button>
+          )}
         </div>
-      ) : (
-        <>
-          <div className="data-table-wrap">
-          <table className="data-table">
+
+        {loading ? (
+          <div className="table-loading"><span className="loader-ring" /></div>
+        ) : filteredPatients.length === 0 ? (
+          <div className="empty-state">
+            <p>{search || activeFilterCount > 0 ? 'No patients match your filters.' : 'No registered patients found.'}</p>
+            {(search || activeFilterCount > 0) && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setSearch('')
+                  resetFilters()
+                }}
+              >
+                Clear Filters
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="fixed-list-body">
+            {/* Scrollable Table */}
+            <div className="fixed-list-scroll">
+              <div className="data-table-wrap">
+                <table className="data-table">
             <thead>
               <tr>
                 <th>Patient Name</th>
@@ -270,9 +335,16 @@ export default function PatientRecordsPage() {
 
                 return (
                   <tr key={p.id}>
-                    <td className="td-name">
-                      <div>{user.name || 'Unknown Patient'}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{user.email || ''}</div>
+                    <td className="td-name" style={{ whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        <Avatar src={user.avatar_url} name={user.name} size={30} />
+                        <div>
+                          <div style={{ fontWeight: 600, color: 'var(--text)' }}>
+                            {user.name || 'Unknown Patient'}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{user.email || ''}</div>
+                        </div>
+                      </div>
                     </td>
                     <td>{user.student_id || 'N/A'}</td>
                     <td>{user.department || 'N/A'}</td>
@@ -295,21 +367,26 @@ export default function PatientRecordsPage() {
               })}
             </tbody>
           </table>
-        </div>
+              </div>
+            </div>
 
-          <Pagination
-            currentPage={page}
-            totalPages={totalPages}
-            totalItems={filteredPatients.length}
-            pageSize={pageSize}
-            onPageChange={setPage}
-            onPageSizeChange={(newSize) => {
-              setPageSize(newSize)
-              setPage(1)
-            }}
-          />
-        </>
-      )}
+            {/* Pinned Pagination */}
+            <div className="fixed-list-bottom">
+              <Pagination
+                currentPage={page}
+                totalPages={totalPages}
+                totalItems={filteredPatients.length}
+                pageSize={pageSize}
+                onPageChange={setPage}
+                onPageSizeChange={(newSize) => {
+                  setPageSize(newSize)
+                  setPage(1)
+                }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
 
       {selectedPatient && (
         <ViewPatientProfileModal

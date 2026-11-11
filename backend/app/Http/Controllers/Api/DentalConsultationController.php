@@ -12,6 +12,8 @@ use App\Models\Appointment;
 use App\Services\AuditLogger;
 use App\Services\ConsultationServiceName;
 use App\Support\AppointmentLink;
+use App\Support\ComplaintCategoryResolver;
+use App\Support\ProfileReadiness;
 use App\Support\Roles;
 use App\Support\VitalsRules;
 use Illuminate\Http\JsonResponse;
@@ -140,11 +142,14 @@ class DentalConsultationController extends Controller
         $validated = $request->validate(array_merge([
             'patient_id'          => ['required', 'integer', 'exists:patients,id'],
             'appointment_id'      => ['nullable', 'integer', Rule::exists('appointments', 'id')->where('appointment_type', 'dental'), Rule::unique('dental_consultations', 'appointment_id')],
+            'emergency_override'  => ['nullable', 'boolean'],
+            'emergency_reason'    => ['nullable', 'string', 'max:500'],
             'service_name'        => ConsultationServiceName::rules('dental', locked: (bool) $appointmentId),
             'consultation_date'   => ['required', 'date', 'date_format:Y-m-d'],
             'status'              => ['nullable', 'string', 'in:completed,pending,cancelled'],
-            'reason_for_visit'    => ['required', 'string', 'max:10000'],
+            'reason_for_visit'    => ['nullable', 'string', 'max:10000'],
             'complaint_category'  => ['nullable', 'string', 'max:100'],
+            'complaint_category_id' => ['nullable', 'integer', 'exists:complaint_categories,id'],
             'affected_teeth'      => ['nullable', 'array'],
             'affected_teeth.*'    => ['integer', 'min:1', 'max:52'],
             'dental_findings'     => ['nullable', 'string', 'max:10000'],
@@ -165,11 +170,13 @@ class DentalConsultationController extends Controller
             'appointment_id.exists'      => 'That appointment is not a dental appointment.',
             'appointment_id.unique'      => 'That appointment already has a consultation record.',
             'inventory_items.*.item_id.distinct' => 'Each medicine or supply can only be listed once.',
-            'reason_for_visit.required'  => 'Please enter the reason for the visit / chief complaint.',
         ]);
 
         // Now resolve service_name AFTER validation (fix #4)
         $validated['service_name'] = ConsultationServiceName::resolve($validated['service_name'], $validated['appointment_id'] ?? null);
+
+        // Keep complaint_category (display name) and complaint_category_id in sync
+        $validated = array_merge($validated, ComplaintCategoryResolver::resolve($validated));
 
         // Compute BMI server-side (fix #5)
         if (isset($validated['vitals'])) {
@@ -183,6 +190,24 @@ class DentalConsultationController extends Controller
         $status    = $validated['status'] ?? 'completed';
         $completed = $status === 'completed';
         $this->refuseDispenseUnlessCompleted($completed, $inventoryItems);
+
+        // Walk-in readiness gate: a patient under 100% Clinic Record Readiness cannot be
+        // seen without a confirmed appointment, unless staff override with a reason.
+        $walkInPatient = Patient::find($validated['patient_id'] ?? null);
+        $walkInBlocker = ProfileReadiness::walkInBlocker(
+            $walkInPatient,
+            isset($validated['appointment_id']) ? (int) $validated['appointment_id'] : null
+        );
+        $emergencyReason = trim((string) ($validated['emergency_reason'] ?? ''));
+        $emergencyOverride = $request->boolean('emergency_override') && $emergencyReason !== '';
+        if ($walkInBlocker && ! $emergencyOverride) {
+            $patientName = $walkInPatient?->user?->name ?? 'This patient';
+            return response()->json([
+                'message'        => "{$patientName}'s profile is only {$walkInBlocker['percent']}% complete. Ask them to finish it in My Profile. Still needed: " . implode(', ', $walkInBlocker['missing']),
+                'missing_fields' => $walkInBlocker['missing'],
+                'readiness'      => $walkInBlocker['percent'],
+            ], 403);
+        }
 
         // ONE transaction: the consultation, the appointment, the dental chart and the dispensed stock are
         // saved together. If stock is short or anything fails, none of it is kept and the API says so.
@@ -201,9 +226,10 @@ class DentalConsultationController extends Controller
                 'created_by'          => $user->id,
                 'consultation_date'   => $validated['consultation_date'],
                 'status'              => $status,
-                'reason_for_visit'    => $validated['reason_for_visit'],
+                'reason_for_visit'    => $validated['reason_for_visit'] ?? null,
                 'vitals'              => $this->cleanVitals($validated['vitals'] ?? null),
                 'complaint_category'  => $validated['complaint_category'] ?? null,
+                'complaint_category_id' => $validated['complaint_category_id'] ?? null,
                 'affected_teeth'      => $validated['affected_teeth'] ?? [],
                 'dental_findings'     => $validated['dental_findings'] ?? null,
                 'diagnosis'           => $validated['diagnosis'] ?? null,
@@ -282,6 +308,14 @@ class DentalConsultationController extends Controller
             return $consultation;
         }, 3);
 
+        if ($walkInBlocker && $emergencyOverride) {
+            AuditLogger::log('walk_in_emergency_override', DentalConsultation::class, $consultation->id, null, [
+                'patient_id' => $consultation->patient_id,
+                'reason'     => $emergencyReason,
+                'readiness'  => $walkInBlocker['percent'],
+            ]);
+        }
+
         return response()->json([
             'message'      => 'Dental consultation record created successfully.',
             'consultation' => $consultation->load(['patient.user', 'appointment.service', 'dentist:' . Appointment::staffColumns()]),
@@ -357,8 +391,9 @@ class DentalConsultationController extends Controller
             'service_name'        => ConsultationServiceName::rules('dental', locked: (bool) $dentalConsultation->appointment_id || ! $serviceChanged, required: false),
             'consultation_date'   => ['required', 'date', 'date_format:Y-m-d'],
             'status'              => ['nullable', 'string', 'in:completed,pending,cancelled'],
-            'reason_for_visit'    => ['required', 'string', 'max:10000'],
+            'reason_for_visit'    => ['nullable', 'string', 'max:10000'],
             'complaint_category'  => ['nullable', 'string', 'max:100'],
+            'complaint_category_id' => ['nullable', 'integer', 'exists:complaint_categories,id'],
             'affected_teeth'      => ['nullable', 'array'],
             'dental_findings'     => ['nullable', 'string', 'max:10000'],
             'diagnosis'           => ['nullable', 'string', 'max:255'],
@@ -372,9 +407,10 @@ class DentalConsultationController extends Controller
             'inventory_items.*.dosage_note' => ['nullable', 'string', 'max:255'],
         ], VitalsRules::rules()), [
             'service_name.exists'       => 'The selected service is not an available dental service.',
-            'reason_for_visit.required' => 'Please enter the reason for the visit / chief complaint.',
             'inventory_items.*.item_id.distinct' => 'Each medicine or supply can only be listed once.',
         ]);
+
+        $validated = array_merge($validated, ComplaintCategoryResolver::resolve($validated));
 
         // Compute BMI server-side (fix #5)
         if (array_key_exists('vitals', $validated)) {

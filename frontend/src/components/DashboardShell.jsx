@@ -49,6 +49,7 @@ const FROZEN_INVENTORY_PAGES = [
   '/clinic/inventory/transactions',
 ]
 
+
 // Icon keys that render the shared tooth icon instead of a path from ICONS
 const DENTAL_ICON_KEYS = new Set(['tooth', 'dentalChart'])
 
@@ -287,6 +288,7 @@ const NAV_SECTIONS = {
         { to: '/chatbot/support', label: 'Chatbot Support', icon: 'chatbot' },
         { to: '/admin/audit-logs', label: 'Audit Logs', icon: 'audit' },
         { to: '/admin/terms', label: 'Terms & Privacy', icon: 'terms' },
+        { to: '/admin/complaint-categories', label: 'Complaint Categories', icon: 'services' },
         { to: '/profile', label: 'My Profile', icon: 'profile' },
         { to: '/settings', label: 'Settings', icon: 'settings' },
       ],
@@ -338,6 +340,22 @@ export default function DashboardShell() {
     setUnreadMessagesCount(counters.chat.unread_count || 0)
   }, [counters.chat.unread_count])
 
+  // Close notification dropdown on route change
+  useEffect(() => {
+    setNotifDropdownOpen(false)
+  }, [location.pathname])
+
+  // Close notification dropdown on Escape key
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape' && notifDropdownOpen) {
+        setNotifDropdownOpen(false)
+      }
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [notifDropdownOpen])
+
   // Heartbeat for staff (nurse / dentist): keeps last_active_at fresh so students see "Online".
   // Every 60 s. Unlike the badges it also runs in a hidden tab, otherwise a nurse who switches
   // tabs for two minutes would show as offline.
@@ -385,6 +403,7 @@ export default function DashboardShell() {
 
   const sidebarNavRef = useRef(null)
   const headerRef = useRef(null)
+  const bottomNavRef = useRef(null)
 
   // On phones the fixed header wraps onto two rows, so it is taller than the 56px the page
   // body reserves for it and the first row of every page ends up underneath it.
@@ -400,7 +419,29 @@ export default function DashboardShell() {
     ro.observe(el)
     return () => { ro.disconnect(); root.style.removeProperty('--dashboard-header-h') }
   }, [])
+
+  // Publish the real bottom-nav height so CSS can compute padding-bottom dynamically.
+  // Falls back to 65px if ResizeObserver is unavailable.
+  useEffect(() => {
+    const el = bottomNavRef.current
+    if (!el) return undefined
+    const root = document.documentElement
+    const publish = () => root.style.setProperty('--bottom-nav-height', `${Math.ceil(el.getBoundingClientRect().height)}px`)
+    publish()
+    if (typeof ResizeObserver === 'undefined') return undefined
+    const ro = new ResizeObserver(publish)
+    ro.observe(el)
+    return () => { ro.disconnect(); root.style.removeProperty('--bottom-nav-height') }
+  }, [])
   
+  // Default pagination height to 0px on mount (pages with Pagination will publish real height)
+  useEffect(() => {
+    document.documentElement.style.setProperty('--pagination-height', '0px')
+    return () => {
+      document.documentElement.style.removeProperty('--pagination-height')
+    }
+  }, [])
+
   // Keep active item in view on mount/change, but preserve scroll otherwise
   useEffect(() => {
     if (sidebarNavRef.current) {
@@ -629,10 +670,27 @@ export default function DashboardShell() {
               })}
             </div>
           ))}
+          
+          {/* Mobile-specific Log out item (shown for student/faculty in drawer) */}
+          {(user?.role === 'student' || user?.role === 'faculty_staff') && (
+            <button
+              onClick={handleLogout}
+              className="nav-item nav-item-logout mobile-only-nav-item"
+            >
+              <span className="nav-icon">
+                <Icon d={ICONS.logout} />
+              </span>
+              Sign out
+            </button>
+          )}
         </nav>
 
-        {/* Logout */}
-        <button id="logout-btn" onClick={handleLogout} className="sidebar-logout">
+        {/* Desktop Logout (hidden on mobile for student/faculty) */}
+        <button 
+          id="logout-btn" 
+          onClick={handleLogout} 
+          className={`sidebar-logout ${(user?.role === 'student' || user?.role === 'faculty_staff') ? 'desktop-only-logout' : ''}`}
+        >
           <span className="nav-icon">
             <Icon d={ICONS.logout} />
           </span>
@@ -679,71 +737,80 @@ export default function DashboardShell() {
               </button>
 
               {notifDropdownOpen && (
-                <div className="header-notif-dropdown">
-                  <div className="header-dropdown-info" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: '0.9rem' }}>Notifications</div>
-                    <button
-                      onClick={handleMarkAllRead}
-                      className="header-dropdown-link"
-                    >
-                      Mark all as read
-                    </button>
-                  </div>
-                  <div className="header-dropdown-divider" style={{ margin: 0 }} />
+                <>
+                  {/* Transparent backdrop - closes dropdown on click */}
+                  <div 
+                    className="notif-backdrop" 
+                    onClick={() => setNotifDropdownOpen(false)}
+                    aria-hidden="true"
+                  />
+                  
+                  <div className="header-notif-dropdown">
+                    <div className="header-dropdown-info" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: '0.9rem' }}>Notifications</div>
+                      <button
+                        onClick={handleMarkAllRead}
+                        className="header-dropdown-link"
+                      >
+                        Mark all as read
+                      </button>
+                    </div>
+                    <div className="header-dropdown-divider" style={{ margin: 0 }} />
 
-                  <div className="notif-dropdown-list">
-                    {recentNotifs.length > 0 ? (
-                      recentNotifs.map(n => (
-                        <div
-                          key={n.id}
-                          className={`notif-dropdown-item ${!n.is_read ? 'unread' : ''}`}
-                          onClick={() => handleNotifClick(n)}
-                          style={{ cursor: 'pointer' }}
-                        >
-                          <div className="notif-dropdown-icon">
-                            <Icon d={ICONS.notifications} size={16} />
-                          </div>
-                          <div className="notif-dropdown-content" style={{ flex: 1, minWidth: 0 }}>
-                            <div className="notif-dropdown-text">
-                              {n.title && <span style={{ fontWeight: 600, display: 'block', marginBottom: '0.15rem' }}>{n.title}</span>}
-                              <span style={{
-                                display: '-webkit-box',
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: 'vertical',
-                                overflow: 'hidden',
-                                lineHeight: 1.35,
-                                fontSize: '0.8rem',
-                                color: 'var(--text-sub)',
-                              }}>
-                                {n.message}
-                              </span>
+                    <div className="notif-dropdown-list">
+                      {recentNotifs.length > 0 ? (
+                        recentNotifs.map(n => (
+                          <div
+                            key={n.id}
+                            className={`notif-dropdown-item ${!n.is_read ? 'unread' : ''}`}
+                            onClick={() => handleNotifClick(n)}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            <div className="notif-dropdown-icon">
+                              <Icon d={ICONS.notifications} size={16} />
                             </div>
-                            <div className="notif-dropdown-time" style={{ marginTop: '0.25rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                              {formatRelativeTime(n.created_at)}
+                            <div className="notif-dropdown-content" style={{ flex: 1, minWidth: 0 }}>
+                              <div className="notif-dropdown-text">
+                                {n.title && <span style={{ fontWeight: 600, display: 'block', marginBottom: '0.15rem' }}>{n.title}</span>}
+                                <span style={{
+                                  display: '-webkit-box',
+                                  WebkitLineClamp: 2,
+                                  WebkitBoxOrient: 'vertical',
+                                  overflow: 'hidden',
+                                  lineHeight: 1.35,
+                                  fontSize: '0.8rem',
+                                  color: 'var(--text-sub)',
+                                }}>
+                                  {n.message}
+                                </span>
+                              </div>
+                              <div className="notif-dropdown-time" style={{ marginTop: '0.25rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                                {formatRelativeTime(n.created_at)}
+                              </div>
                             </div>
+                            {!n.is_read && <div className="notif-dropdown-dot" />}
                           </div>
-                          {!n.is_read && <div className="notif-dropdown-dot" />}
+                        ))
+                      ) : (
+                        <div className="notif-dropdown-empty">
+                          No notifications
                         </div>
-                      ))
-                    ) : (
-                      <div className="notif-dropdown-empty">
-                        No notifications
-                      </div>
-                    )}
-                  </div>
+                      )}
+                    </div>
 
-                  <div className="header-dropdown-divider" style={{ margin: 0 }} />
-                  <div style={{ padding: '0.4rem' }}>
-                    <Link
-                      to={user?.role === 'admin' ? '/admin/announcements' : '/notifications'}
-                      className="header-dropdown-link"
-                      style={{ display: 'block', textAlign: 'center', padding: '0.5rem', fontWeight: 600 }}
-                      onClick={() => setNotifDropdownOpen(false)}
-                    >
-                      View all
-                    </Link>
+                    <div className="header-dropdown-divider" style={{ margin: 0 }} />
+                    <div style={{ padding: '0.4rem' }}>
+                      <Link
+                        to={user?.role === 'admin' ? '/admin/announcements' : '/notifications'}
+                        className="header-dropdown-link"
+                        style={{ display: 'block', textAlign: 'center', padding: '0.5rem', fontWeight: 600 }}
+                        onClick={() => setNotifDropdownOpen(false)}
+                      >
+                        View all
+                      </Link>
+                    </div>
                   </div>
-                </div>
+                </>
               )}
             </div>
 
@@ -840,7 +907,7 @@ export default function DashboardShell() {
       {user && (user.role === 'student' || user.role === 'faculty_staff') && <ChatbotWidget />}
 
       {/* ── Mobile Bottom Navigation ─────────────────────────────── */}
-      <nav className="mobile-bottom-nav">
+      <nav className="mobile-bottom-nav" ref={bottomNavRef}>
         {navSections[0]?.items.slice(0, 3).map(item => {
           const isExact = Boolean(item.end || item.to === '/clinic/inventory');
           // Shorten labels

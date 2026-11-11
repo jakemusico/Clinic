@@ -31,20 +31,52 @@ export function useConsultationForm({ careType, isEdit = false, initialForm }) {
   const [itemsStatus, setItemsStatus] = useState(isEdit ? 'loading' : 'ready')
 
   // ── patients ──
+  // The picker calls /clinic/patients?pick=1 (max 50, server-side search) instead of the
+  // full directory list. Search results replace the list; the selected patient is kept in a
+  // lookup so it stays selected (and keeps its readiness badge) even when it is not in the
+  // current search results.
   const [patients, setPatients] = useState([])
   const [loadingPatients, setLoadingPatients] = useState(true)
+  const knownPatients = useRef(new Map())
+  const lastSearch = useRef('')
+  const searchTimer = useRef(null)
+  useEffect(() => {
+    patients.forEach((p) => knownPatients.current.set(String(p.id), p))
+  }, [patients])
+  useEffect(() => () => clearTimeout(searchTimer.current), [])
+
+  const fetchPatients = useCallback(async (search) => {
+    const { data } = await recordsApi.patients({ pick: 1, ...(search ? { search } : {}) })
+    return data.patients || []
+  }, [])
+
   useEffect(() => {
     let alive = true
-    recordsApi.patientPickList()
-      .then(({ data }) => { if (alive) setPatients(data.patients || []) })
+    fetchPatients('')
+      .then((list) => { if (alive) setPatients(list) })
       .catch(() => { if (alive) setPatients([]) })
       .finally(() => { if (alive) setLoadingPatients(false) })
     return () => { alive = false }
-  }, [])
-  const selectedPatient = useMemo(
-    () => patients.find((p) => String(p.id) === String(form.patient_id)) || null,
-    [patients, form.patient_id]
-  )
+  }, [fetchPatients])
+
+  /** Debounced (300ms) server-side patient search, fired by the picker's search box. */
+  const onPatientSearch = useCallback((q) => {
+    const search = String(q || '').trim()
+    if (search === lastSearch.current) return
+    lastSearch.current = search
+    clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(() => {
+      fetchPatients(search)
+        .then(setPatients)
+        .catch(() => {})   // keep the current list on failure
+    }, 300)
+  }, [fetchPatients])
+
+  const selectedPatient = useMemo(() => {
+    const hit = patients.find((p) => String(p.id) === String(form.patient_id))
+    if (hit) return hit
+    return form.patient_id ? knownPatients.current.get(String(form.patient_id)) || null : null
+  }, [patients, form.patient_id])
 
   // ── services (filtered by the API) and appointments that can be linked ──
   const { services, loading: loadingServices } = useCareServices(careType)
@@ -133,7 +165,7 @@ export function useConsultationForm({ careType, isEdit = false, initialForm }) {
 
   return {
     form, setForm, setField, errors, setErrors,
-    patients, loadingPatients, selectedPatient,
+    patients, loadingPatients, selectedPatient, onPatientSearch,
     services, loadingServices,
     appointments, loadingAppointments, selectAppointment,
     invRows, setInvRows, allergyMatches, setAllergyMatches,

@@ -42,6 +42,27 @@ export const chatbotApi = {
   toggleHelp: (id) =>
     api.patch(`/chatbot/faqs/${id}/help`),
 
+  /* ── Category management ────────────────────────────────────────── */
+  /** List all categories */
+  listCategories: (params) =>
+    api.get('/chatbot/categories', { params }),
+
+  /** Create a new category */
+  createCategory: (payload) =>
+    api.post('/chatbot/categories', payload),
+
+  /** Update a category */
+  updateCategory: (id, payload) =>
+    api.put(`/chatbot/categories/${id}`, payload),
+
+  /** Delete a category */
+  deleteCategory: (id) =>
+    api.delete(`/chatbot/categories/${id}`),
+
+  /** Toggle category active/inactive */
+  toggleCategory: (id) =>
+    api.patch(`/chatbot/categories/${id}/toggle`),
+
   /** Admin Chatbot Support Statistics */
   getStatistics: (params) =>
     api.get('/chatbot/admin/statistics', { params }),

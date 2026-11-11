@@ -17,6 +17,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Support\ConsultationRow;
+use App\Support\ComplaintCategoryResolver;
 use App\Support\Placeholder;
 use App\Support\Roles;
 
@@ -34,13 +35,14 @@ class ReportController extends Controller
     public function categorizeComplaint(?string $category, ?string $complaint, ?string $diagnosis, string $type = 'medical'): string
     {
         if (!empty($category) && trim($category) !== '') {
-            return trim($category);
+            $cat = trim($category);
+            return mb_strtolower($cat) === 'other' ? 'Others' : $cat;
         }
 
         $text = strtolower(trim(($complaint ?? '') . ' ' . ($diagnosis ?? '')));
 
         if (empty($text)) {
-            return $type === 'dental' ? 'Dental Checkup' : 'Other';
+            return $type === 'dental' ? 'Dental Checkup' : 'Others';
         }
 
         if (str_contains($text, 'fever') || str_contains($text, 'flu') || str_contains($text, 'trangkaso') || str_contains($text, 'temperature') || str_contains($text, 'lagnat')) {
@@ -80,7 +82,7 @@ class ReportController extends Controller
             return 'Gum Problem';
         }
 
-        return 'Other';
+        return 'Others';
     }
 
     /**
@@ -167,11 +169,17 @@ class ReportController extends Controller
         $cancelled = (clone $statsQuery)->where('status', 'cancelled')->count();
         $confirmed = (clone $statsQuery)->where('status', 'confirmed')->count();
         $pending   = (clone $statsQuery)->where('status', 'pending')->count();
+        $noShow    = (clone $statsQuery)->where('status', 'no_show')->count();
+        // "Confirmed Upcoming" = confirmed bookings whose date/time has not passed yet
+        $confirmedUpcoming = (clone $statsQuery)
+            ->where('status', 'confirmed')
+            ->where('scheduled_at', '>=', Carbon::now())
+            ->count();
 
         $completedPct = $total > 0 ? round(($completed / $total) * 100, 1) : 0;
         $cancelledPct = $total > 0 ? round(($cancelled / $total) * 100, 1) : 0;
 
-        // Service popularity
+        // Service popularity — same filters as the records table so chart and table always agree
         $servicesQuery = ClinicService::select('id', 'name');
         if ($roleType === 'dental') {
             $servicesQuery->where(function ($q) {
@@ -195,23 +203,38 @@ class ReportController extends Controller
         }
 
         $byService = $servicesQuery
-            ->withCount(['appointments' => function ($q) use ($dateFrom, $dateTo, $roleType) {
+            ->withCount(['appointments' => function ($q) use ($dateFrom, $dateTo, $roleType, $request) {
                 $q->whereDate('scheduled_at', '>=', $dateFrom)
                   ->whereDate('scheduled_at', '<=', $dateTo);
                 if ($roleType) $q->where('appointment_type', $roleType);
+                if ($request->has('status') && $request->status !== 'all') {
+                    $q->where('status', $request->status);
+                }
+                if ($request->has('staff_id') && $request->staff_id !== 'all') {
+                    $q->where('staff_id', $request->staff_id);
+                }
             }])
             ->get()
             ->map(fn($s) => ['name' => $s->name, 'count' => $s->appointments_count])
             ->sortByDesc('count')
             ->values();
 
-        // Group by date
+        // Group by date — same filters as the records table
         $byDateQuery = Appointment::select(DB::raw('DATE(scheduled_at) as date'), DB::raw('count(*) as count'))
             ->whereDate('scheduled_at', '>=', $dateFrom)
             ->whereDate('scheduled_at', '<=', $dateTo);
 
         if ($roleType) {
             $byDateQuery->where('appointment_type', $roleType);
+        }
+        if ($request->has('status') && $request->status !== 'all') {
+            $byDateQuery->where('status', $request->status);
+        }
+        if ($request->has('service_id') && $request->service_id !== 'all') {
+            $byDateQuery->where('service_id', $request->service_id);
+        }
+        if ($request->has('staff_id') && $request->staff_id !== 'all') {
+            $byDateQuery->where('staff_id', $request->staff_id);
         }
 
         $byDate = $byDateQuery->groupBy(DB::raw('DATE(scheduled_at)'))
@@ -232,13 +255,15 @@ class ReportController extends Controller
         return response()->json([
             'appointments' => $appointments,
             'summary'      => [
-                'total'         => $total,
-                'completed'     => $completed,
-                'completed_pct' => $completedPct,
-                'cancelled'     => $cancelled,
-                'cancelled_pct' => $cancelledPct,
-                'confirmed'     => $confirmed,
-                'pending'       => $pending,
+                'total'              => $total,
+                'completed'          => $completed,
+                'completed_pct'      => $completedPct,
+                'cancelled'          => $cancelled,
+                'cancelled_pct'      => $cancelledPct,
+                'confirmed'          => $confirmed,
+                'confirmed_upcoming' => $confirmedUpcoming,
+                'pending'            => $pending,
+                'no_show'            => $noShow,
             ],
             'by_service' => $byService,
             'by_date'    => $byDate,
@@ -622,7 +647,8 @@ class ReportController extends Controller
 
             $medRecords = $medQuery->orderByDesc('id')->limit(self::ROW_CAP)->get();
             foreach ($medRecords as $r) {
-                $cat = $this->categorizeComplaint($r->complaint_category, $r->chief_complaint, $r->diagnosis, 'medical');
+                $cat = ComplaintCategoryResolver::nameFor($r->complaint_category_id ?? null, $r->complaint_category)
+                    ?? $this->categorizeComplaint(null, $r->chief_complaint, $r->diagnosis, 'medical');
                 $categoryCounts[$cat] = ($categoryCounts[$cat] ?? 0) + 1;
                 $totalSymptomsCount++;
 
@@ -668,7 +694,8 @@ class ReportController extends Controller
 
             $dentRecords = $dentQuery->orderByDesc('id')->limit(self::ROW_CAP)->get();
             foreach ($dentRecords as $d) {
-                $cat = $this->categorizeComplaint($d->complaint_category, $d->reason_for_visit, $d->diagnosis, 'dental');
+                $cat = ComplaintCategoryResolver::nameFor($d->complaint_category_id ?? null, $d->complaint_category)
+                    ?? $this->categorizeComplaint(null, $d->reason_for_visit, $d->diagnosis, 'dental');
                 $categoryCounts[$cat] = ($categoryCounts[$cat] ?? 0) + 1;
                 $totalSymptomsCount++;
 

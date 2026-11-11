@@ -15,6 +15,7 @@ use App\Models\Notification;
 use Carbon\Carbon;
 use App\Services\AuditLogger;
 use App\Support\Roles;
+use App\Support\ProfileReadiness;
 use Illuminate\Support\Str;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -122,8 +123,10 @@ class AppointmentController extends Controller
         // Validate filter parameters (fix #2)
         if (! Roles::isPatient($user)) {
             $request->validate([
-                'status'           => ['nullable', 'string', 'in:pending,confirmed,completed,cancelled,no-show'],
+                'status'           => ['nullable', 'string', 'in:pending,confirmed,completed,cancelled,no_show'],
                 'date'             => ['nullable', 'date_format:Y-m-d'],
+                'date_from'        => ['nullable', 'date_format:Y-m-d'],
+                'date_to'          => ['nullable', 'date_format:Y-m-d'],
                 'staff_id'         => ['nullable', 'integer'],
                 'patient_id'       => ['nullable', 'integer'],
                 'appointment_type' => ['nullable', 'string', 'in:medical,dental,all'],
@@ -146,12 +149,31 @@ class AppointmentController extends Controller
                 $q->where('user_id', $user->id);
             });
         } else {
+            // Status counts for the stat cards: same care scope as the list, but NOT narrowed by
+            // the status/search/date/staff/patient filters (the cards describe the whole desk).
+            $countsQuery = (clone $query)->whereIn('appointment_type', $types);
+            if ($request->filled('appointment_type') && $request->appointment_type !== 'all') {
+                $countsQuery->where('appointment_type', $request->appointment_type);
+            }
+            $statusCounts = $countsQuery
+                ->selectRaw('status, COUNT(*) AS c')
+                ->groupBy('status')
+                ->pluck('c', 'status')
+                ->map(fn ($v) => (int) $v)
+                ->all();
+
             // Clinic Staff / Dentist / Admin filters
             if ($request->filled('status') && $request->status !== 'all') {
                 $query->where('status', $request->status);
             }
             if ($request->filled('date')) {
                 $query->whereDate('scheduled_at', $request->date);
+            }
+            if ($request->filled('date_from')) {
+                $query->whereDate('scheduled_at', '>=', $request->date_from);
+            }
+            if ($request->filled('date_to')) {
+                $query->whereDate('scheduled_at', '<=', $request->date_to);
             }
             if ($request->filled('staff_id') && $request->staff_id !== 'all') {
                 $query->where('staff_id', $request->staff_id);
@@ -184,15 +206,16 @@ class AppointmentController extends Controller
             });
         }
 
-        $query->orderBy('scheduled_at', 'asc');
+        $query->orderBy('scheduled_at', 'desc')->orderBy('id', 'desc');
 
         if ($request->boolean('all') || $request->get('paginate') === 'false') {
             $appointments = $query->limit(Paging::ALL_LIMIT)->get();
             $this->hideStaffOnlyFields($user, $appointments);
             return response()->json([
-                'data'         => $appointments,
-                'appointments' => $appointments,
-                'total'        => $appointments->count(),
+                'data'          => $appointments,
+                'appointments'  => $appointments,
+                'status_counts' => $statusCounts ?? [],
+                'total'         => $appointments->count(),
                 'current_page' => 1,
                 'last_page'    => 1,
                 'per_page'     => $appointments->count(),
@@ -204,8 +227,9 @@ class AppointmentController extends Controller
         $this->hideStaffOnlyFields($user, $paginated->getCollection());
 
         return response()->json([
-            'data'         => $paginated->items(),
-            'appointments' => $paginated->items(),
+            'data'          => $paginated->items(),
+            'appointments'  => $paginated->items(),
+            'status_counts' => $statusCounts ?? [],
             'current_page' => $paginated->currentPage(),
             'last_page'    => $paginated->lastPage(),
             'per_page'     => $paginated->perPage(),
@@ -241,6 +265,23 @@ class AppointmentController extends Controller
         // Only students and faculty/staff can book appointments as patients
         if (! Roles::isPatient($user)) {
             return response()->json(['message' => 'Only students and faculty/staff members can book appointments.'], 403);
+        }
+
+        // Clinic Record Readiness gate: the profile must be 100% complete before booking.
+        $readiness = ProfileReadiness::for($user);
+        if ($readiness['percent'] < 100) {
+            Notification::create([
+                'user_id'    => $user->id,
+                'title'      => 'Profile incomplete',
+                'message'    => 'Finish your profile to book appointments.',
+                'type'       => 'warning',
+                'action_url' => '/profile',
+            ]);
+            return response()->json([
+                'message'       => 'Profile incomplete. Please finish your profile first.',
+                'missing_fields' => $readiness['missing'],
+                'readiness'     => $readiness['percent'],
+            ], 403);
         }
 
         $validated = $request->validate([
@@ -490,6 +531,10 @@ class AppointmentController extends Controller
             }
             if (! in_array($newStatus, self::TRANSITIONS[$current->status] ?? [], true)) {
                 return ['error' => $this->closedMessage($current->status, 'changed to ' . str_replace('_', ' ', $newStatus))];
+            }
+            // A booking dated in the future has not happened yet: it cannot be completed.
+            if ($newStatus === 'completed' && Carbon::parse($current->scheduled_at)->toDateString() > Carbon::today()->toDateString()) {
+                return ['error' => 'This appointment is scheduled in the future and cannot be marked as completed yet.'];
             }
 
             $old = $current->toArray();

@@ -505,17 +505,17 @@ export default function StaffProfile() {
                     <ProfileIcon name="check" size={15} />
                     Profile changes will be saved to your account.
                   </span>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <div className="staff-footer-actions">
                     {!isEditing ? (
-                      <button type="button" className="btn-primary" onClick={handleStartEdit} disabled={loadingProfile}>
+                      <button type="button" className="btn-primary profile-bottom-btn" onClick={handleStartEdit} disabled={loadingProfile}>
                         <ProfileIcon name="edit" size={14} /> Edit Profile
                       </button>
                     ) : (
                       <>
-                        <button type="button" className="btn-secondary" onClick={handleCancelEdit} disabled={saving}>
+                        <button type="button" className="btn-secondary profile-bottom-btn" onClick={handleCancelEdit} disabled={saving}>
                           <ProfileIcon name="x" size={14} /> Cancel
                         </button>
-                        <button type="button" className="btn-primary" onClick={handleSaveProfile} disabled={saving}>
+                        <button type="button" className="btn-primary profile-bottom-btn" onClick={handleSaveProfile} disabled={saving}>
                           {saving ? 'Saving…' : 'Save Changes'}
                         </button>
                       </>

@@ -3,6 +3,7 @@ import { toast } from 'react-hot-toast'
 import useSubmitLock from '../hooks/useSubmitLock'
 
 import { recordsApi } from '../api/records'
+import { complaintCategoriesApi } from '../api/complaintCategories'
 import { MedicineSupplyPicker } from './MedicineSupplyPicker'
 import Dropdown from './Dropdown'
 import ConsultationFormFrame from './consultation/ConsultationFormFrame'
@@ -14,7 +15,7 @@ import LinkedAppointmentField from './consultation/LinkedAppointmentField'
 import VitalSignsFields from './consultation/VitalSignsFields'
 import { useConsultationForm } from '../hooks/useConsultationForm'
 import {
-  COMPLAINT_CATEGORIES, buildVitalsPayload, hasVitals, todayISO, validateVitals,
+  buildVitalsPayload, hasVitals, todayISO, validateVitals,
 } from '../utils/consultation'
 import { toDateKey } from '../utils/dateUtils'
 
@@ -60,7 +61,10 @@ function buildInitialForm(initialData) {
       ? (initialData.service_name || initialData.appointment?.service?.name || '')
       : '',
     chief_complaint: text(initialData.chief_complaint),
-    complaint_category: text(initialData.complaint_category),
+    // the dropdown value is the category id; a legacy record only has the name
+    complaint_category: initialData.complaint_category_id
+      ? String(initialData.complaint_category_id)
+      : text(initialData.complaint_category),
     bp: text(v.blood_pressure || v.bp),
     temperature: text(v.temperature),
     pulse_rate: text(v.pulse_rate),
@@ -79,20 +83,47 @@ function buildInitialForm(initialData) {
  * New / edit Medical Consultation (Nurse). Shares its building blocks with the Dentist form
  * (components/consultation/*, hooks/useConsultationForm).
  *
- * Required: patient, date, service, reason for the visit. Everything else is optional.
+ * Required: patient, date, service, complaint category. Everything else is optional.
  */
 export function ConsultationModal({ initialData, onClose, onSaved, inline = false }) {
   const isEdit = Boolean(initialData?.id)
   const [initialForm] = useState(() => buildInitialForm(initialData))
 
   const c = useConsultationForm({ careType: 'medical', isEdit, initialForm })
-  const { form, setField, errors, setErrors } = c
+  const { form, setField, setForm, errors, setErrors } = c
 
   const [saving, setSaving] = useState(false)
   const { lock, unlock } = useSubmitLock()
+  const [categories, setCategories] = useState([])
+  const [emergency, setEmergency] = useState({ override: false, reason: '' })
+
+  // Walk-in readiness gate: an incomplete patient without a linked appointment needs the override.
+  const selectedPatient = c.selectedPatient
+  const isWalkIn = !form.appointment_id
+  const needsOverride = !isEdit && selectedPatient?.readiness != null && selectedPatient.readiness < 100 && isWalkIn
+
+  useEffect(() => {
+    if (!needsOverride) setEmergency({ override: false, reason: '' })
+  }, [needsOverride])
+
+  // Complaint categories come from the database (active medical only, in sort order)
+  useEffect(() => {
+    complaintCategoriesApi.list({ type: 'medical' })
+      .then((res) => setCategories(res.data.categories || []))
+      .catch(() => setCategories([]))
+  }, [])
+
+  // A record saved before categories had ids only carries the name: turn it into the id once loaded
+  useEffect(() => {
+    if (!categories.length || !form.complaint_category) return
+    if (categories.some((c) => String(c.id) === form.complaint_category)) return
+    const norm = (s) => { const k = s.toLowerCase().trim(); return k === 'other' ? 'others' : k }
+    const match = categories.find((c) => norm(c.name) === norm(form.complaint_category))
+    if (match) setForm((p) => ({ ...p, complaint_category: String(match.id) }))
+  }, [categories, form.complaint_category, setForm])
   // editing: Save waits until the medicines already dispensed have loaded (see MedicineSupplyPicker)
   const itemsNotReady = isEdit && c.itemsStatus !== 'ready'
-  const [open, setOpen] = useState(() => ({ vitals: true, findings: hasFindings(initialForm), meds: false }))
+  const [open, setOpen] = useState(() => ({ vitals: hasVitals(initialForm), findings: hasFindings(initialForm), meds: false }))
   const toggle = (key) => setOpen((o) => ({ ...o, [key]: !o[key] }))
 
   // medicines already dispensed (edit) or just added: show the section
@@ -108,7 +139,7 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
   const handleRestoreDraft = () => {
     const data = c.restoreDraft()
     if (!data) return
-    setOpen({ vitals: true, findings: hasFindings(data.form), meds: (data.invRows || []).length > 0 })
+    setOpen({ vitals: hasVitals(data.form), findings: hasFindings(data.form), meds: (data.invRows || []).length > 0 })
   }
 
   const handleSubmit = async (e) => {
@@ -125,7 +156,7 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
     if (!form.patient_id) found.patient_id = 'Please select the patient.'
     if (!form.service_name) found.service_name = 'Please select the clinic service.'
     if (!form.visit_date) found.visit_date = 'Please choose the consultation date.'
-    if (!form.chief_complaint.trim()) found.chief_complaint = 'Please enter the reason for the visit.'
+    if (!form.complaint_category) found.complaint_category = 'Please select a complaint category.'
     const vitalErrors = validateVitals(form)
     Object.assign(found, vitalErrors)
 
@@ -137,17 +168,26 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
       return
     }
 
+    if (needsOverride && emergency.override && !emergency.reason.trim()) {
+      setErrors((e) => ({ ...e, emergency_reason: 'Reason for emergency override (required)' }))
+      toast.error('Please fix the highlighted fields.')
+      return
+    }
+
     if (!lock()) return   // already saving (double click / second Enter): never post twice
     setSaving(true)
     setErrors({})
+
+    const selectedCategory = categories.find((c) => String(c.id) === form.complaint_category)
 
     const payload = {
       patient_id: parseInt(form.patient_id, 10),
       appointment_id: form.appointment_id ? parseInt(form.appointment_id, 10) : null,
       service_name: form.service_name,
       visit_date: form.visit_date,
-      chief_complaint: form.chief_complaint.trim(),
-      complaint_category: form.complaint_category || null,
+      chief_complaint: orNull(form.chief_complaint),
+      complaint_category_id: selectedCategory ? selectedCategory.id : null,
+      complaint_category: selectedCategory ? selectedCategory.name : orNull(form.complaint_category),
       vitals: buildVitalsPayload(form),
       symptoms: orNull(form.symptoms),
       assessment: orNull(form.assessment),
@@ -157,6 +197,8 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
       prescription: orNull(form.prescription),
       notes: orNull(form.notes),
       remarks: orNull(form.notes),
+      emergency_override: emergency.override,
+      emergency_reason: orNull(emergency.reason),
       inventory_items: c.invRows
         .filter((r) => r.item_id && parseInt(r.quantity, 10) > 0)
         .map((r) => ({
@@ -187,6 +229,16 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
     }
   }
 
+  // Active categories from the API; a saved value that is not in the list (legacy name or a
+  // since-deactivated category) is kept as an extra option so it still displays correctly.
+  const categoryOptions = categories.map((cat) => ({ value: String(cat.id), label: cat.name }))
+  if (form.complaint_category && !categoryOptions.some((o) => o.value === form.complaint_category)) {
+    categoryOptions.unshift({
+      value: form.complaint_category,
+      label: initialData?.complaint_category || form.complaint_category,
+    })
+  }
+
   const medsBadge = c.allergyMatches.length > 0
     ? '⚠ Allergy warning'
     : (c.invRows.length ? `${c.invRows.length} item${c.invRows.length > 1 ? 's' : ''}` : undefined)
@@ -198,8 +250,10 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
       onClose={onClose}
       onSubmit={handleSubmit}
       saving={saving}
-      saveDisabled={itemsNotReady}
-      saveDisabledHint="Waiting for the medicines already dispensed to load"
+      saveDisabled={itemsNotReady || (needsOverride && !emergency.override)}
+      saveDisabledHint={needsOverride && !emergency.override
+        ? `${selectedPatient?.name}'s profile is only ${selectedPatient?.readiness}% complete`
+        : 'Waiting for the medicines already dispensed to load'}
       saveLabel={isEdit ? 'Update Consultation' : 'Save & Complete Consultation'}
       draft={c.draft.pending}
       onRestoreDraft={handleRestoreDraft}
@@ -216,6 +270,7 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
           locked={isEdit}
           error={errors.patient_id}
           fallback={initialData?.patient?.user ? { ...initialData.patient.user, role: initialData.patient.user.role } : null}
+          onSearch={c.onPatientSearch}
         />
 
         {!isEdit && (
@@ -252,7 +307,7 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
         </div>
 
         <div className="form-group">
-          <FieldLabel required htmlFor="consult-reason">Reason for Visit / Chief Complaint</FieldLabel>
+          <FieldLabel optional htmlFor="consult-reason">Reason for Visit / Chief Complaint</FieldLabel>
           <textarea
             id="consult-reason"
             rows={2}
@@ -265,17 +320,21 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
         </div>
 
         <div className="form-group">
-          <FieldLabel optional>Complaint Category</FieldLabel>
+          <FieldLabel required htmlFor="consult-category">Complaint Category</FieldLabel>
           <Dropdown
+            id="consult-category"
             searchable
+            required
             ariaLabel="Complaint category"
             value={form.complaint_category}
             onChange={(v) => setField('complaint_category', v)}
-            options={[{ value: '', label: 'No category' }, ...COMPLAINT_CATEGORIES.medical]}
+            invalid={Boolean(errors.complaint_category)}
+            options={categoryOptions}
             placeholder="Select a category"
             searchPlaceholder="Search categories…"
             emptyMessage="No category matches your search"
           />
+          {errors.complaint_category && <span className="field-error">{errors.complaint_category}</span>}
         </div>
       </CollapsibleSection>
 
@@ -359,6 +418,40 @@ export function ConsultationModal({ initialData, onClose, onSaved, inline = fals
           onItemsStatus={c.setItemsStatus}
         />
       </CollapsibleSection>
+      {needsOverride && (
+        <div style={{ marginTop: '0.5rem', padding: '0.9rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: '#FFFFFF' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={emergency.override}
+              onChange={e => {
+                setEmergency(s => ({ ...s, override: e.target.checked }))
+                setErrors((er) => ({ ...er, emergency_reason: '' }))
+              }}
+            />
+            Emergency / urgent case
+          </label>
+          {emergency.override && (
+            <>
+              <textarea
+                className="form-input"
+                rows={3}
+                style={{ marginTop: '0.6rem', width: '100%', resize: 'vertical' }}
+                placeholder="Reason for emergency override (required)"
+                value={emergency.reason}
+                onChange={e => {
+                  setEmergency(s => ({ ...s, reason: e.target.value }))
+                  if (errors.emergency_reason) setErrors((er) => ({ ...er, emergency_reason: '' }))
+                }}
+              />
+              {errors.emergency_reason && <span className="field-error">{errors.emergency_reason}</span>}
+            </>
+          )}
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0.4rem 0 0' }}>
+            Recorded in the audit log.
+          </p>
+        </div>
+      )}
     </ConsultationFormFrame>
   )
 }

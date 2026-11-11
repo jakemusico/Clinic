@@ -17,6 +17,7 @@ class DentalConsultation extends Model
         'reason_for_visit',
         'vitals',
         'complaint_category',
+        'complaint_category_id',
         'affected_teeth',
         'dental_findings',
         'diagnosis',
@@ -52,6 +53,11 @@ class DentalConsultation extends Model
     public function appointment(): BelongsTo
     {
         return $this->belongsTo(Appointment::class);
+    }
+
+    public function complaintCategory(): BelongsTo
+    {
+        return $this->belongsTo(ComplaintCategory::class, 'complaint_category_id');
     }
 
     public function dentist(): BelongsTo

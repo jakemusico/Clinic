@@ -102,23 +102,33 @@ export default function FacultyDashboard() {
             {loading ? (
               <div className="table-loading"><div className="loader-ring" /></div>
             ) : nextAppointment ? (
-              <div style={{ padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)', marginBottom: '0.25rem' }}>
+              <div className="appt-body">
+                <div className="appt-title-row">
+                  <h4 className="appt-title">
                     {nextAppointment.clinic_service?.name || nextAppointment.service?.name || EMPTY}
+                  </h4>
+                  <div className="appt-meta">
+                    <span>
+                      <CalendarIcon size={15} />
+                      {formatAppointmentDate(nextAppointment)}
+                    </span>
+                    <span>·</span>
+                    <span>
+                      <ClockIcon size={15} />
+                      {formatAppointmentTime(nextAppointment)}
+                    </span>
                   </div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-sub)' }}>
-                    {formatAppointmentDate(nextAppointment)} · {formatAppointmentTime(nextAppointment)}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                  <div className="appt-provider">
                     with {nextAppointment.staff?.name || 'Assigned Staff'}
                   </div>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
-                  <span className={`status-badge ${STATUS_MAP[nextAppointment.status]?.cls || 'pending'}`}>
+                <div>
+                  <span className={`appt-badge status-badge ${STATUS_MAP[nextAppointment.status]?.cls || 'pending'}`}>
                     {STATUS_MAP[nextAppointment.status]?.label || nextAppointment.status}
                   </span>
-                  <Link to="/appointments" className="btn-secondary" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}>View</Link>
+                  <Link to="/appointments" className="appt-btn btn-secondary">
+                    View Details
+                  </Link>
                 </div>
               </div>
             ) : (

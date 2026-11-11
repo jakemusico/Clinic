@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useRef } from 'react'
 import Dropdown from './Dropdown'
 
 /**
@@ -41,6 +41,25 @@ export default function Pagination({
   className = '',
   style = {},
 }) {
+  const containerRef = useRef(null)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return undefined
+    const root = document.documentElement
+    const publish = () => {
+      root.style.setProperty('--pagination-height', `${Math.ceil(el.getBoundingClientRect().height)}px`)
+    }
+    publish()
+    if (typeof ResizeObserver === 'undefined') return undefined
+    const ro = new ResizeObserver(publish)
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+      root.style.setProperty('--pagination-height', '0px')
+    }
+  }, [])
+
   if (!totalItems || totalItems <= 0) {
     return null
   }
@@ -50,7 +69,7 @@ export default function Pagination({
   const pages = getPageNumbers(currentPage, Math.max(1, totalPages))
 
   return (
-    <div className={`pagination-container ${className}`} style={style}>
+    <div className={`pagination-container ${className}`} ref={containerRef} style={style}>
       {/* Left: Summary text */}
       <div className="pagination-info">
         Showing {from}-{to} of {totalItems}
@@ -80,7 +99,8 @@ export default function Pagination({
           onClick={() => onPageChange && onPageChange(currentPage - 1)}
           aria-label="Previous page"
         >
-          Previous
+          <span className="pagination-btn-desktop-text">Previous</span>
+          <span className="pagination-btn-mobile-text">‹ Prev</span>
         </button>
 
         {/* Collapsed page numbers */}
@@ -117,7 +137,8 @@ export default function Pagination({
           onClick={() => onPageChange && onPageChange(currentPage + 1)}
           aria-label="Next page"
         >
-          Next
+          <span className="pagination-btn-desktop-text">Next</span>
+          <span className="pagination-btn-mobile-text">Next ›</span>
         </button>
       </div>
     </div>

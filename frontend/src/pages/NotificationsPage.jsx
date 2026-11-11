@@ -3,7 +3,6 @@ import { toast } from 'react-hot-toast'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import DashboardLayout from '../components/DashboardLayout'
 import EventDetailsModal from '../components/EventDetailsModal'
-import Pagination from '../components/Pagination'
 import Dropdown from '../components/Dropdown'
 import { notificationsApi } from '../api/notifications'
 import { useAuth } from '../context/AuthContext'
@@ -14,13 +13,6 @@ import {
   isAppointmentItem,
   getAppointmentTargetUrl
 } from '../utils/notificationHelpers'
-
-const NOTIFICATION_THEMES = {
-  info:    { bg: 'rgba(137,180,250,0.08)', border: '1px solid rgba(137,180,250,0.18)', badge: 'status-badge role-blue', label: 'Info' },
-  success: { bg: 'rgba(166,227,161,0.08)', border: '1px solid rgba(166,227,161,0.18)', badge: 'status-badge active', label: 'Success' },
-  warning: { bg: 'rgba(249,226,175,0.08)', border: '1px solid rgba(249,226,175,0.18)', badge: 'status-badge role-gold', label: 'Warning' },
-  error:   { bg: 'rgba(243,139,168,0.08)', border: '1px solid rgba(243,139,168,0.18)', badge: 'status-badge danger', label: 'Alert' },
-}
 
 function AnnouncementModal({ onClose, onBroadcast }) {
   const [form, setForm]       = useState({ title: '', message: '', type: 'info' })
@@ -135,6 +127,29 @@ function DeleteConfirmModal({ notification, onClose, onConfirm, deleting }) {
   )
 }
 
+// Helper to group notifications by date
+function groupByDate(items) {
+  const today = new Date().toLocaleDateString()
+  const yesterday = new Date(Date.now() - 86400000).toLocaleDateString()
+
+  const grouped = {
+    today: [],
+    yesterday: [],
+    earlier: [],
+  }
+
+  items.forEach(item => {
+    const itemDate = new Date(item.created_at).toLocaleDateString()
+    if (itemDate === today) grouped.today.push(item)
+    else if (itemDate === yesterday) grouped.yesterday.push(item)
+    else grouped.earlier.push(item)
+  })
+
+  return grouped.today.length > 0 || grouped.yesterday.length > 0 || grouped.earlier.length > 0
+    ? grouped
+    : null
+}
+
 export default function NotificationsPage() {
   const { user } = useAuth()
   const { openLiveChat } = useChatbot()
@@ -153,8 +168,6 @@ export default function NotificationsPage() {
   const [deleteTarget, setDeleteTarget]               = useState(null)
   const [deleting, setDeleting]                       = useState(false)
   const [openMenuId, setOpenMenuId]                   = useState(null)
-  const [currentPage, setCurrentPage]                 = useState(1)
-  const [pageSize, setPageSize]                       = useState(10)
   const menuContainerRef = useRef(null)
 
   const load = async () => {
@@ -199,7 +212,6 @@ export default function NotificationsPage() {
 
   const handleTabChange = (tab) => {
     setActiveTab(tab)
-    setCurrentPage(1)
     setSearchParams(tab === 'all' ? {} : { tab })
   }
 
@@ -224,10 +236,6 @@ export default function NotificationsPage() {
     }
     return a.is_read ? 1 : -1
   })
-
-  // Pagination
-  const totalPages = Math.max(1, Math.ceil(sortedList.length / pageSize))
-  const paginatedList = sortedList.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   const handleReadAll = async () => {
     try {
@@ -326,10 +334,10 @@ export default function NotificationsPage() {
       title="Notification Center"
       subtitle="View system messages, appointments, and clinic updates."
     >
-      {/* ── Toolbar: Tabs & Actions ─────────────────────────────── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
-        {/* Tabs: All | Announcements | Appointments */}
-        <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: '0.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
+      {/* ── Fixed Toolbar with Tabs ──────────────────────────────────────── */}
+      <div>
+        {/* Tabs Row */}
+        <div style={{ display: 'flex', gap: 'clamp(1rem, 3vw, 2rem)', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', minHeight: '44px', alignItems: 'center' }}>
           {[
             { id: 'all',           label: 'All',           unread: allUnread },
             { id: 'announcements', label: 'Announcements', unread: announcementsUnread },
@@ -340,30 +348,30 @@ export default function NotificationsPage() {
               type="button"
               onClick={() => handleTabChange(tab.id)}
               style={{
+                padding: '0 0.5rem',
+                fontSize: 'clamp(0.875rem, 2.5vw, 0.9rem)',
+                fontWeight: activeTab === tab.id ? 600 : 400,
+                background: 'none',
+                border: 'none',
+                borderBottom: activeTab === tab.id ? '2px solid var(--accent)' : 'none',
+                color: activeTab === tab.id ? 'var(--text)' : 'var(--text-muted)',
+                cursor: 'pointer',
+                transition: 'all var(--transition)',
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '0.45rem',
-                padding: '0.45rem 0.95rem',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                borderRadius: 'var(--radius-sm)',
-                border: 'none',
-                cursor: 'pointer',
-                background: activeTab === tab.id ? 'var(--accent)' : 'transparent',
-                color: activeTab === tab.id ? '#ffffff' : 'var(--text-sub)',
-                transition: 'all var(--transition)',
+                gap: '0.35rem',
+                minHeight: '44px',
+                minWidth: '44px',
+                whiteSpace: 'nowrap',
               }}
             >
               <span>{tab.label}</span>
               {tab.unread > 0 && (
                 <span
                   style={{
-                    fontSize: '0.72rem',
+                    fontSize: '0.7rem',
                     fontWeight: 700,
-                    padding: '0.1rem 0.45rem',
-                    borderRadius: '999px',
-                    background: activeTab === tab.id ? 'rgba(255,255,255,0.3)' : 'var(--accent)',
-                    color: '#ffffff',
+                    color: 'var(--accent)',
                   }}
                   title={`${tab.unread} unread`}
                 >
@@ -373,278 +381,284 @@ export default function NotificationsPage() {
             </button>
           ))}
         </div>
-
-        {/* Toolbar Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginLeft: 'auto' }}>
-          {allUnread > 0 && (
-            <button
-              type="button"
-              className="btn-ghost"
-              style={{ border: '1px solid var(--border)', fontSize: '0.825rem', padding: '0.45rem 0.85rem' }}
-              onClick={handleReadAll}
-            >
-              Mark all as read
-            </button>
-          )}
-          {canAnnounce && (
-            <button className="btn-primary" onClick={() => setAnnounceModal(true)}>
-              Broadcast Announcement
-            </button>
-          )}
-        </div>
       </div>
 
-      {/* ── Main Notification List ──────────────────────────────── */}
-      {loading ? (
-        <div className="table-loading"><span className="loader-ring" /></div>
-      ) : sortedList.length === 0 ? (
-        <div
-          className="empty-state"
-          style={{
-            padding: '3.5rem 1.5rem',
-            background: '#ffffff',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--border)',
-            textAlign: 'center',
-          }}
-        >
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>
-            {emptyMessages[activeTab] || 'No notifications in this tab.'}
-          </p>
-        </div>
-      ) : (
-        <div className="unavail-list" ref={menuContainerRef}>
-          {paginatedList.map(n => {
-            const theme = NOTIFICATION_THEMES[n.type] || NOTIFICATION_THEMES.info
-            const isAnn = isAnnouncementItem(n)
-            const isAppt = isAppointmentItem(n)
-
-            return (
-              <div
-                key={n.id}
-                className={`unavail-card ${n.is_read ? 'read' : 'unread'}`}
-                style={{
-                  background: theme.bg,
-                  border: theme.border,
-                  borderLeft: `4px solid ${n.is_read ? 'var(--border)' : 'var(--accent)'}`,
-                  opacity: n.is_read ? 0.78 : 1,
-                  transition: 'background var(--transition), opacity var(--transition)',
-                  cursor: 'pointer',
-                  borderRadius: 'var(--radius-md)',
-                  padding: '1rem 1.15rem',
-                  marginBottom: '0.75rem',
-                  position: 'relative',
-                }}
-                onClick={() => handleNotificationClick(n)}
-              >
-                <div style={{ width: '100%' }}>
-                  {/* Card Header: Badges, Title, Blue Dot, Three-dot Menu */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'nowrap' }}>
-                    <span className={theme.badge} style={{ flexShrink: 0 }}>
-                      {theme.label}
-                    </span>
-
-                    {isAnn && (
-                      <span
-                        style={{
-                          fontSize: '0.72rem',
-                          fontWeight: 600,
-                          padding: '0.15rem 0.5rem',
-                          borderRadius: '4px',
-                          background: '#e0e7ff',
-                          color: '#3730a3',
-                          flexShrink: 0,
-                        }}
-                      >
-                        Announcement
-                      </span>
-                    )}
-
-                    {isAppt && !isAnn && (
-                      <span
-                        style={{
-                          fontSize: '0.72rem',
-                          fontWeight: 600,
-                          padding: '0.15rem 0.5rem',
-                          borderRadius: '4px',
-                          background: '#ecfdf5',
-                          color: '#065f46',
-                          flexShrink: 0,
-                        }}
-                      >
-                        Appointment
-                      </span>
-                    )}
-
-                    <h3
-                      style={{
-                        fontSize: '0.93rem',
-                        fontWeight: 700,
-                        color: n.is_read ? 'var(--text-sub)' : 'var(--text)',
-                        margin: 0,
-                        flex: 1,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {n.title}
-                    </h3>
-
-                    {/* Unread Blue Dot */}
-                    {!n.is_read && (
-                      <span
-                        style={{
-                          width: '8px',
-                          height: '8px',
-                          borderRadius: '50%',
-                          background: 'var(--accent, #3b82f6)',
-                          display: 'inline-block',
-                          flexShrink: 0,
-                        }}
-                        title="Unread"
-                      />
-                    )}
-
-                    {/* Three-Dot Menu Button */}
-                    <div
-                      style={{ position: 'relative', marginLeft: '0.4rem', flexShrink: 0 }}
-                      onClick={e => e.stopPropagation()}
-                    >
-                      <button
-                        type="button"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: 'var(--text-muted)',
-                          fontSize: '1.25rem',
-                          lineHeight: 1,
-                          padding: '0.2rem 0.45rem',
-                          borderRadius: 'var(--radius-sm)',
-                          cursor: 'pointer',
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setOpenMenuId(openMenuId === n.id ? null : n.id)
-                        }}
-                        title="Options"
-                        aria-label="Options"
-                      >
-                        ⋯
-                      </button>
-
-                      {openMenuId === n.id && (
-                        <div
-                          style={{
-                            position: 'absolute',
-                            right: 0,
-                            top: '100%',
-                            marginTop: '0.25rem',
-                            background: '#ffffff',
-                            border: '1px solid var(--border)',
-                            borderRadius: 'var(--radius-sm)',
-                            boxShadow: 'var(--shadow-md, 0 4px 12px rgba(0,0,0,0.12))',
-                            zIndex: 50,
-                            minWidth: '135px',
-                            overflow: 'hidden',
-                          }}
-                        >
-                          <button
-                            type="button"
-                            style={{
-                              display: 'block',
-                              width: '100%',
-                              textAlign: 'left',
-                              padding: '0.55rem 0.85rem',
-                              fontSize: '0.825rem',
-                              fontWeight: 500,
-                              background: 'none',
-                              border: 'none',
-                              color: 'var(--text)',
-                              cursor: 'pointer',
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setOpenMenuId(null)
-                              handleToggleRead(n)
-                            }}
-                          >
-                            {n.is_read ? 'Mark as unread' : 'Mark as read'}
-                          </button>
-                          <div style={{ height: '1px', background: 'var(--border)' }} />
-                          <button
-                            type="button"
-                            style={{
-                              display: 'block',
-                              width: '100%',
-                              textAlign: 'left',
-                              padding: '0.55rem 0.85rem',
-                              fontSize: '0.825rem',
-                              fontWeight: 500,
-                              background: 'none',
-                              border: 'none',
-                              color: 'var(--red, #ef4444)',
-                              cursor: 'pointer',
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setOpenMenuId(null)
-                              setDeleteTarget(n)
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      )}
+      {/* ── Scrollable List with Cards and Date Groups ──────────────── */}
+      <div ref={menuContainerRef}>
+        {loading ? (
+          <div className="table-loading"><span className="loader-ring" /></div>
+        ) : sortedList.length === 0 ? (
+          <div style={{ padding: '3rem 2rem', textAlign: 'center', color: 'var(--text-muted)', background: '#ffffff', borderRadius: '12px', border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>✓</div>
+            <p style={{ fontSize: '0.95rem', margin: 0 }}>
+              {emptyMessages[activeTab] || 'No notifications in this tab.'}
+            </p>
+            <p style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>You're all caught up</p>
+          </div>
+        ) : (
+          <div>
+            {groupByDate(sortedList) && Object.entries(groupByDate(sortedList)).map(([dateGroup, items], groupIndex) => (
+              items.length > 0 && (
+                <div key={dateGroup}>
+                  {/* Date Group Header with "Mark all as read" and Broadcast on first group */}
+                  <div style={{ 
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    marginTop: groupIndex === 0 ? '0.75rem' : '0.75rem',
+                    marginBottom: '0.5rem',
+                    paddingLeft: '0.5rem',
+                    paddingRight: '0.5rem',
+                  }}>
+                    <div style={{
+                      fontSize: 'clamp(0.75rem, 2vw, 0.8rem)', 
+                      fontWeight: 700, 
+                      textTransform: 'uppercase', 
+                      color: 'var(--text-muted)',
+                    }}>
+                      {dateGroup === 'today' ? 'TODAY' : dateGroup === 'yesterday' ? 'YESTERDAY' : 'EARLIER'}
                     </div>
+
+                    {/* Show action buttons only on first group */}
+                    {groupIndex === 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}>
+                        {allUnread > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleReadAll}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: 'var(--accent)',
+                              fontSize: 'clamp(0.75rem, 2vw, 0.8rem)',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              padding: '0.35rem 0.5rem',
+                              minHeight: '32px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            Mark all as read
+                          </button>
+                        )}
+                        {canAnnounce && (
+                          <button
+                            onClick={() => setAnnounceModal(true)}
+                            style={{
+                              padding: '0.35rem 0.5rem',
+                              fontSize: 'clamp(0.7rem, 1.8vw, 0.75rem)',
+                              fontWeight: 600,
+                              background: 'none',
+                              border: '1px solid var(--accent)',
+                              color: 'var(--accent)',
+                              borderRadius: 'var(--radius-sm)',
+                              cursor: 'pointer',
+                              minHeight: '32px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            Broadcast
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  {/* Message (Limited to 2 lines preview) */}
-                  <p
-                    style={{
-                      color: 'var(--text-sub)',
-                      fontSize: '0.86rem',
-                      marginTop: '0.45rem',
-                      marginBottom: '0.45rem',
-                      lineHeight: '1.45',
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    {n.message}
-                  </p>
+                  {/* Notification Cards */}
+                  {items.map((n) => (
+                    <div
+                      key={n.id}
+                      style={{
+                        background: n.is_read ? '#ffffff' : '#f5f9ff',
+                        border: n.is_read ? '1px solid var(--border)' : '1px solid rgba(59, 130, 246, 0.3)',
+                        borderRadius: '12px',
+                        padding: '12px 14px',
+                        marginBottom: '10px',
+                        cursor: 'pointer',
+                        transition: 'all var(--transition)',
+                        minHeight: '44px',
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '0.65rem',
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.borderColor = n.is_read ? 'rgba(107, 114, 128, 0.5)' : 'rgba(59, 130, 246, 0.5)'
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.borderColor = n.is_read ? 'var(--border)' : 'rgba(59, 130, 246, 0.3)'
+                      }}
+                      onClick={() => handleNotificationClick(n)}
+                    >
+                      {/* Left: Unread Dot + Content */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem', minWidth: 0, flex: 1 }}>
+                        {/* Unread Dot (8px, only if unread) */}
+                        {!n.is_read && (
+                          <div
+                            style={{
+                              width: '8px',
+                              height: '8px',
+                              borderRadius: '50%',
+                              background: 'var(--accent)',
+                              marginTop: '0.4rem',
+                              flexShrink: 0,
+                            }}
+                          />
+                        )}
+                        {n.is_read && (
+                          <div style={{ width: '8px', flexShrink: 0 }} />
+                        )}
 
-                  {/* Card Footer: Relative Timestamp and Hint */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.45rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    <span>{formatNotificationTime(n.created_at)}</span>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent)' }}>
-                      {isAnn ? 'View Details' : (isAppt ? 'View Appointment' : 'View')}
-                    </span>
-                  </div>
+                        {/* Title and Message */}
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <h4
+                            style={{
+                              fontSize: 'clamp(0.875rem, 2.5vw, 0.9375rem)',
+                              fontWeight: n.is_read ? 400 : 600,
+                              color: n.is_read ? '#334155' : 'var(--text)',
+                              margin: '0 0 0.25rem 0',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {n.title}
+                          </h4>
+                          <p
+                            style={{
+                              fontSize: 'clamp(0.8125rem, 2vw, 0.85rem)',
+                              color: n.is_read ? '#64748b' : 'var(--text-muted)',
+                              margin: 0,
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            {n.message}
+                          </p>
+                          {/* Timestamp on mobile (under message) */}
+                          <div style={{ fontSize: 'clamp(0.75rem, 1.5vw, 0.8rem)', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
+                            {formatNotificationTime(n.created_at)}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right: Menu Button */}
+                      <div
+                        style={{ position: 'relative' }}
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--text-muted)',
+                            fontSize: '1.1rem',
+                            lineHeight: 1,
+                            padding: '0.25rem 0.35rem',
+                            cursor: 'pointer',
+                            minHeight: '44px',
+                            minWidth: '44px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setOpenMenuId(openMenuId === n.id ? null : n.id)
+                          }}
+                          title="Options"
+                          aria-label="Options"
+                        >
+                          ⋯
+                        </button>
+
+                        {openMenuId === n.id && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              right: 0,
+                              top: '100%',
+                              marginTop: '0.25rem',
+                              background: '#ffffff',
+                              border: '1px solid var(--border)',
+                              borderRadius: 'var(--radius-sm)',
+                              boxShadow: 'var(--shadow-md)',
+                              zIndex: 50,
+                              minWidth: '135px',
+                              overflow: 'hidden',
+                            }}
+                          >
+                            <button
+                              type="button"
+                              style={{
+                                display: 'block',
+                                width: '100%',
+                                textAlign: 'left',
+                                padding: '0.5rem 0.85rem',
+                                fontSize: '0.82rem',
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--text)',
+                                cursor: 'pointer',
+                                minHeight: '44px',
+                                display: 'flex',
+                                alignItems: 'center',
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setOpenMenuId(null)
+                                handleToggleRead(n)
+                              }}
+                            >
+                              {n.is_read ? 'Mark as unread' : 'Mark as read'}
+                            </button>
+                            <div style={{ height: '1px', background: 'var(--border)' }} />
+                            <button
+                              type="button"
+                              style={{
+                                display: 'block',
+                                width: '100%',
+                                textAlign: 'left',
+                                padding: '0.5rem 0.85rem',
+                                fontSize: '0.82rem',
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--red)',
+                                cursor: 'pointer',
+                                minHeight: '44px',
+                                display: 'flex',
+                                alignItems: 'center',
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setOpenMenuId(null)
+                                setDeleteTarget(n)
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            )
-          })}
-
-          {/* ── Pagination ─────────────────────────────────────────── */}
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            totalItems={sortedList.length}
-            pageSize={pageSize}
-            onPageChange={setCurrentPage}
-            onPageSizeChange={(newSize) => {
-              setPageSize(newSize)
-              setCurrentPage(1)
-            }}
-          />
-        </div>
-      )}
+              )
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* ── Modals ────────────────────────────────────────────── */}
-      {/* 1. Announcement / Event Detail Modal */}
       {selectedAnnouncement && (
         <EventDetailsModal
           notification={selectedAnnouncement}
@@ -652,7 +666,6 @@ export default function NotificationsPage() {
         />
       )}
 
-      {/* 2. Broadcast Announcement Modal (Admin / Clinic Staff) */}
       {announceModal && (
         <AnnouncementModal
           onClose={() => setAnnounceModal(false)}
@@ -660,7 +673,6 @@ export default function NotificationsPage() {
         />
       )}
 
-      {/* 3. Delete Confirmation Modal */}
       {deleteTarget && (
         <DeleteConfirmModal
           notification={deleteTarget}

@@ -132,31 +132,31 @@ export default function StudentDashboard() {
             {loading ? (
               <div className="table-loading"><div className="loader-ring" /></div>
             ) : nextAppointment ? (
-              <div style={{ padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text)', marginBottom: '0.35rem' }}>
+              <div className="appt-body">
+                <div className="appt-title-row">
+                  <h4 className="appt-title">
                     {nextAppointment.clinic_service?.name || nextAppointment.service?.name || 'General Consultation'}
-                  </div>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-sub)', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                  </h4>
+                  <div className="appt-meta">
+                    <span>
                       <CalendarIcon size={15} />
                       {formatAppointmentDate(nextAppointment)}
                     </span>
-                    <span style={{ color: 'var(--border)' }}>·</span>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <span>·</span>
+                    <span>
                       <ClockIcon size={15} />
                       {formatAppointmentTime(nextAppointment)}
                     </span>
                   </div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
+                  <div className="appt-provider">
                     Provider: {nextAppointment.staff?.name || 'Assigned Clinic Practitioner'}
                   </div>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
-                  <span className={`status-badge ${STATUS_MAP[nextAppointment.status]?.cls || 'pending'}`}>
+                <div>
+                  <span className={`appt-badge status-badge ${STATUS_MAP[nextAppointment.status]?.cls || 'pending'}`}>
                     {STATUS_MAP[nextAppointment.status]?.label || nextAppointment.status}
                   </span>
-                  <Link to="/appointments" className="btn-secondary" style={{ padding: '0.35rem 0.85rem', fontSize: '0.785rem' }}>
+                  <Link to="/appointments" className="appt-btn btn-secondary">
                     View Details
                   </Link>
                 </div>

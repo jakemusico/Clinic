@@ -79,6 +79,8 @@ export default function Dropdown({
   emptyMessage = 'No results found',
   noOptionsMessage,
   loading = false,
+  /** Called with the raw search text whenever it changes (for server-side search). */
+  onSearch,
   required = false,
   id,
   name,
@@ -117,6 +119,7 @@ export default function Dropdown({
   const openList = () => {
     if (disabled || open) return
     setQuery('')
+    onSearch?.('')   // the search box was cleared: let the caller reload the unfiltered list
     const idx = list.findIndex((o) => o.value === str(value) && !o.disabled)
     setActive(idx >= 0 ? idx : firstEnabled(list))
     // Safari does not focus a button on click; keyboard control needs the focus
@@ -207,6 +210,7 @@ export default function Dropdown({
   const handleSearch = (e) => {
     const q = e.target.value
     setQuery(q)
+    onSearch?.(q)
     const t = q.trim().toLowerCase()
     setActive(firstEnabled(t ? list.filter((o) => matches(o, t)) : list))
   }
@@ -296,7 +300,12 @@ export default function Dropdown({
         onClick={() => (open ? closeList() : openList())}
       >
         <span className={`dd-value${selected ? '' : ' is-placeholder'}`}>
-          {loading ? 'Loading…' : selected ? selected.label : placeholder}
+          {loading ? 'Loading…' : selected ? (
+            <>
+              {selected.label}
+              {selected.tag && <span className={`dd-option-tag${selected.tagTone === 'warn' ? ' warn' : ''}`}>{selected.tag}</span>}
+            </>
+          ) : placeholder}
         </span>
         <svg
           className="dd-chevron"
@@ -389,7 +398,7 @@ export default function Dropdown({
                     <div className="dd-option-main">
                       <div className="dd-option-name">
                         {opt.label}
-                        {opt.tag && <span className="dd-option-tag">{opt.tag}</span>}
+                        {opt.tag && <span className={`dd-option-tag${opt.tagTone === 'warn' ? ' warn' : ''}`}>{opt.tag}</span>}
                       </div>
                       {opt.badge && <div className="dd-option-badge">{opt.badge}</div>}
                     </div>

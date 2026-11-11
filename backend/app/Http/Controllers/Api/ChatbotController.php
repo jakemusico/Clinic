@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ChatbotFaq;
+use App\Models\ChatbotCategory;
 use App\Models\ChatbotQuestionLog;
 use App\Models\Conversation;
 use App\Models\Message;
@@ -18,9 +19,9 @@ use Illuminate\Support\Facades\DB;
  *
  * Flow:
  *  1. If user sends a menu trigger ("menu", "help", "start", "hi", etc.)
- *     → return top-level category menu (4 categories)
+ *     → return dynamic category menu (from chatbot_categories table)
  *  2. If user sends a category name (exact match)
- *     → return subtopics or category FAQs
+ *     → return category FAQs
  *  3. Otherwise run keyword/intent scoring against every active FAQ
  *     → return best-match FAQ or fallback "contact clinic staff" response
  */
@@ -69,20 +70,11 @@ class ChatbotController extends Controller
         }
 
         /* ── 2. Category match (user typed the category name directly) ── */
-        // Check top-level categories first
-        $topCategories = ['health_inquiries', 'clinic_services', 'appointment_help', 'clinic_faqs'];
-        foreach ($topCategories as $cat) {
-            $catLabel = str_replace('_', ' ', $cat);
-            if (str_contains($text, $catLabel) || str_contains($text, str_replace(' ', '', $catLabel))) {
-                return response()->json($this->buildCategoryResponse($cat));
-            }
-        }
-
-        // Check sub-categories
-        $categories = ChatbotFaq::where('is_active', true)
-            ->whereNotNull('category')
-            ->distinct()
-            ->pluck('category')
+        $categories = ChatbotCategory::where('is_active', true)
+            ->whereHas('faqs', function ($q) {
+                $q->where('is_active', true)->where('show_on_help', true);
+            })
+            ->pluck('name')
             ->toArray();
 
         foreach ($categories as $cat) {
@@ -168,28 +160,22 @@ class ChatbotController extends Controller
 
     private function buildMenuResponse(): array
     {
-        $buttons = [
-            [
-                'label'    => 'Health Inquiries',
-                'value'    => 'health_inquiries',
-                'category' => 'health_inquiries',
-            ],
-            [
-                'label'    => 'Clinic Services',
-                'value'    => 'clinic_services',
-                'category' => 'clinic_services',
-            ],
-            [
-                'label'    => 'Appointment Help',
-                'value'    => 'appointment_help',
-                'category' => 'appointment_help',
-            ],
-            [
-                'label'    => 'Clinic FAQs',
-                'value'    => 'clinic_faqs',
-                'category' => 'clinic_faqs',
-            ],
-        ];
+        // Get all active categories that have at least one active FAQ with show_on_help enabled
+        $categories = ChatbotCategory::where('is_active', true)
+            ->whereHas('faqs', function ($q) {
+                $q->where('is_active', true)->where('show_on_help', true);
+            })
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get(['name', 'sort_order']);
+
+        $buttons = $categories->map(function ($cat) {
+            return [
+                'label'    => ucwords(str_replace('_', ' ', $cat->name)),
+                'value'    => $cat->name,
+                'category' => $cat->name,
+            ];
+        })->toArray();
 
         return [
             'type'    => 'menu',
@@ -203,50 +189,9 @@ class ChatbotController extends Controller
     {
         $category = strtolower(trim($category));
 
-        // Define top-level to subtopic mappings
-        $subtopics = [
-            'health_inquiries' => [
-                ['label' => 'Emergency', 'value' => 'emergency'],
-                ['label' => 'General Info', 'value' => 'general'],
-            ],
-            'clinic_services' => [
-                ['label' => 'Services', 'value' => 'services'],
-                ['label' => 'Dental Services', 'value' => 'dental'],
-            ],
-            'appointment_help' => [
-                ['label' => 'Appointments', 'value' => 'appointments'],
-                ['label' => 'Clinic Hours', 'value' => 'hours'],
-            ],
-            'clinic_faqs' => [
-                ['label' => 'Medical Records', 'value' => 'records'],
-                ['label' => 'Requirements', 'value' => 'requirements'],
-            ],
-        ];
-
-        if (array_key_exists($category, $subtopics)) {
-            $catLabel = ucwords(str_replace('_', ' ', $category));
-            return [
-                'type'     => 'subtopics',
-                'category' => $category,
-                'message'  => "Please choose a specific area under " . $catLabel . ":",
-                'buttons'  => $subtopics[$category],
-                'hint'     => 'Type "menu" to go back to main topics.',
-            ];
-        }
-
-        // Subtopic names for header/intro display
-        $subtopicNames = [
-            'emergency'    => 'Emergency',
-            'general'      => 'General Info',
-            'services'     => 'Services',
-            'dental'       => 'Dental Services',
-            'appointments' => 'Appointments',
-            'hours'        => 'Clinic Hours',
-            'records'      => 'Medical Records',
-            'requirements' => 'Requirements',
-        ];
-
+        // Get FAQs for this category
         $faqs = ChatbotFaq::where('is_active', true)
+            ->where('show_on_help', true)
             ->where('category', $category)
             ->orderBy('sort_order')
             ->get(['id', 'question', 'category']);
@@ -255,7 +200,11 @@ class ChatbotController extends Controller
             return $this->fallbackResponse();
         }
 
-        $label = $subtopicNames[$category] ?? ucfirst($category);
+        // Get category display name
+        $categoryModel = ChatbotCategory::where('name', $category)->first();
+        $label = $categoryModel 
+            ? ucwords(str_replace('_', ' ', $categoryModel->name))
+            : ucfirst($category);
 
         return [
             'type'     => 'faq_list',

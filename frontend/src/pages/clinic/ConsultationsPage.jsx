@@ -2,39 +2,72 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import DashboardLayout from '../../components/DashboardLayout'
-import PrintableRecord from '../../components/PrintableRecord'
 import { ConsultationModal } from '../../components/ConsultationModal'
 import { ViewConsultationModal } from '../../components/ViewConsultationModal'
 import { recordsApi } from '../../api/records'
-import { appointmentsApi } from '../../api/appointments'
-import { servicesApi } from '../../api/services'
 import { useAuth } from '../../context/AuthContext'
 import Pagination from '../../components/Pagination'
-import DateInput from '../../components/DateInput'
 import Dropdown from '../../components/Dropdown'
 import Avatar from '../../components/Avatar'
-import { serviceLabel, serviceNameOf } from '../../utils/emptyValue'
+import DateRangeFilter from '../../components/DateRangeFilter'
+import { defaultRange } from '../../utils/dateRange'
+import { serviceNameOf } from '../../utils/emptyValue'
 import { formatDateLong, toDateKey } from '../../utils/dateUtils'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 
+const pad = (n) => String(n).padStart(2, '0')
+const todayKey = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+// One row shape for medical and dental consultations so the list, stats and filters
+// treat both care types identically (admin sees them merged, everyone else one type).
+function normalize(row, type) {
+  const isMedical = type === 'medical'
+  const dateField = isMedical ? row.visit_date : row.consultation_date
+  const staff = isMedical ? row.created_by : row.dentist
+  const patientUser = row.patient?.user || {}
+  const serviceName = serviceNameOf(row)
+  const complaint = (row.complaint_category || '').trim()
+  return {
+    key: `${type}-${row.id}`,
+    type,
+    raw: row,
+    date: toDateKey(dateField) || toDateKey(row.created_at) || '',
+    displayDate: dateField || row.created_at,
+    patientUser,
+    serviceName,
+    status: row.status || 'completed',
+    staffName: staff?.name || (isMedical ? 'Clinic Staff' : 'Dentist'),
+    staffAvatar: staff?.avatar_url,
+    walkIn: row.appointment_id == null,
+    complaint: complaint || 'Others',
+    searchText: [
+      patientUser.name, patientUser.student_id, patientUser.email,
+      serviceName, row.diagnosis, row.assessment, row.chief_complaint,
+      row.reason_for_visit, row.treatment, row.treatment_performed,
+      row.dental_findings, staff?.name, complaint,
+    ].filter(Boolean).join(' ').toLowerCase(),
+  }
+}
+
 export default function ConsultationsPage() {
   const { user } = useAuth()
-  const [records, setRecords] = useState([])
+  const isNurse = user?.role === 'clinic_staff'
+  const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
-  const [lastPage, setLastPage] = useState(1)
-  const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebouncedValue(search)
   const [filterService, setFilterService] = useState('all')
   const [filterStaff, setFilterStaff] = useState('all')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [range, setRange] = useState(defaultRange)
   const [filterPopoverOpen, setFilterPopoverOpen] = useState(false)
   const [activeTab, setActiveTab] = useState('list') // 'list' | 'new'
   const [modal, setModal] = useState(null) // null | record (for edit)
-  const [viewRecord, setViewRecord] = useState(null)
+  const [viewRecord, setViewRecord] = useState(null) // medical record
 
   const location = useLocation()
   const navigate = useNavigate()
@@ -42,92 +75,20 @@ export default function ConsultationsPage() {
   // One shared formatter (utils/dateUtils): the same day as the one chosen in the form
   const formatDate = formatDateLong
 
-  const distinctServices = useMemo(() => {
-    const set = new Set()
-    records.forEach(r => {
-      const svc = serviceNameOf(r)
-      if (svc) set.add(svc)
-    })
-    return Array.from(set).sort()
-  }, [records])
-
-  const distinctStaff = useMemo(() => {
-    const set = new Set()
-    records.forEach(r => {
-      if (r.created_by?.name) set.add(r.created_by.name)
-    })
-    return Array.from(set).sort()
-  }, [records])
-
-  const filteredRecords = useMemo(() => {
-    return records.filter(r => {
-      // 1. Live search
-      if (debouncedSearch) {
-        const q = debouncedSearch.toLowerCase()
-        const patientUser = r.patient?.user || {}
-        const haystack = [
-          patientUser.name,
-          patientUser.student_id,
-          serviceNameOf(r),
-          r.diagnosis,
-          r.assessment,
-          r.chief_complaint,
-          r.treatment,
-          r.created_by?.name,
-        ].filter(Boolean).join(' ').toLowerCase()
-        if (!haystack.includes(q)) return false
-      }
-
-      // 2. Service Filter
-      if (filterService !== 'all') {
-        const sName = serviceNameOf(r)
-        if (sName !== filterService) return false
-      }
-
-      // 3. Staff Filter
-      if (filterStaff !== 'all') {
-        if ((r.created_by?.name || '') !== filterStaff) return false
-      }
-
-      // 4. Date Range Filter
-      if (dateFrom || dateTo) {
-        const rDate = toDateKey(r.visit_date) || ''
-        if (dateFrom && rDate < dateFrom) return false
-        if (dateTo && rDate > dateTo) return false
-      }
-
-      return true
-    })
-  }, [records, debouncedSearch, filterService, filterStaff, dateFrom, dateTo])
-
-  const activeFilterCount = (filterService !== 'all' ? 1 : 0) +
-    (filterStaff !== 'all' ? 1 : 0) +
-    (dateFrom ? 1 : 0) +
-    (dateTo ? 1 : 0)
-
-  const resetFilters = () => {
-    setSearch('')
-    setFilterService('all')
-    setFilterStaff('all')
-    setDateFrom('')
-    setDateTo('')
-  }
-
-  const isNurse = user?.role === 'clinic_staff'
-
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const { data } = await recordsApi.list({ page, per_page: pageSize })
-      setRecords(data.records || [])
-      setLastPage(data.last_page || 1)
-      setTotal(data.total || 0)
+      const { data } = await recordsApi.list({ paginate: 'false' })
+      const medical = data.records || data.data || []
+      const merged = medical.map(r => normalize(r, 'medical'))
+      merged.sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.raw.id - a.raw.id)
+      setRows(merged)
     } catch {
       toast.error('Failed to load consultation records.')
     } finally {
       setLoading(false)
     }
-  }, [page, pageSize])
+  }, [])
 
   useEffect(() => { load() }, [load])
 
@@ -162,21 +123,86 @@ export default function ConsultationsPage() {
   const openNew = () => { setModal(null); setActiveTab('new') }
   const showList = () => { setModal(null); setActiveTab('list') }
 
-  const handleSaved = (saved, isEdit) => {
-    if (isEdit) {
-      setRecords(p => p.map(r => r.id === saved.id ? saved : r))
-    } else {
-      setRecords(p => [saved, ...p])
-    }
+  const handleSaved = () => {
     setModal(null)
     setActiveTab('list')
     toast.success('Consultation saved successfully.')
+    load()
   }
+
+  // Rows inside the selected date range and care type — the basis for the stat cards.
+  const rangedRows = useMemo(() => rows.filter(r => {
+    if (range.from && r.date < range.from) return false
+    if (range.to && r.date > range.to) return false
+    return true
+  }), [rows, range])
+
+  const stats = useMemo(() => {
+    const today = todayKey()
+    const complaints = {}
+    let todayCount = 0
+    let walkIns = 0
+    rangedRows.forEach(r => {
+      if (r.date === today) todayCount++
+      if (r.walkIn) walkIns++
+      complaints[r.complaint] = (complaints[r.complaint] || 0) + 1
+    })
+    const top = Object.entries(complaints).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]
+    return {
+      total: rangedRows.length,
+      today: todayCount,
+      walkIns,
+      topComplaint: top ? `${top[0]} (${top[1]})` : '—',
+    }
+  }, [rangedRows])
+
+  const distinctServices = useMemo(() => {
+    const set = new Set()
+    rows.forEach(r => { if (r.serviceName) set.add(r.serviceName) })
+    return Array.from(set).sort()
+  }, [rows])
+
+  const distinctStaff = useMemo(() => {
+    const set = new Set()
+    rows.forEach(r => { if (r.staffName) set.add(r.staffName) })
+    return Array.from(set).sort()
+  }, [rows])
+
+  const filteredRows = useMemo(() => {
+    const q = debouncedSearch.toLowerCase()
+    return rangedRows.filter(r => {
+      if (q && !r.searchText.includes(q)) return false
+      if (filterService !== 'all' && r.serviceName !== filterService) return false
+      if (filterStaff !== 'all' && r.staffName !== filterStaff) return false
+      return true
+    })
+  }, [rangedRows, debouncedSearch, filterService, filterStaff])
+
+  useEffect(() => { setPage(1) }, [debouncedSearch, filterService, filterStaff, range])
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize))
+  const pagedRows = filteredRows.slice((page - 1) * pageSize, page * pageSize)
+
+  const activeFilterCount = (filterService !== 'all' ? 1 : 0) + (filterStaff !== 'all' ? 1 : 0)
+
+  const resetFilters = () => {
+    setSearch('')
+    setFilterService('all')
+    setFilterStaff('all')
+  }
+
+  const statCards = [
+    { value: stats.total, label: 'Total Consultations' },
+    { value: stats.today, label: 'Today' },
+    { value: stats.walkIns, label: 'Walk-in' },
+    { value: stats.topComplaint, label: 'Top Complaint' },
+  ]
 
   return (
     <DashboardLayout
       title="Medical Consultations"
       subtitle="Record patient check-ups, vital signs, clinical findings, and treatment details."
+      stats={activeTab === 'list' ? statCards : []}
     >
       {/* Navigation Tabs */}
       <div className="tab-bar">
@@ -206,13 +232,19 @@ export default function ConsultationsPage() {
           />
         </div>
       ) : (
-        <>
-          {/* Search + Filter Toolbar */}
-          <div className="page-toolbar" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
-            <div className="global-search-container" style={{ flex: 1, minWidth: '280px', maxWidth: '400px' }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+        <div>
+          {/* Date range (shared with Appointments/Reports) */}
+          <div style={{ marginBottom: '1rem', maxWidth: '640px' }}>
+            <DateRangeFilter value={range} onChange={setRange} />
+          </div>
+
+          {/* Search and Filters Toolbar */}
+          <div className="page-toolbar" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '1rem' }}>
+            <div style={{ flex: 1, minWidth: '280px', position: 'relative' }}>
               <input
-                className="global-search-input"
+                type="text"
+                className="search-input"
+                style={{ width: '100%', boxSizing: 'border-box' }}
                 placeholder="Search by patient name, student ID, or service..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
@@ -222,9 +254,16 @@ export default function ConsultationsPage() {
                   type="button"
                   onClick={() => setSearch('')}
                   style={{
-                    position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
-                    background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
-                    fontSize: '0.9rem', padding: '2px 6px',
+                    position: 'absolute',
+                    right: '10px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                    padding: '2px 6px',
                   }}
                   title="Clear search"
                 >
@@ -233,18 +272,22 @@ export default function ConsultationsPage() {
               )}
             </div>
 
-            {/* Filter popover button */}
             <div style={{ position: 'relative' }}>
               <button
                 type="button"
                 className={`filter-btn-outline ${activeFilterCount > 0 ? 'active' : ''}`}
                 style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '0.45rem',
-                  padding: '0.55rem 1rem', borderRadius: 'var(--radius-full)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.45rem',
+                  padding: '0.55rem 1rem',
+                  borderRadius: 'var(--radius-full)',
                   border: activeFilterCount > 0 ? '1.5px solid var(--accent)' : '1px solid var(--border)',
                   background: activeFilterCount > 0 ? 'var(--accent-light)' : '#FFFFFF',
                   color: activeFilterCount > 0 ? 'var(--accent)' : 'var(--text)',
-                  fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
                 }}
                 onClick={() => setFilterPopoverOpen(!filterPopoverOpen)}
               >
@@ -290,28 +333,6 @@ export default function ConsultationsPage() {
                     </div>
                   )}
 
-                  <div className="filter-popover-group" style={{ marginBottom: '0.85rem' }}>
-                    <div className="filter-popover-title" style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-sub)', marginBottom: '0.35rem' }}>
-                      Date Range
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                      <DateInput
-                        label="From"
-                        value={dateFrom}
-                        onChange={e => setDateFrom(e.target.value)}
-                        max={dateTo || undefined}
-                        style={{ width: '100%' }}
-                      />
-                      <DateInput
-                        label="To"
-                        value={dateTo}
-                        onChange={e => setDateTo(e.target.value)}
-                        min={dateFrom || undefined}
-                        style={{ width: '100%' }}
-                      />
-                    </div>
-                  </div>
-
                   {activeFilterCount > 0 && (
                     <button
                       type="button"
@@ -334,25 +355,25 @@ export default function ConsultationsPage() {
                 type="button"
                 className="btn-ghost"
                 style={{ fontSize: '0.82rem', padding: '0.5rem 0.75rem' }}
-                onClick={resetFilters}
+                onClick={() => { resetFilters(); setSearch('') }}
               >
                 Clear All
               </button>
             )}
           </div>
 
-          {/* Table */}
+          {/* Loading/Empty/Body Logic */}
           {loading ? (
             <div className="table-loading"><span className="loader-ring" /></div>
-          ) : filteredRecords.length === 0 ? (
+          ) : filteredRows.length === 0 ? (
             <div className="empty-state" style={{ background: '#FFFFFF', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '3rem 1.5rem', textAlign: 'center' }}>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.75rem' }}>
                 {search || activeFilterCount > 0
-                  ? 'No medical consultations match your search or filter criteria.'
-                  : 'No medical consultations recorded yet.'}
+                  ? 'No consultations match your search or filter criteria.'
+                  : 'No consultations recorded yet.'}
               </p>
               {(search || activeFilterCount > 0) ? (
-                <button type="button" className="btn-secondary" onClick={resetFilters}>
+                <button type="button" className="btn-secondary" onClick={() => { resetFilters(); setSearch('') }}>
                   Clear Filters
                 </button>
               ) : isNurse ? (
@@ -362,59 +383,56 @@ export default function ConsultationsPage() {
               ) : null}
             </div>
           ) : (
-            <div className="data-table-wrap" style={{ overflowX: 'auto', width: '100%', boxShadow: 'var(--shadow-sm)', borderRadius: 'var(--radius-md)' }}>
-              <table className="data-table" style={{ width: '100%' }}>
-                <thead>
-                  <tr>
-                    <th style={{ width: '140px' }}>Date</th>
-                    <th>Patient</th>
-                    <th>Service</th>
-                    <th style={{ width: '130px' }}>Status</th>
-                    <th>Attending Nurse</th>
-                    <th style={{ width: '100px', textAlign: 'center' }}>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredRecords.map(r => {
-                    const patientUser = r.patient?.user || {}
-                    const serviceName = serviceLabel(r)
-                    const status = r.status || 'completed'
-                    return (
-                      <tr key={r.id}>
+            <>
+              <div className="data-table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '140px' }}>Date</th>
+                      <th>Patient</th>
+                      <th>Service</th>
+                      <th style={{ width: '130px' }}>Status</th>
+                      <th>Attending Nurse</th>
+                      <th style={{ width: '100px', textAlign: 'center' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedRows.map(r => (
+                      <tr key={r.key}>
                         <td style={{ fontWeight: 600, fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-                          {formatDate(r.visit_date)}
+                          {formatDate(r.displayDate)}
                         </td>
                         <td className="td-name" style={{ whiteSpace: 'nowrap' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                          <Avatar src={patientUser.avatar_url} name={patientUser.name} size={30} />
-                          <div>
-                          <div style={{ fontWeight: 600, color: 'var(--text)' }}>
-                            {patientUser.name || 'Patient'}
-                          </div>
-                          {patientUser.student_id ? (
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                              ID: {patientUser.student_id}
+                            <Avatar src={r.patientUser.avatar_url} name={r.patientUser.name} size={30} />
+                            <div>
+                              <div style={{ fontWeight: 600, color: 'var(--text)' }}>
+                                {r.patientUser.name || 'Patient'}
+                              </div>
+                              {r.patientUser.student_id ? (
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                  ID: {r.patientUser.student_id}
+                                </div>
+                              ) : r.patientUser.email ? (
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                  {r.patientUser.email}
+                                </div>
+                              ) : null}
                             </div>
-                          ) : patientUser.email ? (
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                              {patientUser.email}
-                            </div>
-                          ) : null}
-                          </div>
                           </div>
                         </td>
                         <td style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', whiteSpace: 'nowrap' }}>
-                          {serviceName}
+                          {r.serviceName}
                         </td>
                         <td>
-                          <span className={`status-badge ${status}`} style={{ textTransform: 'capitalize' }}>
-                            {status}
+                          <span className={`status-badge ${r.status}`} style={{ textTransform: 'capitalize' }}>
+                            {r.status}
                           </span>
                         </td>
                         <td style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <Avatar src={r.created_by?.avatar_url} name={r.created_by?.name} size={24} />
-                            {r.created_by?.name || 'Clinic Staff'}
+                            <Avatar src={r.staffAvatar} name={r.staffName} size={24} />
+                            {r.staffName}
                           </span>
                         </td>
                         <td style={{ textAlign: 'center' }}>
@@ -422,29 +440,30 @@ export default function ConsultationsPage() {
                             type="button"
                             className="btn-secondary"
                             style={{ padding: '0.35rem 0.85rem', fontSize: '0.78rem' }}
-                            onClick={() => setViewRecord(r)}
+                            onClick={() => setViewRecord(r.raw)}
                           >
                             View
                           </button>
                         </td>
                       </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-          {/* Pagination belongs to the list only */}
-          <Pagination
-            currentPage={page}
-            totalPages={lastPage}
-            totalItems={total}
-            pageSize={pageSize}
-            onPageChange={setPage}
-            onPageSizeChange={(s) => { setPageSize(s); setPage(1) }}
-          />
-        </>
+              <div style={{ marginTop: '1rem' }}>
+                <Pagination
+                  currentPage={page}
+                  totalPages={totalPages}
+                  totalItems={filteredRows.length}
+                  pageSize={pageSize}
+                  onPageChange={setPage}
+                  onPageSizeChange={(s) => { setPageSize(s); setPage(1) }}
+                />
+              </div>
+            </>
+          )}
+        </div>
       )}
 
       {viewRecord && (

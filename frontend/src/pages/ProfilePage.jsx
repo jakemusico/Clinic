@@ -122,8 +122,9 @@ function PatientProfilePage() {
   // View / Edit mode
   const [isEditing, setIsEditing] = useState(false)
   const [showDiscardModal, setShowDiscardModal] = useState(false)
-  const [pendingTab, setPendingTab] = useState(null)
+  const [tabErrors, setTabErrors] = useState(new Set()) // tabs that currently have validation errors (red dot)
   const [savedData, setSavedData] = useState(() => (user ? buildFormData(user) : null))
+  const [readinessInfo, setReadinessInfo] = useState(null) // { percent, missing } from the API (same source as the consultation badges)
   const [showChangePassword, setShowChangePassword] = useState(false)
 
   const { sections: dbSections, gradeLevels: dbGradeLevels } = useSectionsAndGradeLevels()
@@ -145,6 +146,9 @@ function PatientProfilePage() {
         const freshData = buildFormData(freshUser)
         setFormData(freshData)
         setSavedData(freshData)
+        if (res.data?.readiness != null) {
+          setReadinessInfo({ percent: res.data.readiness, missing: res.data.missing_fields || [] })
+        }
         if (res.data?.user) {
           updateUser(res.data.user)
         }
@@ -163,20 +167,9 @@ function PatientProfilePage() {
     return () => { isMounted = false }
   }, [])
 
-  // Clinic Record Readiness: compute strictly from saved database values, not local form state
-  const completeness = useMemo(() => {
-    const source = savedData || formData
-    if (!source) return 0
-    const fields = [
-      source.first_name, source.last_name, source.student_id, source.grade_level,
-      source.section, source.date_of_birth, source.sex, source.contact_no,
-      source.address, source.guardian_name, source.guardian_contact,
-      source.emergency_name, source.emergency_contact_no, source.blood_type,
-      source.allergies, source.medical_history,
-    ]
-    const filled = fields.filter(f => f && String(f).trim().length > 0).length
-    return Math.round((filled / fields.length) * 100)
-  }, [savedData, formData])
+  // Clinic Record Readiness comes only from the API (ProfileReadiness on the backend — the same
+  // function behind the consultation badges, booking block and walk-in block). No local copy.
+  const completeness = readinessInfo?.percent ?? 0
 
   const passwordStrength = useMemo(() => {
     const p = passwordForm.password
@@ -227,24 +220,20 @@ function PatientProfilePage() {
   const handleCancelEdit = () => {
     const hasChanges = JSON.stringify(formData) !== JSON.stringify(savedData)
     if (hasChanges) setShowDiscardModal(true)
-    else { setIsEditing(false); setFieldErrors({}) }
+    else { setIsEditing(false); setFieldErrors({}); setTabErrors(new Set()) }
   }
 
   const handleDiscardConfirm = () => {
     setFormData(savedData)
     setIsEditing(false)
     setFieldErrors({})
+    setTabErrors(new Set())
     setShowDiscardModal(false)
     setShowEmailPassword(false)
-    if (pendingTab) { setActiveTab(pendingTab); setPendingTab(null) }
   }
 
+  // One edit session across all tabs: switching tabs never exits edit mode or asks to save.
   const handleTabChange = (tab) => {
-    if (isEditing) {
-      const hasChanges = JSON.stringify(formData) !== JSON.stringify(savedData)
-      if (hasChanges) { setPendingTab(tab); setShowDiscardModal(true); return }
-      setIsEditing(false); setFieldErrors({})
-    }
     setActiveTab(tab)
   }
 
@@ -264,9 +253,17 @@ function PatientProfilePage() {
       if (!isMobileValid(formData[field])) errors[field] = validateMobile(formData[field])
     }
     if (Object.keys(errors).length > 0) {
-      setFieldErrors(errors); toast.error(Object.values(errors)[0]); return
+      setFieldErrors(errors)
+      // Mark every tab that has an error and jump to the first one (in tab order).
+      const order = ['student', 'parent', 'emergency', 'health', 'account']
+      const withErrors = new Set(Object.keys(errors).map(tabOfField))
+      setTabErrors(withErrors)
+      const first = order.find(t => withErrors.has(t))
+      if (first) setActiveTab(first)
+      toast.error(Object.values(errors)[0]); return
     }
     setFieldErrors({})
+    setTabErrors(new Set())
     setSaving(true)
     try {
       const fullName = formatFullName(formData.first_name, formData.middle_name, formData.last_name, formData.suffix)
@@ -290,6 +287,13 @@ function PatientProfilePage() {
       toast.success('Profile saved successfully.')
       setIsEditing(false)
       setShowEmailPassword(false)
+      // Refresh readiness immediately so the bar matches the just-saved data.
+      try {
+        const pRes = await authApi.getProfile()
+        if (pRes.data?.readiness != null) {
+          setReadinessInfo({ percent: pRes.data.readiness, missing: pRes.data.missing_fields || [] })
+        }
+      } catch { /* readiness refresh is best-effort */ }
     } catch (err) {
       const backendErrors = getFieldErrors(err)
       if (Object.keys(backendErrors).length > 0) setFieldErrors(backendErrors)
@@ -316,6 +320,61 @@ function PatientProfilePage() {
 
   const ro = !isEditing
   const displayData = isEditing ? formData : (savedData || formData)
+
+  // Which profile tab owns a field — used for the red error dots and the jump-to-first-error.
+  const tabOfField = (f) => {
+    if (f.startsWith('guardian_')) return 'parent'
+    if (f.startsWith('emergency_')) return 'emergency'
+    if (['blood_type', 'allergies', 'medical_history'].includes(f)) return 'health'
+    if (['email', 'emailPassword', 'current_password', 'password', 'password_confirmation'].includes(f)) return 'account'
+    return 'student'
+  }
+  const hasUnsavedChanges = isEditing && JSON.stringify(formData) !== JSON.stringify(savedData)
+
+  // Warn before leaving the page with unsaved edits (sidebar links are in-app; this covers refresh/close/back).
+  useEffect(() => {
+    if (!hasUnsavedChanges) return undefined
+    const handler = (e) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [hasUnsavedChanges])
+
+  const renderBottomActionRow = () => (
+    <div className="profile-bottom-action-row">
+      {!isEditing ? (
+        <button
+          type="button"
+          className="btn-primary profile-bottom-btn"
+          onClick={handleStartEdit}
+          disabled={loadingProfile}
+        >
+          <ProfileIcon name="edit" size={14} /> Edit Profile
+        </button>
+      ) : (
+        <>
+          <button
+            type="button"
+            className="btn-secondary profile-bottom-btn"
+            onClick={handleCancelEdit}
+            disabled={saving}
+          >
+            <ProfileIcon name="x" size={14} /> Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-primary profile-bottom-btn"
+            onClick={handleSaveProfile}
+            disabled={saving}
+          >
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+          {hasUnsavedChanges && (
+            <span style={{ fontSize: '0.78rem', color: '#B45309', fontWeight: 600, alignSelf: 'center' }}>Unsaved changes</span>
+          )}
+        </>
+      )}
+    </div>
+  )
 
   return (
     <DashboardLayout title="My Profile" subtitle="View and manage your student profile and clinic records.">
@@ -378,6 +437,9 @@ function PatientProfilePage() {
                     style={{ fontSize: '0.82rem', padding: '0.45rem 1rem' }}>
                     {saving ? 'Saving...' : 'Save Changes'}
                   </button>
+                  {hasUnsavedChanges && (
+                    <span style={{ fontSize: '0.78rem', color: '#B45309', fontWeight: 600, alignSelf: 'center' }}>Unsaved changes</span>
+                  )}
                 </>
               )}
             </div>
@@ -401,6 +463,9 @@ function PatientProfilePage() {
                 className={`profile-tab-item ${activeTab === tab.key ? 'active' : ''}`}
                 onClick={() => handleTabChange(tab.key)}>
                 <ProfileIcon name={tab.icon} size={15} /> {tab.label}
+                {isEditing && tabErrors.has(tab.key) && (
+                  <span title="This section has errors" style={{ width: 7, height: 7, borderRadius: '50%', background: '#EF4444', marginLeft: '0.35rem', display: 'inline-block' }} />
+                )}
               </button>
             ))}
           </div>
@@ -537,6 +602,8 @@ function PatientProfilePage() {
                   onChange={e => handleChange('address', e.target.value)} rows={2} disabled={ro} />
               </div>
             </div>
+
+            {renderBottomActionRow()}
           </div>
         )}
 
@@ -583,6 +650,8 @@ function PatientProfilePage() {
                   onChange={e => handleChange('guardian_email', e.target.value)} disabled={ro} />
               </div>
             </div>
+
+            {activeTab === 'parent' && renderBottomActionRow()}
           </div>
         )}
 
@@ -641,6 +710,8 @@ function PatientProfilePage() {
                 disabled={ro}
               />
             </div>
+
+            {activeTab === 'emergency' && renderBottomActionRow()}
           </div>
         )}
 
@@ -705,6 +776,8 @@ function PatientProfilePage() {
                   onChange={e => handleChange('other_health_notes', e.target.value)} rows={2} disabled={ro} />
               </div>
             </div>
+
+            {(activeTab === 'health' || activeTab === 'all') && renderBottomActionRow()}
           </div>
         )}
 
@@ -857,6 +930,8 @@ function PatientProfilePage() {
                 </form>
               )}
             </div>
+
+            {activeTab === 'account' && renderBottomActionRow()}
           </div>
         )}
 
@@ -867,8 +942,8 @@ function PatientProfilePage() {
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowDiscardModal(false)}>
           <div className="modal-card" style={{ maxWidth: '420px' }}>
             <div className="modal-header">
-              <h2>Discard Changes?</h2>
-              <button className="modal-close" onClick={() => { setShowDiscardModal(false); setPendingTab(null) }}>&#x2715;</button>
+              <h2>Discard your changes?</h2>
+              <button className="modal-close" onClick={() => setShowDiscardModal(false)}>&#x2715;</button>
             </div>
             <div className="modal-body">
               <p style={{ color: '#475569', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
@@ -876,7 +951,7 @@ function PatientProfilePage() {
               </p>
               <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end' }}>
                 <button type="button" className="btn-secondary"
-                  onClick={() => { setShowDiscardModal(false); setPendingTab(null) }}>Keep Editing</button>
+                  onClick={() => setShowDiscardModal(false)}>Keep Editing</button>
                 <button type="button" className="btn-primary" style={{ background: '#DC2626' }}
                   onClick={handleDiscardConfirm}>Discard Changes</button>
               </div>
