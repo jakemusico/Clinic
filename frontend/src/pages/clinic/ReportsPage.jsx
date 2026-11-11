@@ -163,15 +163,20 @@ export default function ReportsPage() {
     conversations: [],
   })
 
-  // Pagination hooks for report tables
-  const appPagination     = usePagination({ items: appointments })
-  const consPagination    = usePagination({ items: consultations })
+  // Pagination hooks for report tables — rows, totals and pages all come from the API now.
+  const [appTotal,    setAppTotal]    = useState(0)
+  const [consTotal,   setConsTotal]   = useState(0)
+  const [invTxTotal,  setInvTxTotal]  = useState(0)
+  const [symptomTotal,setSymptomTotal]= useState(0)
+  const [chatTotal,   setChatTotal]   = useState(0)
+  const appPagination     = usePagination({ items: appointments, totalItems: appTotal,    serverSide: true })
+  const consPagination    = usePagination({ items: consultations, totalItems: consTotal,   serverSide: true })
   const invStockPagination = usePagination({ items: invItems })
   const invLowPagination   = usePagination({ items: lowStockItems })
   const invExpPagination   = usePagination({ items: expiringBatches })
-  const invTxPagination    = usePagination({ items: invTransactions })
-  const symptomPagination = usePagination({ items: symptomConsultations })
-  const chatPagination    = usePagination({ items: chatData.conversations || [] })
+  const invTxPagination    = usePagination({ items: invTransactions, totalItems: invTxTotal,  serverSide: true })
+  const symptomPagination = usePagination({ items: symptomConsultations, totalItems: symptomTotal, serverSide: true })
+  const chatPagination    = usePagination({ items: chatData.conversations || [], totalItems: chatTotal,   serverSide: true })
 
   // Load report data for the active tab
   const loadTabReport = useCallback(async (tab = activeTab, from = dateFrom, to = dateTo, overrideType = type) => {
@@ -189,16 +194,24 @@ export default function ReportsPage() {
         const { data } = await reportsApi.appointmentSummary({
           ...params,
           status,
+          page: appPagination.page,
+          per_page: appPagination.pageSize,
         })
         setAppointments(data.appointments || [])
+        setAppTotal(data.pagination?.total ?? data.appointments?.length ?? 0)
         setAppSummary(data.summary || {})
         setAppByService(data.by_service || [])
         setAppByDate(data.by_date || [])
         if (data.filters?.services) setServices(data.filters.services)
         if (data.filters?.staff)    setStaffList(data.filters.staff)
       } else if (tab === 'consultations') {
-        const { data } = await reportsApi.consultationSummary(params)
+        const { data } = await reportsApi.consultationSummary({
+          ...params,
+          page: consPagination.page,
+          per_page: consPagination.pageSize,
+        })
         setConsultations(data.consultations || [])
+        setConsTotal(data.pagination?.total ?? data.consultations?.length ?? 0)
         setConsSummary(data.summary || {})
         setConsByDate(data.by_date || [])
         setConsByService(data.by_service || [])
@@ -208,19 +221,27 @@ export default function ReportsPage() {
         const { data } = await reportsApi.inventorySummary({
           date_from: from,
           date_to:   to,
+          page: invTxPagination.page,
+          per_page: invTxPagination.pageSize,
         })
         setInvSummary(data.summary || {})
         setInvItems(data.items || [])
         setLowStockItems(data.low_stock_items || [])
         setExpiringBatches(data.expiring_batches || [])
         setInvTransactions(data.transactions || [])
+        setInvTxTotal(data.pagination?.total ?? data.transactions?.length ?? 0)
         setInvUsageByDate(data.usage_by_date || [])
         setInvByCategory(data.by_category || [])
       } else if (tab === 'symptoms') {
-        const { data } = await reportsApi.symptomsSummary(params)
+        const { data } = await reportsApi.symptomsSummary({
+          ...params,
+          page: symptomPagination.page,
+          per_page: symptomPagination.pageSize,
+        })
         setAllSymptomCategories(data.all_categories || [])
         setSymptomTotalLogs(data.total_logs || 0)
         setSymptomConsultations(data.consultations || [])
+        setSymptomTotal(data.pagination?.total ?? data.consultations?.length ?? 0)
         if (data.filters?.services) setServices(data.filters.services)
         if (data.filters?.staff)    setStaffList(data.filters.staff)
       } else if (tab === 'chat') {
@@ -228,19 +249,36 @@ export default function ReportsPage() {
           role_type: overrideType,
           date_from: from,
           date_to: to,
+          page: chatPagination.page,
+          per_page: chatPagination.pageSize,
         })
         setChatData(data)
+        setChatTotal(data.pagination?.total ?? data.conversations?.length ?? 0)
       }
     } catch {
       toast.error('Failed to load report data.')
     } finally {
       setLoading(false)
     }
-  }, [activeTab, dateFrom, dateTo, type, status, serviceId, staffId, isAdmin])
+  }, [activeTab, dateFrom, dateTo, type, status, serviceId, staffId, isAdmin,
+      appPagination.page, appPagination.pageSize,
+      consPagination.page, consPagination.pageSize,
+      invTxPagination.page, invTxPagination.pageSize,
+      symptomPagination.page, symptomPagination.pageSize,
+      chatPagination.page, chatPagination.pageSize])
 
   useEffect(() => {
     loadTabReport(activeTab, dateFrom, dateTo, type)
   }, [activeTab, dateFrom, dateTo, type, status, serviceId, staffId, loadTabReport])
+
+  // New filters mean a new result set: every table goes back to page 1.
+  useEffect(() => {
+    appPagination.setPage(1)
+    consPagination.setPage(1)
+    invTxPagination.setPage(1)
+    symptomPagination.setPage(1)
+    chatPagination.setPage(1)
+  }, [activeTab, dateFrom, dateTo, type, status, serviceId, staffId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePreset = (preset) => {
     setActivePreset(preset.label)
@@ -294,8 +332,50 @@ export default function ReportsPage() {
     invSubView,
   })
 
-  const handleExportPDF = () => exportReportToPDF(exportOptions())
-  const handleExportCSV = () => exportReportToCSV(exportOptions())
+  // Exports need every row of the active tab, not just the visible page: fetch unpaginated
+  // data once, on demand (the tables themselves stay server-paginated).
+  const fetchFullRows = async () => {
+    const params = {
+      date_from:  dateFrom,
+      date_to:    dateTo,
+      service_id: serviceId,
+      staff_id:   staffId,
+      paginate:   'false',
+      ...(isAdmin && type !== 'all' && { type }),
+    }
+    if (activeTab === 'appointments') {
+      const { data } = await reportsApi.appointmentSummary({ ...params, status })
+      return { appointments: data.appointments || [] }
+    }
+    if (activeTab === 'consultations') {
+      const { data } = await reportsApi.consultationSummary(params)
+      return { consultations: data.consultations || [] }
+    }
+    if (activeTab === 'inventory') {
+      const { data } = await reportsApi.inventorySummary({ date_from: dateFrom, date_to: dateTo, paginate: 'false' })
+      return { invTransactions: data.transactions || [] }
+    }
+    if (activeTab === 'symptoms') {
+      const { data } = await reportsApi.symptomsSummary(params)
+      return { symptomConsultations: data.consultations || [] }
+    }
+    if (activeTab === 'chat') {
+      const { data } = await reportsApi.chatSummary({ role_type: type, date_from: dateFrom, date_to: dateTo, paginate: 'false' })
+      return { chatData: { ...chatData, conversations: data.conversations || [] } }
+    }
+    return {}
+  }
+
+  const handleExportPDF = async () => {
+    const opts = exportOptions()
+    try { opts.data = { ...opts.data, ...(await fetchFullRows()) } } catch { /* export the loaded page */ }
+    exportReportToPDF(opts)
+  }
+  const handleExportCSV = async () => {
+    const opts = exportOptions()
+    try { opts.data = { ...opts.data, ...(await fetchFullRows()) } } catch { /* export the loaded page */ }
+    exportReportToCSV(opts)
+  }
 
 
   // Chart data pre-processing for Appointments Status Breakdown

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\CacheVersion;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -57,6 +58,13 @@ class Appointment extends Model
     public static function staffColumns(): string
     {
         return implode(',', self::STAFF_COLUMNS);
+    }
+
+    /** Reports caches are rebuilt after any change to the underlying rows. */
+    protected static function booted(): void
+    {
+        static::saved(fn () => CacheVersion::bump('reports'));
+        static::deleted(fn () => CacheVersion::bump('reports'));
     }
 
     protected function casts(): array

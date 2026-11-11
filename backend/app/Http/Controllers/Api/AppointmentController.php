@@ -78,6 +78,7 @@ class AppointmentController extends Controller
 
         $affected = $query->update(['is_read' => true]);
         CacheVersion::bump('counters-appointments');   // a bulk update fires no model events
+        CacheVersion::bump('reports');
 
         return response()->json([
             'message'  => "{$affected} appointment(s) marked as read.",

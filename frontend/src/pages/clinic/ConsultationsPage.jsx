@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import DashboardLayout from '../../components/DashboardLayout'
@@ -14,12 +14,6 @@ import { defaultRange } from '../../utils/dateRange'
 import { serviceNameOf } from '../../utils/emptyValue'
 import { formatDateLong, toDateKey } from '../../utils/dateUtils'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
-
-const pad = (n) => String(n).padStart(2, '0')
-const todayKey = () => {
-  const d = new Date()
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
 
 // One row shape for medical and dental consultations so the list, stats and filters
 // treat both care types identically (admin sees them merged, everyone else one type).
@@ -59,6 +53,10 @@ export default function ConsultationsPage() {
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [lastPage, setLastPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [stats, setStats] = useState({ total: 0, today: 0, walkIns: 0, topComplaint: '—' })
+  const [filterOptions, setFilterOptions] = useState({ services: [], staff: [] })
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebouncedValue(search)
   const [filterService, setFilterService] = useState('all')
@@ -78,17 +76,35 @@ export default function ConsultationsPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const { data } = await recordsApi.list({ paginate: 'false' })
+      const { data } = await recordsApi.list({
+        with_stats: 1,
+        page,
+        per_page: pageSize,
+        ...(range.from && { date_from: range.from }),
+        ...(range.to && { date_to: range.to }),
+        ...(debouncedSearch.trim() && { search: debouncedSearch.trim() }),
+        ...(filterService !== 'all' && { service: filterService }),
+        ...(filterStaff !== 'all' && { staff: filterStaff }),
+      })
       const medical = data.records || data.data || []
-      const merged = medical.map(r => normalize(r, 'medical'))
-      merged.sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.raw.id - a.raw.id)
-      setRows(merged)
+      setRows(medical.map(r => normalize(r, 'medical')))
+      setLastPage(data.last_page || 1)
+      setTotal(data.total || 0)
+      if (data.stats) {
+        setStats({
+          total: data.stats.total ?? 0,
+          today: data.stats.today ?? 0,
+          walkIns: data.stats.walk_ins ?? 0,
+          topComplaint: data.stats.top_complaint || '—',
+        })
+        setFilterOptions(data.stats.filter_options || { services: [], staff: [] })
+      }
     } catch {
       toast.error('Failed to load consultation records.')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [page, pageSize, range.from, range.to, debouncedSearch, filterService, filterStaff])
 
   useEffect(() => { load() }, [load])
 
@@ -130,58 +146,14 @@ export default function ConsultationsPage() {
     load()
   }
 
-  // Rows inside the selected date range and care type — the basis for the stat cards.
-  const rangedRows = useMemo(() => rows.filter(r => {
-    if (range.from && r.date < range.from) return false
-    if (range.to && r.date > range.to) return false
-    return true
-  }), [rows, range])
+  // Filter options and stat cards come from the API (range-scoped stats, all-rows options).
+  const distinctServices = filterOptions.services
+  const distinctStaff = filterOptions.staff
 
-  const stats = useMemo(() => {
-    const today = todayKey()
-    const complaints = {}
-    let todayCount = 0
-    let walkIns = 0
-    rangedRows.forEach(r => {
-      if (r.date === today) todayCount++
-      if (r.walkIn) walkIns++
-      complaints[r.complaint] = (complaints[r.complaint] || 0) + 1
-    })
-    const top = Object.entries(complaints).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]
-    return {
-      total: rangedRows.length,
-      today: todayCount,
-      walkIns,
-      topComplaint: top ? `${top[0]} (${top[1]})` : '—',
-    }
-  }, [rangedRows])
-
-  const distinctServices = useMemo(() => {
-    const set = new Set()
-    rows.forEach(r => { if (r.serviceName) set.add(r.serviceName) })
-    return Array.from(set).sort()
-  }, [rows])
-
-  const distinctStaff = useMemo(() => {
-    const set = new Set()
-    rows.forEach(r => { if (r.staffName) set.add(r.staffName) })
-    return Array.from(set).sort()
-  }, [rows])
-
-  const filteredRows = useMemo(() => {
-    const q = debouncedSearch.toLowerCase()
-    return rangedRows.filter(r => {
-      if (q && !r.searchText.includes(q)) return false
-      if (filterService !== 'all' && r.serviceName !== filterService) return false
-      if (filterStaff !== 'all' && r.staffName !== filterStaff) return false
-      return true
-    })
-  }, [rangedRows, debouncedSearch, filterService, filterStaff])
+  // The table is filtered and paginated server-side; `rows` is the current page.
+  const filteredRows = rows
 
   useEffect(() => { setPage(1) }, [debouncedSearch, filterService, filterStaff, range])
-
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize))
-  const pagedRows = filteredRows.slice((page - 1) * pageSize, page * pageSize)
 
   const activeFilterCount = (filterService !== 'all' ? 1 : 0) + (filterStaff !== 'all' ? 1 : 0)
 
@@ -397,7 +369,7 @@ export default function ConsultationsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {pagedRows.map(r => (
+                    {rows.map(r => (
                       <tr key={r.key}>
                         <td style={{ fontWeight: 600, fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
                           {formatDate(r.displayDate)}
@@ -454,8 +426,8 @@ export default function ConsultationsPage() {
               <div style={{ marginTop: '1rem' }}>
                 <Pagination
                   currentPage={page}
-                  totalPages={totalPages}
-                  totalItems={filteredRows.length}
+                  totalPages={lastPage}
+                  totalItems={total}
                   pageSize={pageSize}
                   onPageChange={setPage}
                   onPageSizeChange={(s) => { setPageSize(s); setPage(1) }}

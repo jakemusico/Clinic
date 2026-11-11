@@ -12,6 +12,7 @@ use App\Models\Appointment;
 use App\Services\AuditLogger;
 use App\Services\ConsultationServiceName;
 use App\Support\AppointmentLink;
+use App\Support\CacheVersion;
 use App\Support\ComplaintCategoryResolver;
 use App\Support\ProfileReadiness;
 use App\Support\Roles;
@@ -35,22 +36,58 @@ class DentalConsultationController extends Controller
 
         $query = DentalConsultation::with(['patient.user', 'appointment.service', 'dentist:' . Appointment::staffColumns()]);
 
+        $desk = false;
+        $statsBase = null;
+        $effDate = 'COALESCE(consultation_date, DATE(created_at))';
+
         if (Roles::isPatient($user)) {
             $query->whereHas('patient', function ($q) use ($user) {
                 $q->where('user_id', $user->id);
             })->where('status', 'completed');
         } else {
+            // Desk mode (the consultations page): date range on the effective consultation day
+            // (consultation_date, else the day it was created), service/dentist filters and stats.
+            $desk = $request->boolean('with_stats');
+
+            if ($request->filled('date_from')) {
+                $query->whereRaw("{$effDate} >= ?", [$request->date_from]);
+            }
+            if ($request->filled('date_to')) {
+                $query->whereRaw("{$effDate} <= ?", [$request->date_to]);
+            }
+
+            // Stat cards describe the date range only — search/service/dentist narrow the table.
+            $statsBase = $desk ? clone $query : null;
+
+            if ($desk && $request->filled('service') && $request->service !== 'all') {
+                $query->whereRaw("TRIM(COALESCE(service_name, '')) = ?", [trim($request->service)]);
+            }
+            if ($desk && $request->filled('staff') && $request->staff !== 'all') {
+                $query->whereHas('dentist', fn ($u) => $u->where('name', trim($request->staff)));
+            }
+
             if ($request->has('search')) {
                 $search = $request->search;
-                $query->where(function ($q) use ($search) {
-                    $q->where('diagnosis', 'like', "%{$search}%")
-                      ->orWhere('treatment_performed', 'like', "%{$search}%")
-                      ->orWhere('dental_findings', 'like', "%{$search}%")
-                      ->orWhereHas('patient.user', function ($qu) use ($search) {
-                          $qu->where('name', 'like', "%{$search}%")
-                            ->orWhere('email', 'like', "%{$search}%")
-                            ->orWhere('student_id', 'like', "%{$search}%");
-                      });
+                $query->where(function ($q) use ($search, $desk) {
+                    $q->whereHas('patient.user', function ($qu) use ($search, $desk) {
+                        $qu->where('name', 'like', "%{$search}%")
+                          ->orWhere('student_id', 'like', "%{$search}%");
+                        if (! $desk) {
+                            $qu->orWhere('email', 'like', "%{$search}%");
+                        }
+                    });
+                    if ($desk) {
+                        // Same fields the page's client-side search covered.
+                        $q->orWhere('service_name', 'like', "%{$search}%")
+                          ->orWhere('reason_for_visit', 'like', "%{$search}%")
+                          ->orWhere('dental_findings', 'like', "%{$search}%")
+                          ->orWhere('treatment_performed', 'like', "%{$search}%")
+                          ->orWhereHas('dentist', fn ($u) => $u->where('name', 'like', "%{$search}%"));
+                    } else {
+                        $q->orWhere('diagnosis', 'like', "%{$search}%")
+                          ->orWhere('treatment_performed', 'like', "%{$search}%")
+                          ->orWhere('dental_findings', 'like', "%{$search}%");
+                    }
                 });
             }
 
@@ -59,7 +96,36 @@ class DentalConsultationController extends Controller
             }
         }
 
-        $query->orderBy('consultation_date', 'desc')->orderBy('created_at', 'desc');
+        // The page keeps the API order (consultation_date, created_at); id breaks exact ties
+        // so server-side pagination is stable.
+        $query->orderBy('consultation_date', 'desc')->orderBy('created_at', 'desc')->orderBy('id', 'desc');
+
+        // Desk stats + filter options (consultations page): range-scoped cards, options from all rows.
+        $deskStats = null;
+        if ($desk && $statsBase) {
+            $today = now()->toDateString();
+            $cats = (clone $statsBase)
+                ->selectRaw("COALESCE(NULLIF(TRIM(complaint_category), ''), 'Others') AS cat, COUNT(*) AS c")
+                ->groupBy('cat')->get();
+            $top = $cats->sort(fn ($a, $b) => ($b->c <=> $a->c) ?: strcoll($a->cat, $b->cat))->first();
+
+            $deskStats = [
+                'total'          => (clone $statsBase)->count(),
+                'today'          => (clone $statsBase)->whereRaw("{$effDate} = ?", [$today])->count(),
+                'walk_ins'       => (clone $statsBase)->whereNull('appointment_id')->count(),
+                'top_complaint'  => $top ? "{$top->cat} ({$top->c})" : null,
+            ];
+
+            $allBase = DentalConsultation::query();
+            $deskStats['filter_options'] = [
+                'services' => (clone $allBase)->whereNotNull('service_name')
+                    ->selectRaw('DISTINCT TRIM(service_name) AS s')->pluck('s')
+                    ->map(fn ($s) => trim($s))->filter()->sort()->values()->all(),
+                'staff' => (clone $allBase)->leftJoin('users as su', 'su.id', '=', 'dental_consultations.created_by')
+                    ->whereNotNull('dental_consultations.created_by')->distinct()->pluck('su.name')
+                    ->sort()->values()->all(),
+            ];
+        }
 
         if ($request->boolean('all') || $request->get('paginate') === 'false') {
             $consultations = $query->limit(Paging::ALL_LIMIT)->get();
@@ -73,6 +139,7 @@ class DentalConsultationController extends Controller
                 'current_page'  => 1,
                 'last_page'     => 1,
                 'per_page'      => $consultations->count(),
+                'stats'         => $deskStats,
             ]);
         }
 
@@ -92,6 +159,7 @@ class DentalConsultationController extends Controller
             'total'         => $paginated->total(),
             'from'          => $paginated->firstItem(),
             'to'            => $paginated->lastItem(),
+            'stats'         => $deskStats,
         ]);
     }
 
@@ -455,6 +523,7 @@ class DentalConsultationController extends Controller
                 Appointment::whereKey($dentalConsultation->appointment_id)
                     ->whereIn('status', ['pending', 'confirmed'])
                     ->update(['status' => 'completed']);
+                CacheVersion::bump('reports');   // a bulk update fires no model events
             }
 
             AuditLogger::log('dental_consultation_updated', DentalConsultation::class, $dentalConsultation->id, $oldValues, $newValues);

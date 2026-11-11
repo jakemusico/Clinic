@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\CacheVersion;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -26,6 +27,13 @@ class ClinicRecord extends Model
         'recommendation',
         'notes',
     ];
+
+    /** Reports caches are rebuilt after any change to the underlying rows. */
+    protected static function booted(): void
+    {
+        static::saved(fn () => CacheVersion::bump('reports'));
+        static::deleted(fn () => CacheVersion::bump('reports'));
+    }
 
     protected function casts(): array
     {

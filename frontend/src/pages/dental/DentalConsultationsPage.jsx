@@ -12,8 +12,8 @@ import { servicesApi } from '../../api/services'
 import { toast } from 'react-hot-toast'
 import { useAuth } from '../../context/AuthContext'
 import Avatar from '../../components/Avatar'
-import { serviceLabel, serviceNameOf } from '../../utils/emptyValue'
-import { formatDateLong, toDateKey } from '../../utils/dateUtils'
+import { serviceLabel } from '../../utils/emptyValue'
+import { formatDateLong } from '../../utils/dateUtils'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 
 export default function DentalConsultationsPage() {
@@ -26,6 +26,10 @@ export default function DentalConsultationsPage() {
   const [loading, setLoading] = useState(true)
   const [services, setServices] = useState([])
   const [consultations, setConsultations] = useState([])
+  const [lastPage, setLastPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [stats, setStats] = useState({ total: 0, today: 0, walkIns: 0, topComplaint: '—' })
+  const [filterOptions, setFilterOptions] = useState({ services: [], staff: [] })
   const [activeTab, setActiveTab] = useState('list') // 'list' | 'new'
   const [viewConsultation, setViewConsultation] = useState(null)
 
@@ -60,59 +64,14 @@ export default function DentalConsultationsPage() {
   // One shared formatter (utils/dateUtils): the same day as the one chosen in the form
   const formatDate = formatDateLong
 
+  // Filter options and stat cards come from the API; the table is filtered/paginated server-side.
   const distinctServices = useMemo(() => {
-    const set = new Set()
-    consultations.forEach(c => {
-      const s = serviceNameOf(c)
-      if (s) set.add(s)
-    })
+    const set = new Set(filterOptions.services || [])
     services.forEach(s => set.add(s.name))
     return Array.from(set).sort()
-  }, [consultations, services])
+  }, [filterOptions, services])
 
-  const distinctDentists = useMemo(() => {
-    const set = new Set()
-    consultations.forEach(c => {
-      if (c.dentist?.name) set.add(c.dentist.name)
-    })
-    return Array.from(set).sort()
-  }, [consultations])
-
-  // Consultations inside the selected date range — the basis for the stat cards.
-  const rangedConsultations = useMemo(() => {
-    return consultations.filter(c => {
-      const cDate = toDateKey(c.consultation_date) || toDateKey(c.created_at) || ''
-      if (range.from && cDate < range.from) return false
-      if (range.to && cDate > range.to) return false
-      return true
-    })
-  }, [consultations, range])
-
-  const todayKey = (() => {
-    const d = new Date()
-    const p = (n) => String(n).padStart(2, '0')
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-  })()
-
-  const stats = useMemo(() => {
-    const complaints = {}
-    let todayCount = 0
-    let walkIns = 0
-    rangedConsultations.forEach(c => {
-      const cDate = toDateKey(c.consultation_date) || toDateKey(c.created_at) || ''
-      if (cDate === todayKey) todayCount++
-      if (c.appointment_id == null) walkIns++
-      const cat = (c.complaint_category || '').trim() || 'Others'
-      complaints[cat] = (complaints[cat] || 0) + 1
-    })
-    const top = Object.entries(complaints).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]
-    return {
-      total: rangedConsultations.length,
-      today: todayCount,
-      walkIns,
-      topComplaint: top ? `${top[0]} (${top[1]})` : '—',
-    }
-  }, [rangedConsultations, todayKey])
+  const distinctDentists = filterOptions.staff || []
 
   const statCards = [
     { value: stats.total, label: 'Total Consultations' },
@@ -121,56 +80,57 @@ export default function DentalConsultationsPage() {
     { value: stats.topComplaint, label: 'Top Complaint' },
   ]
 
-  const filteredConsultations = useMemo(() => {
-    return rangedConsultations.filter(c => {
-      // 1. Search Query
-      if (debouncedSearchQuery.trim()) {
-        const q = debouncedSearchQuery.toLowerCase().trim()
-        const patientName = (c.patient?.user?.name || '').toLowerCase()
-        const studentId = (c.patient?.user?.student_id || '').toLowerCase()
-        const serviceName = serviceNameOf(c).toLowerCase()
-        const reason = (c.reason_for_visit || '').toLowerCase()
-        const findings = (c.dental_findings || '').toLowerCase()
-        const treatment = (c.treatment_performed || '').toLowerCase()
-        const dentistName = (c.dentist?.name || '').toLowerCase()
-        const matches = patientName.includes(q) ||
-          studentId.includes(q) ||
-          serviceName.includes(q) ||
-          reason.includes(q) ||
-          findings.includes(q) ||
-          treatment.includes(q) ||
-          dentistName.includes(q)
-        if (!matches) return false
-      }
-
-      // 2. Service Filter
-      if (filterService !== 'all') {
-        const serviceName = serviceNameOf(c)
-        if (serviceName !== filterService) return false
-      }
-
-      // 3. Dentist Filter
-      if (filterDentist !== 'all') {
-        const dentistName = c.dentist?.name || ''
-        if (dentistName !== filterDentist) return false
-      }
-
-      return true
-    })
-  }, [rangedConsultations, debouncedSearchQuery, filterService, filterDentist])
-
-  useEffect(() => {
-    setPage(1)
-  }, [debouncedSearchQuery, filterService, filterDentist, range])
-
-  const totalPages = Math.max(1, Math.ceil(filteredConsultations.length / pageSize))
-  const paginatedConsultations = filteredConsultations.slice((page - 1) * pageSize, page * pageSize)
+  const filteredConsultations = consultations
+  const totalPages = lastPage
 
   const activeFilterCount = (filterService !== 'all' ? 1 : 0) +
     (filterDentist !== 'all' ? 1 : 0)
 
+  const load = async () => {
+    try {
+      setLoading(true)
+      const { data } = await dentalApi.listConsultations({
+        with_stats: 1,
+        page,
+        per_page: pageSize,
+        ...(range.from && { date_from: range.from }),
+        ...(range.to && { date_to: range.to }),
+        ...(debouncedSearchQuery.trim() && { search: debouncedSearchQuery.trim() }),
+        ...(filterService !== 'all' && { service: filterService }),
+        ...(filterDentist !== 'all' && { staff: filterDentist }),
+      })
+      setConsultations(data.consultations || data.data || [])
+      setLastPage(data.last_page || 1)
+      setTotal(data.total || 0)
+      if (data.stats) {
+        setStats({
+          total: data.stats.total ?? 0,
+          today: data.stats.today ?? 0,
+          walkIns: data.stats.walk_ins ?? 0,
+          topComplaint: data.stats.top_complaint || '—',
+        })
+        setFilterOptions(data.stats.filter_options || { services: [], staff: [] })
+      }
+    } catch {
+      toast.error('Failed to load consultation records.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadServices = async () => {
+    try {
+      const { data } = await servicesApi.list({ care_type: 'dental' })
+      setServices(data.services || [])
+    } catch { /* the service filter still works without the catalogue list */ }
+  }
+
+  useEffect(() => { load() }, [page, pageSize, range.from, range.to, debouncedSearchQuery, filterService, filterDentist]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { setPage(1) }, [debouncedSearchQuery, filterService, filterDentist, range])
+
   useEffect(() => {
-    loadInitialData()
+    loadServices()
     // If navigated here from appointments desk, switch to new tab
     if (prefilledAppt || location.state?.appointment) {
       setActiveTab('new')
@@ -184,22 +144,6 @@ export default function DentalConsultationsPage() {
     // Clear state/query after reading
     navigate('/dental/consultations', { replace: true, state: { appointment: prefilledAppt } })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const loadInitialData = async () => {
-    try {
-      setLoading(true)
-      const [cRes, sRes] = await Promise.all([
-        dentalApi.listConsultations({ paginate: 'false' }),
-        servicesApi.list({ care_type: 'dental' }),
-      ])
-      setConsultations(cRes.data.consultations || [])
-      setServices(sRes.data.services || [])
-    } catch {
-      toast.error('Failed to load consultation records.')
-    } finally {
-      setLoading(false)
-    }
-  }
 
   return (
     <DashboardLayout
@@ -231,7 +175,7 @@ export default function DentalConsultationsPage() {
             inline
             initialData={newInitial}
             onClose={showList}
-            onSaved={() => { loadInitialData() }}
+            onSaved={() => { load() }}
           />
         </div>
       ) : (
@@ -420,7 +364,7 @@ export default function DentalConsultationsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {paginatedConsultations.map((c) => {
+                    {consultations.map((c) => {
                       const patientUser = c.patient?.user || {}
                       const serviceName = serviceLabel(c)
                       const status = c.status || 'completed'
@@ -482,7 +426,7 @@ export default function DentalConsultationsPage() {
                 <Pagination
                   currentPage={page}
                   totalPages={totalPages}
-                  totalItems={filteredConsultations.length}
+                  totalItems={total}
                   pageSize={pageSize}
                   onPageChange={setPage}
                   onPageSizeChange={(newSize) => {

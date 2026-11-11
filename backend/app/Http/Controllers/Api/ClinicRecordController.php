@@ -26,6 +26,7 @@ class ClinicRecordController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
+        $desk = false;
 
         // Allow-list: nurse and admin (medical care), or a patient looking at their own records.
         if (! Roles::canAccessCare($user, Roles::MEDICAL) && ! Roles::isPatient($user)) {
@@ -46,16 +47,56 @@ class ClinicRecordController extends Controller
                 $q->where('user_id', $user->id);
             });
         } else {
+            // Desk mode (the consultations pages): date range on the effective consultation day
+            // (visit_date, else the day it was created), service/staff filters and stats.
+            $desk = $request->boolean('with_stats');
+            $effDate = 'COALESCE(visit_date, DATE(created_at))';
+            if ($request->filled('date_from')) {
+                $query->whereRaw("{$effDate} >= ?", [$request->date_from]);
+            }
+            if ($request->filled('date_to')) {
+                $query->whereRaw("{$effDate} <= ?", [$request->date_to]);
+            }
+
+            // Stat cards and filter options describe the date range only — search/service/staff
+            // narrow the table, never the cards (same rule the page used client-side).
+            $statsBase = $desk ? clone $query : null;
+
+            if ($desk && $request->filled('service') && $request->service !== 'all') {
+                $query->whereRaw("TRIM(COALESCE(service_name, '')) = ?", [trim($request->service)]);
+            }
+            if ($desk && $request->filled('staff') && $request->staff !== 'all') {
+                $staffName = trim($request->staff);
+                $query->where(function ($q) use ($staffName) {
+                    $q->whereHas('createdBy', fn ($u) => $u->where('name', $staffName));
+                    // Rows without a recorded staff member display as "Clinic Staff"
+                    if ($staffName === 'Clinic Staff') {
+                        $q->orWhereNull('created_by');
+                    }
+                });
+            }
+
             if ($request->has('search')) {
                 $search = $request->search;
-                $query->where(function ($q) use ($search) {
-                    $q->where('diagnosis', 'like', "%{$search}%")
-                      ->orWhere('treatment', 'like', "%{$search}%")
-                      ->orWhereHas('patient.user', function ($qu) use ($search) {
-                          $qu->where('name', 'like', "%{$search}%")
-                            ->orWhere('email', 'like', "%{$search}%")
-                            ->orWhere('student_id', 'like', "%{$search}%");
-                      });
+                $query->where(function ($q) use ($search, $desk) {
+                    $q->whereHas('patient.user', function ($qu) use ($search) {
+                        $qu->where('name', 'like', "%{$search}%")
+                          ->orWhere('email', 'like', "%{$search}%")
+                          ->orWhere('student_id', 'like', "%{$search}%");
+                    });
+                    if ($desk) {
+                        // Same fields the page's client-side search covered.
+                        $q->orWhere('service_name', 'like', "%{$search}%")
+                          ->orWhere('diagnosis', 'like', "%{$search}%")
+                          ->orWhere('assessment', 'like', "%{$search}%")
+                          ->orWhere('chief_complaint', 'like', "%{$search}%")
+                          ->orWhere('treatment', 'like', "%{$search}%")
+                          ->orWhere('complaint_category', 'like', "%{$search}%")
+                          ->orWhereHas('createdBy', fn ($u) => $u->where('name', 'like', "%{$search}%"));
+                    } else {
+                        $q->orWhere('diagnosis', 'like', "%{$search}%")
+                          ->orWhere('treatment', 'like', "%{$search}%");
+                    }
                 });
             }
 
@@ -64,7 +105,40 @@ class ClinicRecordController extends Controller
             }
         }
 
-        $query->orderBy('visit_date', 'desc')->orderBy('created_at', 'desc');
+        if ($desk ?? false) {
+            $query->orderByRaw("{$effDate} DESC")->orderBy('id', 'desc');
+        } else {
+            $query->orderBy('visit_date', 'desc')->orderBy('created_at', 'desc');
+        }
+
+        // Desk stats + filter options (consultations pages): range-scoped cards, options from all rows.
+        $deskStats = null;
+        if ($desk && $statsBase) {
+            $today = now()->toDateString();
+            $cats = (clone $statsBase)
+                ->selectRaw("COALESCE(NULLIF(TRIM(complaint_category), ''), 'Others') AS cat, COUNT(*) AS c")
+                ->groupBy('cat')->get();
+            // Same pick as the page: most frequent, ties by name ascending.
+            $top = $cats->sort(fn ($a, $b) => ($b->c <=> $a->c) ?: strcoll($a->cat, $b->cat))->first();
+
+            $deskStats = [
+                'total'          => (clone $statsBase)->count(),
+                'today'          => (clone $statsBase)->whereRaw("{$effDate} = ?", [$today])->count(),
+                'walk_ins'       => (clone $statsBase)->whereNull('appointment_id')->count(),
+                'top_complaint'  => $top ? "{$top->cat} ({$top->c})" : null,
+            ];
+
+            $allBase = ClinicRecord::query();
+            $deskStats['filter_options'] = [
+                'services' => (clone $allBase)->whereNotNull('service_name')
+                    ->selectRaw('DISTINCT TRIM(service_name) AS s')->pluck('s')
+                    ->map(fn ($s) => trim($s))->filter()->sort()->values()->all(),
+                'staff' => collect((clone $allBase)->leftJoin('users as su', 'su.id', '=', 'clinic_records.created_by')
+                        ->whereNotNull('clinic_records.created_by')->distinct()->pluck('su.name')->all())
+                    ->when((clone $allBase)->whereNull('created_by')->exists(), fn ($c) => $c->push('Clinic Staff'))
+                    ->sort()->values()->all(),
+            ];
+        }
 
         if ($request->boolean('all') || $request->get('paginate') === 'false') {
             $records = $query->limit(Paging::ALL_LIMIT)->get();
@@ -75,6 +149,7 @@ class ClinicRecordController extends Controller
                 'current_page' => 1,
                 'last_page'    => 1,
                 'per_page'     => $records->count(),
+                'stats'        => $deskStats,
             ]);
         }
 
@@ -90,6 +165,7 @@ class ClinicRecordController extends Controller
             'total'        => $paginated->total(),
             'from'         => $paginated->firstItem(),
             'to'           => $paginated->lastItem(),
+            'stats'        => $deskStats,
         ]);
     }
 
