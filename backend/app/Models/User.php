@@ -123,6 +123,11 @@ class User extends Authenticatable
             return null;
         }
 
+        // External URLs (e.g. a Google profile photo) are used as-is.
+        if (preg_match('#^https?://#i', $path)) {
+            return $path;
+        }
+
         return '/storage/' . ltrim($path, '/');
     }
 

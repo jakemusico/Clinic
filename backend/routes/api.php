@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\GoogleAuthController;
 use App\Http\Controllers\Api\ProfilePhotoController;
 use App\Http\Controllers\Api\ClinicServiceController;
 use App\Http\Controllers\Api\ClinicStaffScheduleController;
@@ -36,6 +37,11 @@ use App\Http\Controllers\Api\ComplaintCategoryController;
 Route::prefix('auth')->group(function () {
     Route::post('register', [AuthController::class, 'register'])->middleware('throttle:register');
     Route::post('login',    [AuthController::class, 'login'])->middleware('throttle:login');
+
+    // Google sign-in ("Continue with Google") — @urios.edu.ph accounts only
+    Route::get ('google/redirect',  [GoogleAuthController::class, 'redirect'])->middleware('throttle:oauth');
+    Route::get ('google/callback',  [GoogleAuthController::class, 'callback'])->middleware('throttle:oauth');
+    Route::post('google/complete',  [GoogleAuthController::class, 'complete'])->middleware('throttle:oauth');
 });
 
 // ── Public Settings (terms & privacy for registration page) ─────────────

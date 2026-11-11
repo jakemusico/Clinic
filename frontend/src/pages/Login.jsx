@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { ROLE_ROUTES } from '../components/RouteGuards'
 import useSubmitLock from '../hooks/useSubmitLock'
 import { getApiErrorMessage, getFieldErrors } from '../utils/apiError'
+import GoogleAuthButton from '../components/GoogleAuthButton'
 import fsuuLogo from '../assets/fsuu_logo.png'
 import fsuuBuilding from '../assets/fsuu_building.jpg'
 
@@ -16,6 +17,14 @@ export default function Login() {
   const [errors, setErrors]   = useState({})
   const [loading, setLoading] = useState(false)
   const { lock, unlock } = useSubmitLock()
+  const [searchParams] = useSearchParams()
+
+  // Google callback sends users back here with ?error=… on rejection.
+  const googleError = {
+    domain:   'Only @urios.edu.ph accounts are allowed.',
+    inactive: 'Your account has been deactivated. Please contact the administrator.',
+    google:   'Google sign-in failed. Please try again.',
+  }[searchParams.get('error')]
 
   const handleFocusScroll = (e) => {
     e.target.scrollIntoView({ block: 'center', behavior: 'smooth' })
@@ -115,6 +124,13 @@ export default function Login() {
             {loading ? <span className="btn-spinner" /> : 'Sign In'}
           </button>
         </form>
+
+        {googleError && (
+          <span className="field-error" style={{ display: 'block', textAlign: 'center', marginBottom: '0.5rem' }}>
+            {googleError}
+          </span>
+        )}
+        <GoogleAuthButton divider="top" />
 
         <p className="auth-footer" style={{ marginTop: '1.5rem' }}>
           Don't have an account?{' '}

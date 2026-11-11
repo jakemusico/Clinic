@@ -61,6 +61,9 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('register', fn (Request $r) => Limit::perMinute(5)->by('register|' . $r->ip()));
 
+        // Google OAuth start/callback/complete — browsers bounce through these a few times
+        RateLimiter::for('oauth', fn (Request $r) => Limit::perMinute(20)->by('oauth|' . $r->ip()));
+
         // Chatbot: every question scans the FAQs and writes a log row
         RateLimiter::for('chatbot', fn (Request $r) => Limit::perMinute(30)->by('chatbot|' . $user($r)));
 

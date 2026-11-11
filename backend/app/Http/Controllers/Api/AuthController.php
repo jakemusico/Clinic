@@ -32,7 +32,7 @@ class AuthController extends Controller
             'middle_name'           => ['nullable', 'string', 'max:100', ...NameRules::person()],
             'last_name'             => ['required', 'string', 'max:100', ...NameRules::person()],
             'suffix'                => ['nullable', 'string', 'max:50', ...NameRules::suffix()],
-            'email'                 => ['required', 'string', 'email', 'max:255', 'unique:users'],
+            'email'                 => ['required', 'string', 'email', 'max:255', 'unique:users', 'regex:/@urios\.edu\.ph$/i'],
             'password'              => ['required', 'confirmed', Password::min(8)],
             'role'                  => ['required', 'string', 'in:student,faculty_staff'],
             'date_of_birth'         => ['required', 'date', 'before:today'],
@@ -58,6 +58,7 @@ class AuthController extends Controller
             'department'            => ['nullable', 'string', 'max:255'],
         ], NameRules::messages() + [
             'contact_no.unique' => PhilippineMobile::UNIQUE_MESSAGE,
+            'email.regex'       => 'Please use your @urios.edu.ph email address.',
         ]);
 
         // Extra required validation for student role
@@ -566,14 +567,18 @@ class AuthController extends Controller
         $user = $request->user();
 
         $validated = $request->validate([
-            'current_password'      => ['required', 'string'],
+            // Google-created accounts have a random unusable password: they are already
+            // signed in, so they may set their first password without the current one.
+            'current_password'      => [$user->google_id ? 'nullable' : 'required', 'string'],
             'password'              => ['required', 'confirmed', Password::min(8)],
         ]);
 
-        if (! Hash::check($validated['current_password'], $user->password)) {
-            throw ValidationException::withMessages([
-                'current_password' => ['The current password provided is incorrect.'],
-            ]);
+        if (! $user->google_id || $request->filled('current_password')) {
+            if (! Hash::check($validated['current_password'] ?? '', $user->password)) {
+                throw ValidationException::withMessages([
+                    'current_password' => ['The current password provided is incorrect.'],
+                ]);
+            }
         }
 
         $user->password             = Hash::make($validated['password']);

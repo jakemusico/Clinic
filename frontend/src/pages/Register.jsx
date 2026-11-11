@@ -13,6 +13,7 @@ import useSubmitLock from '../hooks/useSubmitLock'
 import { useSectionsAndGradeLevels } from '../hooks/useReferenceData'
 import { getApiErrorMessage, getFieldErrors } from '../utils/apiError'
 import { todayISO } from '../utils/dateUtils'
+import GoogleAuthButton from '../components/GoogleAuthButton'
 
 import fsuuBuilding from '../assets/fsuu_building.jpg'
 import fsuuLogo from '../assets/fsuu_logo.png'
@@ -265,6 +266,8 @@ export default function Register() {
 
         <h2 className="login-title" style={{ marginBottom: '0.15rem' }}>Create your account</h2>
         <p className="login-subtitle" style={{ marginBottom: '1.1rem' }}>Join the FSUU campus clinic portal</p>
+
+        <GoogleAuthButton />
 
         <form onSubmit={handleSubmit} className="auth-form" noValidate style={{ width: '100%' }}>
 

@@ -9,6 +9,11 @@ export const authApi = {
   updateProfile:  (data) => api.put('/profile', data),
   changePassword: (data) => api.post('/auth/change-password', data),
 
+  // Google sign-in (@urios.edu.ph only). redirect returns the Google consent URL;
+  // complete finishes a sign-up after the user picks Student or Faculty/Staff.
+  googleRedirect:  ()     => api.get('/auth/google/redirect'),
+  googleComplete:  (data) => api.post('/auth/google/complete', data),
+
   // Profile photo: sent as a multipart file, never as base64.
   // The explicit multipart header is required: the axios instance defaults to
   // application/json, which would make axios serialise FormData to JSON.
