@@ -204,14 +204,14 @@ export default function ConsultationsPage() {
           />
         </div>
       ) : (
-        <div>
+        <div className="dr-page">
           {/* Date range (shared with Appointments/Reports) */}
-          <div style={{ marginBottom: '1rem', maxWidth: '640px' }}>
+          <div style={{ marginBottom: '0.75rem' }}>
             <DateRangeFilter value={range} onChange={setRange} />
           </div>
 
           {/* Search and Filters Toolbar */}
-          <div className="page-toolbar" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '1rem' }}>
+          <div className="page-toolbar" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
             <div style={{ flex: 1, minWidth: '280px', position: 'relative' }}>
               <input
                 type="text"

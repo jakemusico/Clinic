@@ -479,7 +479,10 @@ class ClinicRecordController extends Controller
                       ->orWhere('first_name', 'like', "%{$search}%")
                       ->orWhere('last_name', 'like', "%{$search}%")
                       ->orWhere('email', 'like', "%{$search}%")
-                      ->orWhere('student_id', 'like', "%{$search}%");
+                      ->orWhere('student_id', 'like', "%{$search}%")
+                      ->orWhere('grade_level', 'like', "%{$search}%")
+                      ->orWhere('section', 'like', "%{$search}%")
+                      ->orWhere('department', 'like', "%{$search}%");
                 });
             })
             // All columns ProfileReadiness reads must be selected, or they count as empty.

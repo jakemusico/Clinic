@@ -9,6 +9,7 @@ import { ConsultationModal } from '../../components/ConsultationModal'
 import { DentalConsultationModal } from '../../components/DentalConsultationModal'
 import Avatar from '../../components/Avatar'
 import { EMPTY } from '../../utils/emptyValue'
+import { ORG_COLUMN_LABEL, ORG_SEARCH_PLACEHOLDER, orgLabel } from '../../utils/orgLabel'
 import { LoadError } from '../../components/dashboard/Fallbacks'
 import { getApiErrorMessage } from '../../utils/apiError'
 import useLatestRequest, { isRequestCanceled } from '../../hooks/useLatestRequest'
@@ -117,7 +118,7 @@ export default function PeoplePage() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder={`Search ${activeTab === 'student' ? 'students' : 'staff'} by name or ID...`}
+                placeholder={ORG_SEARCH_PLACEHOLDER}
                 className="global-search-input"
               />
             </div>
@@ -140,14 +141,8 @@ export default function PeoplePage() {
                 <tr>
                   <th>Name</th>
                   <th>{activeTab === 'student' ? 'Student ID' : 'Employee ID'}</th>
-                  {activeTab === 'student' ? (
-                    <th>Grade & Section</th>
-                  ) : (
-                    <>
-                      <th>Department</th>
-                      <th>Position</th>
-                    </>
-                  )}
+                  <th>{ORG_COLUMN_LABEL}</th>
+                  {activeTab === 'faculty_staff' && <th>Position</th>}
                   <th>Last Clinic Visit</th>
                   <th>Action</th>
                 </tr>
@@ -162,13 +157,9 @@ export default function PeoplePage() {
                       </div>
                     </td>
                     <td>{p.student_id || EMPTY}</td>
-                    {activeTab === 'student' ? (
-                      <td>{[p.grade_level, p.section].filter(Boolean).join(' - ') || EMPTY}</td>
-                    ) : (
-                      <>
-                        <td>{p.department || EMPTY}</td>
-                        <td>{p.grade_level || EMPTY}</td> {/* We use grade_level to store Position for faculty, or if we don't have a specific field, maybe it's in department */}
-                      </>
+                    <td>{orgLabel(p)}</td>
+                    {activeTab === 'faculty_staff' && (
+                      <td>{p.grade_level || EMPTY}</td> // faculty/staff store their position in grade_level
                     )}
                     <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                       {p.last_clinic_visit ? new Date(p.last_clinic_visit).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'No visits recorded'}

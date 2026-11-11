@@ -10,6 +10,7 @@ import { recordsApi } from '../../api/records'
 import { dentalApi } from '../../api/dental'
 import { toast } from 'react-hot-toast'
 import { EMPTY, serviceLabel } from '../../utils/emptyValue'
+import { ORG_COLUMN_LABEL, ORG_SEARCH_PLACEHOLDER, orgLabel, orgSearchText } from '../../utils/orgLabel'
 import { formatDateLong as formatDate, toDateKey } from '../../utils/dateUtils'
 import { buildRoleOptions, filterPatientsByRole } from '../../utils/roleHelper'
 
@@ -47,7 +48,7 @@ function ViewPatientProfileModal({ patient, onClose }) {
               <div><strong>Name:</strong> {user.name || 'N/A'}</div>
               <div><strong>Student / Employee ID:</strong> {user.student_id || 'N/A'}</div>
               <div><strong>Email:</strong> {user.email || 'N/A'}</div>
-              <div><strong>Department:</strong> {user.department || 'N/A'}</div>
+              <div><strong>{ORG_COLUMN_LABEL}:</strong> {orgLabel(user)}</div>
               <div><strong>Contact Number:</strong> {user.contact_no || 'N/A'}</div>
               <div><strong>Total Consultations:</strong> <span className="status-badge completed">{sortedConsultations.length}</span></div>
             </div>
@@ -211,7 +212,7 @@ export default function DentalPatientRecordsPage() {
       const nameStr = (u.name || '').toLowerCase()
       const idStr = (u.student_id || '').toLowerCase()
       const emailStr = (u.email || '').toLowerCase()
-      const deptStr = (u.department || '').toLowerCase()
+      const deptStr = orgSearchText(u)
       const q = search.toLowerCase()
       return nameStr.includes(q) || idStr.includes(q) || emailStr.includes(q) || deptStr.includes(q)
     })
@@ -246,7 +247,7 @@ export default function DentalPatientRecordsPage() {
           <SearchToolbar
             value={search}
             onChange={setSearch}
-            placeholder="Search by patient name, student/staff ID, department, or email..."
+            placeholder={ORG_SEARCH_PLACEHOLDER}
             filterContent={(
               <div className="search-toolbar-filter-section">
                 <label className="search-toolbar-filter-label">Patient Role</label>
@@ -307,7 +308,7 @@ export default function DentalPatientRecordsPage() {
                 <tr>
                   <th>Patient Name</th>
                   <th>Student / Staff ID</th>
-                  <th>Department</th>
+                  <th>{ORG_COLUMN_LABEL}</th>
                   <th>Total Consultations</th>
                   <th>Last Visit Date</th>
                   <th style={{ textAlign: 'right' }}>Actions</th>
@@ -335,8 +336,8 @@ export default function DentalPatientRecordsPage() {
                           </div>
                         </div>
                       </td>
-                      <td>{user.student_id || 'N/A'}</td>
-                      <td>{user.department || 'N/A'}</td>
+                      <td>{user.student_id || EMPTY}</td>
+                      <td>{orgLabel(user)}</td>
                       <td>
                         <span className={`status-badge ${total > 0 ? 'completed' : 'pending'}`}>
                           {total} {total === 1 ? 'record' : 'records'}

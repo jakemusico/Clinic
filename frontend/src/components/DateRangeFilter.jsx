@@ -20,25 +20,22 @@ export default function DateRangeFilter({ value, onChange }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-      <div className="filter-popover-group">
-        <div className="filter-popover-title" style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-sub)', marginBottom: '0.4rem' }}>
-          Date Range
-        </div>
-        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+    <div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.4rem 0.75rem' }}>
+        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
           {PRESETS.map(p => (
             <button
               key={p}
               type="button"
               onClick={() => pick(p)}
               style={{
-                padding: '0.4rem 0.8rem',
+                padding: '0.25rem 0.75rem',
                 borderRadius: 'var(--radius-full)',
                 border: preset === p ? '1.5px solid var(--accent)' : '1px solid var(--border)',
                 background: preset === p ? 'var(--accent-light)' : '#FFFFFF',
                 color: preset === p ? 'var(--accent)' : 'var(--text)',
                 fontWeight: 600,
-                fontSize: '0.8rem',
+                fontSize: '0.875rem',
                 cursor: 'pointer',
               }}
             >
@@ -46,18 +43,18 @@ export default function DateRangeFilter({ value, onChange }) {
             </button>
           ))}
         </div>
-        {(customOpen || preset === 'Custom') && (
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem', flexWrap: 'wrap' }}>
-            <DateInput label="From" value={value?.from || ''} max={value?.to || undefined}
-              onChange={e => onChange({ ...value, preset: 'Custom', from: e.target.value })} style={{ flex: 1, minWidth: '140px' }} />
-            <DateInput label="To" value={value?.to || ''} min={value?.from || undefined}
-              onChange={e => onChange({ ...value, preset: 'Custom', to: e.target.value })} style={{ flex: 1, minWidth: '140px' }} />
-          </div>
-        )}
+        <p style={{ margin: 0, marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+          Showing data for {rangeLabel(value)}
+        </p>
       </div>
-      <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>
-        Showing data for {rangeLabel(value)}
-      </p>
+      {(customOpen || preset === 'Custom') && (
+        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem', flexWrap: 'wrap' }}>
+          <DateInput label="From" value={value?.from || ''} max={value?.to || undefined}
+            onChange={e => onChange({ ...value, preset: 'Custom', from: e.target.value })} style={{ flex: 1, minWidth: '140px' }} />
+          <DateInput label="To" value={value?.to || ''} min={value?.from || undefined}
+            onChange={e => onChange({ ...value, preset: 'Custom', to: e.target.value })} style={{ flex: 1, minWidth: '140px' }} />
+        </div>
+      )}
     </div>
   )
 }

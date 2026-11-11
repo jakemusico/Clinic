@@ -9982,3 +9982,59 @@ button.consult-section-head:focus-visible { outline: 2px solid var(--accent); ou
     width: 100%;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Compact layout for date-range list pages (.dr-page):
+   Consultations (nurse/dentist/admin) + Appointments management.
+   Smaller stat cards, tighter tabs/search/date-range spacing so the
+   table header is visible without scrolling on desktop.
+   ═══════════════════════════════════════════════════════════════ */
+@media (min-width: 768px) {
+  /* Stat cards: ~72-80px tall, smaller number/label, 12px grid gap */
+  .dashboard-page-body:has(.dr-page) > .stats-grid {
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .dashboard-page-body:has(.dr-page) .stat-card {
+    padding: 10px 14px;
+    min-height: 72px;
+    gap: 0.75rem;
+  }
+
+  .dashboard-page-body:has(.dr-page) .stat-icon-badge {
+    width: 36px;
+    height: 36px;
+  }
+
+  .dashboard-page-body:has(.dr-page) .stat-value {
+    font-size: 1.5rem; /* ~text-2xl */
+  }
+
+  .dashboard-page-body:has(.dr-page) .stat-label {
+    font-size: 0.75rem; /* text-xs */
+    margin-top: 0.15rem;
+  }
+
+  /* Tighter content card + tab spacing (consultations pages scroll normally) */
+  .dashboard-content-card:has(.dr-page) {
+    padding-top: 1rem;
+    gap: 0.75rem;
+  }
+
+  .dashboard-content-card:has(.dr-page) > .tab-bar {
+    margin-bottom: 0;
+  }
+
+  /* Search + filter controls ~40px tall */
+  .dashboard-page-body:has(.dr-page) .search-input {
+    height: 40px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  .dashboard-page-body:has(.dr-page) .filter-btn-outline {
+    padding-top: 0.4rem !important;
+    padding-bottom: 0.4rem !important;
+  }
+}

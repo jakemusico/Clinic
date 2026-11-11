@@ -277,11 +277,11 @@ export default function AppointmentsManagementPage() {
         </div>
       ) : (
         // List view: fixed layout
-        <div className="page-fixed-list fixed-list-layout">
+        <div className="page-fixed-list fixed-list-layout dr-page">
         {/* Fixed Top Section */}
         <div className="fixed-list-top">
           {/* Date range (shared with Consultations/Reports) + admin type filter */}
-          <div style={{ marginBottom: '0.75rem', maxWidth: '640px' }}>
+          <div style={{ marginBottom: '0.75rem' }}>
             <DateRangeFilter value={range} onChange={setRange} />
           </div>
           {/* Toolbar: Search + Status Tabs + Refresh */}
