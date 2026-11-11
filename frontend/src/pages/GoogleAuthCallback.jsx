@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { authApi } from '../api/auth'
+import { useAuth } from '../context/AuthContext'
 import { ROLE_ROUTES } from '../components/RouteGuards'
 import { getApiErrorMessage } from '../utils/apiError'
 import fsuuLogo from '../assets/fsuu_logo.png'
@@ -11,55 +12,50 @@ const ROLE_CHOICES = [
   { value: 'faculty_staff', label: 'Faculty / Staff' },
 ]
 
-const storeSession = (token, user) => {
-  localStorage.setItem('auth_token', token)
-  localStorage.setItem('auth_user', JSON.stringify(user))
-}
-
 /**
  * Landing page for the Google OAuth callback (/auth/google?token=… or ?pending=…).
- * - token: an existing account signed in — store the session and go to its dashboard.
+ * - token: an existing account signed in — finish the session through AuthContext
+ *   (so route guards see the user) and go to its dashboard.
  * - pending: new @urios.edu.ph account — pick Student or Faculty/Staff, then finish
  *   sign-up and go to My Profile to complete it (readiness still applies).
  */
 export default function GoogleAuthCallback() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
+  const { loginWithToken } = useAuth()
+  const processed = useRef(false)
+
   const token   = params.get('token')
   const pending = params.get('pending')
   const roleParam = params.get('role')
 
+  // Strip the params from the address bar once so the token is not left in
+  // history or referrers (the router location is untouched, so params stay
+  // readable for this page's lifetime).
+  useEffect(() => {
+    window.history.replaceState({}, '', '/auth/google')
+  }, [])
+
   const [busy, setBusy]     = useState(false)
   const [error, setError]   = useState('')
 
-  // Existing-account login: exchange the token for the user payload, then route by role.
+  // Existing-account login: finish the session via AuthContext (stores token,
+  // re-reads /me, updates user state), then route by role.
   useEffect(() => {
-    if (!token) return
-    let cancelled = false
-    ;(async () => {
-      try {
-        localStorage.setItem('auth_token', token)
-        const { data } = await authApi.me()
-        if (cancelled) return
-        storeSession(token, data.user)
-        const roleKey = data.user?.role || roleParam || 'student'
-        navigate(ROLE_ROUTES[roleKey] || '/dashboard/student', { replace: true })
-      } catch {
-        if (!cancelled) {
-          localStorage.removeItem('auth_token')
-          setError('Could not finish Google sign-in. Please try again.')
-        }
-      }
-    })()
-    return () => { cancelled = true }
-  }, [token, navigate, roleParam])
+    if (!token || processed.current) return
+    processed.current = true
+    loginWithToken(token)
+      .then((user) => navigate(ROLE_ROUTES[user?.role] || ROLE_ROUTES[roleParam] || '/dashboard/student', { replace: true }))
+      .catch(() => navigate('/login?error=google', { replace: true }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const finishSignup = async (role) => {
     setBusy(true)
     setError('')
     try {
       const { data } = await authApi.googleComplete({ pending, role })
-      storeSession(data.token, data.user)
+      await loginWithToken(data.token)
       toast.success('Account created! Please complete your profile.')
       navigate('/profile', { replace: true })
     } catch (err) {

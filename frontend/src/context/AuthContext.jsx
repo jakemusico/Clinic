@@ -42,6 +42,19 @@ export function AuthProvider({ children }) {
     return data.user
   }
 
+  // Sign in with an already-issued token (e.g. returning from the Google OAuth
+  // callback): store it, re-read the real profile, and update context state so
+  // route guards see the user immediately.
+  const loginWithToken = async (token) => {
+    localStorage.setItem('auth_token', token)
+    const { data } = await authApi.me()
+    clearReferenceCache()
+    const freshUser = data?.user
+    localStorage.setItem('auth_user', JSON.stringify(freshUser))
+    setUser(freshUser)
+    return freshUser
+  }
+
   const register = async (formData) => {
     const { data } = await authApi.register(formData)
     clearReferenceCache()
@@ -97,7 +110,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, loginWithToken, register, logout, updateUser, refreshUser }}>
       {children}
     </AuthContext.Provider>
   )
