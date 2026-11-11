@@ -2862,6 +2862,20 @@ textarea:focus {
   cursor: pointer;
   box-shadow: 0 4px 16px rgba(37, 99, 235, 0.38);
   transition: all var(--transition);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.chatbot-fab.dragging {
+  cursor: grabbing;
+  transform: scale(1.06);
+}
+
+/* Kept mounted while the chat is open so the position is never re-initialized */
+.chatbot-fab--hidden {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .chatbot-fab:hover {

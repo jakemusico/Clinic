@@ -26,8 +26,9 @@ export default function Login() {
     google:   'Google sign-in failed. Please try again.',
   }[searchParams.get('error')]
 
+  // Delay the scroll until after the on-screen keyboard finishes opening.
   const handleFocusScroll = (e) => {
-    e.target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    setTimeout(() => e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300)
   }
 
   const handleChange = (e) => {
@@ -88,6 +89,7 @@ export default function Login() {
               type="email"
               name="email"
               autoComplete="email"
+              enterKeyHint="next"
               placeholder="you@university.edu"
               value={form.email}
               onChange={handleChange}
@@ -105,6 +107,7 @@ export default function Login() {
               type="password"
               name="password"
               autoComplete="current-password"
+              enterKeyHint="go"
               placeholder="••••••••"
               value={form.password}
               onChange={handleChange}

@@ -156,6 +156,17 @@ export default function Register() {
     loadTerms()
   }, [loadTerms])
 
+  // Scroll the focused field into view after the mobile keyboard opens.
+  useEffect(() => {
+    const onFocusIn = (e) => {
+      if (e.target.matches('input, textarea, select')) {
+        setTimeout(() => e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300)
+      }
+    }
+    document.addEventListener('focusin', onFocusIn)
+    return () => document.removeEventListener('focusin', onFocusIn)
+  }, [])
+
   const handleChange = useCallback((e) => {
     const { name, value, type, checked } = e.target
     setForm(prev => {
@@ -322,6 +333,7 @@ export default function Register() {
             <div className="form-group">
               <label htmlFor="reg-email">Email Address *</label>
               <input id="reg-email" type="email" name="email"
+                autoComplete="email" enterKeyHint="next"
                 value={form.email} onChange={handleChange}
                 className={errors.email ? 'input-error' : ''} required />
               {errors.email && <span className="field-error">{errors.email}</span>}
@@ -449,6 +461,7 @@ export default function Register() {
                 <input id="reg-password"
                   type={showPw ? 'text' : 'password'}
                   name="password"
+                  autoComplete="new-password" enterKeyHint="next"
                   value={form.password} onChange={handleChange}
                   className={errors.password ? 'input-error' : ''}
                   style={{ paddingRight: '2.5rem' }}
@@ -469,6 +482,7 @@ export default function Register() {
                 <input id="reg-confirm"
                   type={showConfirm ? 'text' : 'password'}
                   name="password_confirmation"
+                  autoComplete="new-password" enterKeyHint="go"
                   value={form.password_confirmation} onChange={handleChange}
                   className={errors.password_confirmation ? 'input-error' : ''}
                   style={{ paddingRight: '2.5rem' }}

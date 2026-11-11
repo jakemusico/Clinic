@@ -6,6 +6,9 @@ export function ChatbotProvider({ children }) {
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState([])
   const [chatRole, setChatRole] = useState(null) // 'nurse' | 'dentist' | null
+  // Floating toggle position as viewport ratios {xr, yr, w, h} — survives
+  // ChatbotWidget remounts (error boundary, StrictMode) and keyboard resizes.
+  const [togglePos, setTogglePos] = useState(null)
 
   const openLiveChat = (role) => {
     setChatRole(role)
@@ -26,6 +29,8 @@ export function ChatbotProvider({ children }) {
         setMessages,
         chatRole,
         setChatRole,
+        togglePos,
+        setTogglePos,
         openLiveChat,
         openFaq,
       }}

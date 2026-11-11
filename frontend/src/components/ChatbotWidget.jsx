@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback, Component } from 'react'
+import { useRef, useEffect, useState, useCallback, useMemo, Component } from 'react'
 import { toast } from 'react-hot-toast'
 import {
   MessageActionSheet,
@@ -571,7 +571,7 @@ class ChatbotErrorBoundary extends Component {
 
 /* ── Main ChatbotWidget ──────────────────────────────────── */
 function ChatbotWidgetInner() {
-  const { open, setOpen, messages, setMessages, chatRole, setChatRole } = useChatbot()
+  const { open, setOpen, messages, setMessages, chatRole, setChatRole, togglePos, setTogglePos } = useChatbot()
   const { user } = useAuth()
   const navigate  = useNavigate()
   const location  = useLocation()
@@ -666,6 +666,228 @@ function ChatbotWidgetInner() {
 
   // ── Help Assistant FAB width tracking (Desktop) ───────────────
   const fabRef = useRef(null)
+
+  // ── Draggable chat toggle (head on mobile, FAB on desktop) ────
+  // Position is stored as viewport RATIOS {xr, yr, w, h} in ChatbotContext
+  // (survives remounts) and localStorage. Pixels are computed at render time
+  // against the LARGEST observed viewport height, so the on-screen keyboard
+  // can never move or corrupt the saved position. Only a real drag writes it.
+  const TOGGLE_POS_KEY = 'chatbot_toggle_pos'
+  const dragRef = useRef(null)
+  const [dragging, setDragging] = useState(false)
+
+  // Largest viewport height ever seen — immune to keyboard shrink.
+  const largeHRef = useRef(
+    typeof window !== 'undefined'
+      ? Math.max(window.innerHeight, document.documentElement?.clientHeight || 0)
+      : 0
+  )
+  const [vpSize, setVpSize] = useState(() => ({
+    w: typeof window !== 'undefined' ? window.innerWidth : 0,
+    h: largeHRef.current,
+  }))
+
+  const bottomReserve = useCallback(() => {
+    if (window.innerWidth <= 767) {
+      const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--bottom-nav-h'))
+      return (Number.isFinite(v) ? v : 64) + 12
+    }
+    return 12
+  }, [])
+
+  const measureToggle = useCallback(() => {
+    const el = chatHeadRef.current || fabRef.current
+    if (el) {
+      const r = el.getBoundingClientRect()
+      if (r.width > 0 && r.height > 0) return { w: r.width, h: r.height }
+    }
+    // Element hidden/unmounted: fall back to known sizes, never 0×0.
+    return window.innerWidth <= 767 ? { w: 52, h: 52 } : { w: 170, h: 44 }
+  }, [])
+
+  // Convert a pixel rect to stored ratios.
+  const pxToRatio = useCallback((left, top, w, h) => ({
+    xr: left / Math.max(1, window.innerWidth - w),
+    yr: top / Math.max(1, largeHRef.current - h),
+    w, h,
+  }), [])
+
+  // Default bottom-right position expressed as ratios (computed once).
+  const defaultRatioPos = useCallback(() => {
+    const { w, h } = measureToggle()
+    const vw = window.innerWidth
+    const vh = largeHRef.current || window.innerHeight
+    const mobile = window.innerWidth <= 767
+    const margin = mobile ? 12 : 24
+    const bottom = mobile ? bottomReserve() : 24
+    const left = vw - margin - w
+    const top = vh - bottom - h
+    return pxToRatio(left, top, w, h)
+  }, [measureToggle, bottomReserve, pxToRatio])
+
+  // Rendered pixel position from the stored ratios (clamped for display only).
+  const togglePx = useMemo(() => {
+    if (!togglePos) return null
+    const vw = vpSize.w
+    const vh = vpSize.h
+    const { xr, yr, w, h } = togglePos
+    const m = 12
+    return {
+      left: Math.min(Math.max(m, xr * (vw - w)), Math.max(m, vw - w - m)),
+      top:  Math.min(Math.max(m, yr * (vh - h)), Math.max(m, vh - h - bottomReserve())),
+      w, h,
+    }
+  }, [togglePos, vpSize, bottomReserve])
+
+  const handleTogglePointerDown = (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    const el = e.currentTarget
+    const rect = el.getBoundingClientRect()
+    const size = measureToggle()
+    dragRef.current = {
+      id: e.pointerId, type: e.pointerType, sx: e.clientX, sy: e.clientY,
+      left: rect.left || (togglePx ? togglePx.left : 0),
+      top: rect.top || (togglePx ? togglePx.top : 0),
+      w: rect.width || size.w, h: rect.height || size.h, moved: false,
+    }
+    try { el.setPointerCapture(e.pointerId) } catch (_) { /* noop */ }
+  }
+
+  const handleTogglePointerMove = (e) => {
+    const d = dragRef.current
+    if (!d || e.pointerId !== d.id) return
+    const dx = e.clientX - d.sx
+    const dy = e.clientY - d.sy
+    const threshold = d.type === 'touch' ? 10 : 5
+    if (!d.moved && Math.hypot(dx, dy) < threshold) return
+    if (!d.moved) setDragging(true)
+    d.moved = true
+    // Drag in pixel space against the large viewport, then store as ratios.
+    const vw = window.innerWidth
+    const vh = largeHRef.current
+    const m = 12
+    const left = Math.min(Math.max(m, d.left + dx), Math.max(m, vw - d.w - m))
+    const top = Math.min(Math.max(m, d.top + dy), Math.max(m, vh - d.h - bottomReserve()))
+    setTogglePos(pxToRatio(left, top, d.w, d.h))
+  }
+
+  const endToggleDrag = (e, cancelled = false) => {
+    const d = dragRef.current
+    if (!d || (e && e.pointerId !== d.id)) return
+    dragRef.current = null
+    setDragging(false)
+    if (cancelled || !d.moved) return
+
+    // Snap to the nearest horizontal edge and persist — the ONLY place the
+    // stored position is ever written outside initialization.
+    const cur = togglePos
+    if (cur) {
+      const vw = window.innerWidth
+      const vh = largeHRef.current
+      const w = cur.w, h = cur.h
+      const leftPx = cur.xr * (vw - w)
+      const topPx = cur.yr * (vh - h)
+      const snappedLeft = leftPx + w / 2 < vw / 2 ? 12 : vw - w - 12
+      const m = 12
+      const snapped = {
+        left: Math.min(Math.max(m, snappedLeft), Math.max(m, vw - w - m)),
+        top: Math.min(Math.max(m, topPx), Math.max(m, vh - h - bottomReserve())),
+      }
+      const ratio = pxToRatio(snapped.left, snapped.top, w, h)
+      setTogglePos(ratio)
+      try {
+        localStorage.setItem(TOGGLE_POS_KEY, JSON.stringify({ xr: ratio.xr, yr: ratio.yr }))
+      } catch (_) { /* noop */ }
+    }
+  }
+
+  // Single toggle path: pointerup handles taps (mouse + touch); onClick only
+  // serves keyboard activation (detail === 0), so nothing can double-toggle.
+  const handleTogglePointerUp = (e) => {
+    const d = dragRef.current
+    const wasTap = d && !d.moved
+    endToggleDrag(e)
+    if (wasTap) {
+      const action = e.currentTarget === chatHeadRef.current ? () => setOpen(!open) : () => setOpen(true)
+      action()
+    }
+  }
+
+  const handleToggleClick = (action) => (e) => {
+    if (e.detail === 0) action(e) // keyboard only — pointer taps already handled
+  }
+
+  const toggleButtonStyle = togglePx
+    ? {
+        left: togglePx.left,
+        top: togglePx.top,
+        right: 'auto',
+        bottom: 'auto',
+        transition: dragging ? 'none' : 'left .2s ease, top .2s ease, transform .2s ease',
+      }
+    : (dragging ? { transition: 'none' } : undefined)
+
+  // Initialize once: restore saved ratios or compute the default. Resize /
+  // orientation / visualViewport (keyboard) events only refresh vpSize — they
+  // NEVER write the stored position.
+  useEffect(() => {
+    let init = null
+    try {
+      const raw = localStorage.getItem(TOGGLE_POS_KEY)
+      const saved = raw ? JSON.parse(raw) : null
+      if (saved && Number.isFinite(saved.xr) && Number.isFinite(saved.yr)
+          && saved.xr >= 0 && saved.xr <= 1 && saved.yr >= 0 && saved.yr <= 1) {
+        init = { ...saved, ...measureToggle() }
+      }
+    } catch (_) { /* noop */ }
+    if (!init) init = defaultRatioPos()
+    setTogglePos((prev) => prev || init) // never clobber a position set by a drag
+
+    const onViewportChange = () => {
+      // Track the largest height; keyboard shrink is ignored by max().
+      const docH = document.documentElement?.clientHeight || 0
+      largeHRef.current = Math.max(largeHRef.current, window.innerHeight, docH)
+      setVpSize({ w: window.innerWidth, h: largeHRef.current })
+    }
+    window.addEventListener('resize', onViewportChange)
+    window.addEventListener('orientationchange', onViewportChange)
+    window.visualViewport?.addEventListener('resize', onViewportChange)
+    window.visualViewport?.addEventListener('scroll', onViewportChange)
+    return () => {
+      window.removeEventListener('resize', onViewportChange)
+      window.removeEventListener('orientationchange', onViewportChange)
+      window.visualViewport?.removeEventListener('resize', onViewportChange)
+      window.visualViewport?.removeEventListener('scroll', onViewportChange)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Desktop only: anchor the chat window above/below the toggle based on which
+  // half of the screen it sits in. Mobile keeps the CSS full-width layout.
+  const windowAnchorStyle = (() => {
+    if (!open || window.innerWidth <= 767) return undefined
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    const gap = 12
+    const r = togglePx
+      ? { left: togglePx.left, top: togglePx.top, width: togglePx.w, height: togglePx.h }
+      : { left: vw - 24 - 170, top: vh - 24 - 44, width: 170, height: 44 }
+    const cx = r.left + r.width / 2
+    const left = Math.min(Math.max(12, cx - 184), Math.max(12, vw - 368 - 12))
+    const btnMidY = r.top + r.height / 2
+    if (btnMidY > vh / 2) {
+      const avail = r.top - gap - 12
+      return {
+        left, right: 'auto', top: 'auto', bottom: vh - r.top + gap,
+        maxHeight: Math.min(560, Math.max(220, avail)),
+      }
+    }
+    const top = r.top + r.height + gap
+    return {
+      left, right: 'auto', bottom: 'auto', top,
+      maxHeight: Math.min(560, Math.max(220, vh - top - 12)),
+    }
+  })()
 
   // Scroll listener for live messages container
   const handleLiveScroll = useCallback(() => {
@@ -1339,8 +1561,13 @@ function ChatbotWidgetInner() {
       {isMobile && (
         <div
           ref={chatHeadRef}
-          className={`chatbot-head ${open ? 'active' : ''}`}
-          onClick={() => setOpen(!open)}
+          className={`chatbot-head ${open ? 'active' : ''} ${dragging ? 'dragging' : ''}`}
+          style={toggleButtonStyle}
+          onClick={handleToggleClick(() => setOpen(!open))}
+          onPointerDown={handleTogglePointerDown}
+          onPointerMove={handleTogglePointerMove}
+          onPointerUp={handleTogglePointerUp}
+          onPointerCancel={(e) => endToggleDrag(e, true)}
           role="button"
           tabIndex={0}
           aria-label="Open Clinic Chatbot"
@@ -1365,13 +1592,19 @@ function ChatbotWidgetInner() {
         </div>
       )}
 
-      {/* FAB trigger - Desktop only */}
-      {!isMobile && !open && (
+      {/* FAB trigger - Desktop only. Always mounted (hidden while the chat is
+          open) so its position state/DOM node is never re-initialized. */}
+      {!isMobile && (
         <button
           ref={fabRef}
           id="chatbot-fab"
-          className="chatbot-fab"
-          onClick={() => setOpen(true)}
+          className={`chatbot-fab ${dragging ? 'dragging' : ''} ${open ? 'chatbot-fab--hidden' : ''}`}
+          style={toggleButtonStyle}
+          onClick={handleToggleClick(() => setOpen(true))}
+          onPointerDown={handleTogglePointerDown}
+          onPointerMove={handleTogglePointerMove}
+          onPointerUp={handleTogglePointerUp}
+          onPointerCancel={(e) => endToggleDrag(e, true)}
           title="FSUU Clinic Assistant"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1407,7 +1640,7 @@ function ChatbotWidgetInner() {
 
       {/* Chat window */}
       {open && (
-        <div className="chatbot-window" role="dialog" aria-label="FSUU Clinic Chatbot" style={keyboardStyle}>
+        <div className="chatbot-window" role="dialog" aria-label="FSUU Clinic Chatbot" style={{ ...keyboardStyle, ...windowAnchorStyle }}>
 
           {/* ═════════════════════════════════════════════════════════
              VIEW A: LIVE CHAT VIEW (Student <-> Nurse/Dentist)

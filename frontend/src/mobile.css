@@ -177,15 +177,28 @@
     z-index: 1201;
     touch-action: none;
     user-select: none;
+    cursor: grab;
     transition: transform 0.2s ease;
   }
   
   .chatbot-head:active {
     transform: scale(0.95);
   }
+
+  .chatbot-head.dragging {
+    cursor: grabbing;
+    transform: scale(1.06);
+  }
   
   .chatbot-head.active {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 0 0 2px var(--accent);
+  }
+
+  /* Hide the floating head while the window is open so it can never overlap
+     the window or the quick-action buttons inside it. The window's own ✕
+     button closes the chat and brings the head back. */
+  .chatbot-head.active {
+    display: none;
   }
   
   .chatbot-head-avatar {
@@ -240,11 +253,12 @@
     right: 12px;
     left: auto;
     top: auto;
-    bottom: calc(var(--bottom-nav-h, 64px) + 12px + 52px + 10px);
+    bottom: calc(var(--bottom-nav-h, 64px) + 12px);
     transform: none;
     margin: 0;
-    width: min(400px, calc(100vw - 24px));
-    height: min(560px, calc(100dvh - var(--dashboard-header-h, 56px) - var(--bottom-nav-h, 64px) - 90px));
+    width: calc(100vw - 24px);
+    max-width: 400px;
+    height: min(600px, calc(100dvh - var(--dashboard-header-h, 56px) - var(--bottom-nav-h, 64px) - 12px));
     border-radius: 16px;
     overflow: hidden;
     display: flex;
@@ -252,9 +266,9 @@
     z-index: 1200;
     box-sizing: border-box;
   }
-  
+
   .chatbot-window.expanded {
-    height: calc(100dvh - var(--dashboard-header-h, 56px) - var(--bottom-nav-h, 64px) - 24px);
+    height: calc(100dvh - var(--dashboard-header-h, 56px) - var(--bottom-nav-h, 64px) - 12px);
   }
   
   /* Header */
@@ -291,12 +305,12 @@
     box-sizing: border-box;
   }
 
-  /* A. Greeting suggestion buttons (2x2 grid) */
+  /* A. Greeting suggestion buttons — auto-fit grid so words never split */
   .chat-btn-grid {
     display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)) !important;
     grid-auto-rows: 1fr;
-    gap: 10px !important;
+    gap: 8px !important;
     width: 100% !important;
     margin-top: 12px !important;
     box-sizing: border-box !important;
@@ -310,10 +324,10 @@
     display: flex !important;
     align-items: flex-start !important;
     justify-content: flex-start !important;
-    gap: 10px !important;
-    padding: 8px 12px !important;
+    gap: 8px !important;
+    padding: 8px 10px !important;
     box-sizing: border-box !important;
-    font-size: 13px !important;
+    font-size: 12px !important;
     font-weight: 600 !important;
     line-height: 1.35 !important;
     white-space: normal !important;
@@ -325,9 +339,11 @@
     white-space: normal !important;
     text-align: left !important;
     line-height: 1.35 !important;
-    word-break: break-word;
-    overflow-wrap: break-word;
+    word-break: normal;
+    overflow-wrap: normal;
+    hyphens: none;
     flex: 1;
+    min-width: 0;
   }
 
   .chat-btn-grid .chat-menu-btn svg {
@@ -371,9 +387,9 @@
     display: flex !important;
     align-items: flex-start !important;
     justify-content: flex-start !important;
-    gap: 10px !important;
-    padding: 8px 12px !important;
-    font-size: 13px !important;
+    gap: 8px !important;
+    padding: 8px 10px !important;
+    font-size: 12px !important;
     font-weight: 600 !important;
     line-height: 1.35 !important;
     white-space: normal !important;
@@ -387,15 +403,19 @@
     white-space: normal !important;
     text-align: left !important;
     line-height: 1.35 !important;
+    word-break: normal;
+    overflow-wrap: normal;
+    hyphens: none;
     flex: 1;
+    min-width: 0;
   }
 
   .chatbot-live-actions .chat-menu-btn svg,
   .chat-menu-btn.chat-btn-outline svg,
   .chat-btn-group.chat-btn-row .chat-menu-btn svg {
     flex-shrink: 0 !important;
-    width: 18px !important;
-    height: 18px !important;
+    width: 16px !important;
+    height: 16px !important;
     margin-top: 2px !important;
   }
   
@@ -413,7 +433,8 @@
   }
   
   .chatbot-input-area .chatbot-input {
-    flex: 1 !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
     min-height: 44px !important;
     height: 44px !important;
     padding: 0 14px !important;
@@ -528,3 +549,374 @@
   }
 }
 
+
+
+/* ---------------------------------------------------------------------------
+   13. CHATBOT — small-phone compaction (<= 480px)
+   Topic pills and Nurse/Dentist quick actions: single-line labels, no wrap,
+   no overflow. Desktop (> 767px) and tablet styles are unaffected.
+   --------------------------------------------------------------------------- */
+@media (max-width: 480px) {
+  /* Topic buttons: fixed equal 2-column cells */
+  .chat-btn-group.chat-btn-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .chat-btn-grid .chat-menu-btn {
+    gap: 6px !important;
+    padding: 8px !important;
+    font-size: 12px !important;
+    align-items: center !important;
+  }
+
+  .chat-btn-grid .chat-menu-btn svg {
+    width: 16px !important;
+    height: 16px !important;
+    margin-top: 0 !important;
+    flex-shrink: 0 !important;
+  }
+
+  .chat-btn-grid .chat-menu-btn span {
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+    hyphens: none !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+  }
+
+  /* Nurse / Dentist quick actions: flex row, one-line labels */
+  .chatbot-live-actions,
+  .chat-btn-group.chat-btn-row {
+    display: flex !important;
+    grid-template-columns: none !important;
+    gap: 8px !important;
+  }
+
+  .chatbot-live-actions .chat-menu-btn,
+  .chat-btn-group.chat-btn-row .chat-menu-btn,
+  .chat-menu-btn.chat-btn-outline {
+    flex: 1 1 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    gap: 6px !important;
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+    line-height: 1.2 !important;
+    align-items: center !important;
+    white-space: nowrap !important;
+    justify-content: flex-start !important;
+  }
+
+  .chatbot-live-actions .chat-menu-btn svg,
+  .chat-btn-group.chat-btn-row .chat-menu-btn svg,
+  .chat-menu-btn.chat-btn-outline svg {
+    width: 14px !important;
+    height: 14px !important;
+    flex-shrink: 0 !important;
+    margin-top: 0 !important;
+  }
+
+  .chatbot-live-actions .chat-menu-btn span,
+  .chat-btn-group.chat-btn-row .chat-menu-btn span,
+  .chat-menu-btn.chat-btn-outline span {
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+    hyphens: none !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+  }
+}
+
+/* Extra tightening on the smallest phones (<= 360px, e.g. 320px) */
+@media (max-width: 360px) {
+  .chat-btn-grid .chat-menu-btn {
+    font-size: 11px !important;
+    padding: 8px 6px !important;
+    gap: 5px !important;
+  }
+
+  .chat-btn-grid .chat-menu-btn svg {
+    width: 14px !important;
+    height: 14px !important;
+  }
+
+  .chatbot-live-actions .chat-menu-btn,
+  .chat-btn-group.chat-btn-row .chat-menu-btn,
+  .chat-menu-btn.chat-btn-outline {
+    font-size: 11px !important;
+    padding: 5px 8px !important;
+    gap: 4px !important;
+  }
+
+  .chatbot-live-actions .chat-menu-btn svg,
+  .chat-btn-group.chat-btn-row .chat-menu-btn svg,
+  .chat-menu-btn.chat-btn-outline svg {
+    width: 12px !important;
+    height: 12px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   14. SMALL-PHONE COMPACTION (<= 480px)
+   Global density pass: smaller root font scales all rem-based type/layout,
+   plus targeted overrides for headers, cards, buttons, inputs, tabs, pills,
+   tables, avatars and the bottom nav. Touch targets stay >= 40px.
+   Desktop and tablet (> 480px) are unaffected.
+   --------------------------------------------------------------------------- */
+@media (max-width: 480px) {
+  /* Root font 16px -> 14px shrinks every rem-based size ~12% */
+  html { font-size: 14px; }
+  body { font-size: 13.5px; line-height: 1.4; }
+
+  /* ── Page header ── */
+  .dashboard-header {
+    min-height: 52px !important;
+    padding: 0.35rem 10px !important;
+  }
+  .dashboard-title { font-size: 1.3rem; }        /* ~18px page title */
+  .dashboard-subtitle { font-size: 0.8rem; }
+
+  /* ── Content card / section spacing ── */
+  .dashboard-content-card {
+    padding: 12px 12px 20px !important;
+    gap: 10px !important;
+  }
+  .dashboard-page-body { gap: 10px !important; }
+
+  /* ── Buttons: compact but still >= 40px tap target ── */
+  .btn-primary,
+  .btn-secondary {
+    min-height: 40px;
+    padding: 6px 12px;
+    font-size: 12.5px;
+    gap: 6px;
+  }
+  .btn-sm,
+  .btn-ghost {
+    min-height: 36px;
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+  .btn-primary svg,
+  .btn-secondary svg,
+  .btn-sm svg,
+  .btn-ghost svg { width: 14px; height: 14px; }
+
+  /* ── Search / filter inputs ── */
+  .search-input,
+  .appointments-search-input,
+  .global-search-input,
+  .search-toolbar-input {
+    min-height: 38px;
+    font-size: 13px;
+    box-sizing: border-box;
+  }
+  .search-input,
+  .appointments-search-box { min-width: 0; }
+  .search-toolbar-input-box { min-width: 0; }
+
+  /* ── Tabs & filter pills ── */
+  .tab-bar {
+    padding: 2px;
+    margin-bottom: 8px;
+    gap: 2px;
+  }
+  .tab-btn {
+    padding: 5px 10px;
+    font-size: 12px;
+    gap: 4px;
+    min-height: 32px;
+  }
+  .tab-count,
+  .status-tab-count {
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    font-size: 10px;
+  }
+  .status-tabs-bar {
+    gap: 6px;
+    margin-bottom: 8px;
+    padding-bottom: 2px;
+  }
+  .status-pill-tab {
+    padding: 5px 10px;
+    font-size: 12px;
+    gap: 4px;
+    min-height: 32px;
+  }
+  .staff-filter-pill {
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+
+  /* Keep the primary filter rows reachable while scrolling the list */
+  .tab-bar,
+  .status-tabs-bar,
+  .appointments-toolbar,
+  .search-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--bg-base, #F8FAFC);
+  }
+  .tab-bar { background: var(--bg-crust); }
+
+  /* ── Stat cards ── */
+  .stat-card {
+    padding: 10px 12px !important;
+    gap: 8px !important;
+    min-height: 64px;
+  }
+  .stat-icon-badge {
+    width: 32px !important;
+    height: 32px !important;
+  }
+  .stat-value { font-size: 1.3rem; }
+  .stat-label { font-size: 11.5px; }
+
+  /* ── Tables: shorter rows so more records fit ── */
+  .data-table th {
+    padding: 6px 8px;
+    font-size: 10.5px;
+  }
+  .data-table td {
+    padding: 8px;
+    font-size: 12.5px;
+  }
+
+  /* ── Avatars / icon boxes ── */
+  .user-avatar,
+  .header-avatar {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* ── Bottom nav: shorter, smaller icons/labels, >= 40px targets ── */
+  .mobile-bottom-nav {
+    min-height: 52px !important;
+  }
+  .bottom-nav-item {
+    font-size: 11px;
+    gap: 2px;
+    min-height: 44px;
+  }
+  .bottom-nav-item svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* ── Misc density ── */
+  .empty-state { padding: 2rem 1rem !important; }
+  .modal-card { max-height: 92vh; }
+}
+
+
+/* ---------------------------------------------------------------------------
+   15. AUTH PAGES — keyboard-safe layout (Login / Register / Google callback)
+   Safe-center pattern: flex column + margin-block:auto on the card centers it
+   when there is room and lets the page scroll from the top when the keyboard
+   shrinks the viewport. Applies to every page using .login-page-wrapper.
+   --------------------------------------------------------------------------- */
+@media (max-width: 767px) {
+  .login-page-wrapper,
+  .login-page-wrapper.login-centered {
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 100vh;
+    min-height: 100dvh;
+    width: 100%;
+    max-width: 100%;
+    padding: 16px 16px 24px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    box-sizing: border-box;
+  }
+
+  .login-page-wrapper.login-centered::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Safe center: auto top/bottom margins center the card when it fits and
+     collapse to 0 when it does not, so scrolling always starts at the top */
+  .login-page-wrapper .login-card-box {
+    margin-block: auto;
+    margin-left: auto;
+    margin-right: auto;
+    flex-shrink: 0;
+  }
+
+  /* Keep the blurred background pinned to the viewport on every auth page
+     (Login already had this; Register / callback get it too) */
+  .login-page-wrapper .login-bg-layer {
+    position: fixed;
+    inset: 0;
+    transform: scale(1.1);
+  }
+}
+
+/* Extra compaction on small phones so more of the form fits above keyboard */
+@media (max-width: 480px) {
+  .login-page-wrapper,
+  .login-page-wrapper.login-centered {
+    padding: 12px 12px 20px;
+  }
+
+  .login-official-logo {
+    height: 56px !important;
+  }
+
+  .login-logo-header {
+    margin-bottom: 0.75rem;
+  }
+
+  .login-app-title {
+    font-size: 1.2rem;
+  }
+
+  .login-app-subtitle {
+    font-size: 0.78rem;
+  }
+
+  .login-card-box {
+    padding: 1.5rem 1.25rem;
+  }
+
+  .auth-form {
+    gap: 0.8rem;
+  }
+
+  .form-group {
+    gap: 0.3rem;
+  }
+
+  .login-page-wrapper .form-group input,
+  .login-page-wrapper .form-group select,
+  .login-page-wrapper textarea {
+    min-height: 44px;
+  }
+
+  .login-title {
+    font-size: 1.25rem;
+  }
+
+  .login-subtitle {
+    font-size: 0.8rem;
+  }
+
+  .auth-footer {
+    margin-top: 1rem !important;
+    font-size: 0.8rem;
+  }
+}
