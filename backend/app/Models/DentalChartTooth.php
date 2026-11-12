@@ -15,6 +15,13 @@ class DentalChartTooth extends Model
         'recorded_by',
     ];
 
+    protected function casts(): array
+    {
+        return [
+            'notes' => 'encrypted',
+        ];
+    }
+
     public function dentalChart(): BelongsTo
     {
         return $this->belongsTo(DentalChart::class);

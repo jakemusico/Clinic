@@ -85,17 +85,13 @@ class ClinicRecordController extends Controller
                           ->orWhere('student_id', 'like', "%{$search}%");
                     });
                     if ($desk) {
-                        // Same fields the page's client-side search covered.
+                        // Encrypted columns can't be matched with SQL LIKE; keep plaintext fields only.
                         $q->orWhere('service_name', 'like', "%{$search}%")
-                          ->orWhere('diagnosis', 'like', "%{$search}%")
-                          ->orWhere('assessment', 'like', "%{$search}%")
-                          ->orWhere('chief_complaint', 'like', "%{$search}%")
-                          ->orWhere('treatment', 'like', "%{$search}%")
                           ->orWhere('complaint_category', 'like', "%{$search}%")
                           ->orWhereHas('createdBy', fn ($u) => $u->where('name', 'like', "%{$search}%"));
                     } else {
-                        $q->orWhere('diagnosis', 'like', "%{$search}%")
-                          ->orWhere('treatment', 'like', "%{$search}%");
+                        $q->orWhere('service_name', 'like', "%{$search}%")
+                          ->orWhere('complaint_category', 'like', "%{$search}%");
                     }
                 });
             }

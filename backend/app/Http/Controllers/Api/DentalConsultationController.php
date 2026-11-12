@@ -77,16 +77,12 @@ class DentalConsultationController extends Controller
                         }
                     });
                     if ($desk) {
-                        // Same fields the page's client-side search covered.
+                        // Encrypted columns can't be matched with SQL LIKE; keep plaintext fields only.
                         $q->orWhere('service_name', 'like', "%{$search}%")
-                          ->orWhere('reason_for_visit', 'like', "%{$search}%")
-                          ->orWhere('dental_findings', 'like', "%{$search}%")
-                          ->orWhere('treatment_performed', 'like', "%{$search}%")
                           ->orWhereHas('dentist', fn ($u) => $u->where('name', 'like', "%{$search}%"));
                     } else {
-                        $q->orWhere('diagnosis', 'like', "%{$search}%")
-                          ->orWhere('treatment_performed', 'like', "%{$search}%")
-                          ->orWhere('dental_findings', 'like', "%{$search}%");
+                        $q->orWhere('service_name', 'like', "%{$search}%")
+                          ->orWhere('complaint_category', 'like', "%{$search}%");
                     }
                 });
             }

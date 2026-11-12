@@ -14,6 +14,7 @@ use App\Models\Patient;
 use App\Models\User;
 use App\Support\CacheVersion;
 use App\Support\ConsultationRow;
+use App\Support\EncryptedFields;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -253,7 +254,8 @@ class DashboardController extends Controller
                 return $catByName[$key] ?? $cat;
             }
 
-            return $this->categorizeComplaint(null, $row->complaint, $row->diagnosis, $type);
+            // complaint/diagnosis come straight from DB::table and may be ciphertext (encrypted casts).
+            return $this->categorizeComplaint(null, EncryptedFields::decrypt($row->complaint), EncryptedFields::decrypt($row->diagnosis), $type);
         };
 
         foreach ($this->consultationSources($role) as [$table, $dateColumn, $textColumn, $type, $categoryIdColumn]) {

@@ -40,6 +40,15 @@ class ClinicRecord extends Model
         return [
             'visit_date' => 'date:Y-m-d',
             'vitals'     => 'array',
+            'diagnosis' => 'encrypted',
+            'treatment' => 'encrypted',
+            'prescription' => 'encrypted',
+            'remarks' => 'encrypted',
+            'chief_complaint' => 'encrypted',
+            'symptoms' => 'encrypted',
+            'assessment' => 'encrypted',
+            'recommendation' => 'encrypted',
+            'notes' => 'encrypted',
         ];
     }
 

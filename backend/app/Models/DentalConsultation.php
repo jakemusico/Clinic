@@ -41,6 +41,13 @@ class DentalConsultation extends Model
             'consultation_date' => 'date:Y-m-d',
             'affected_teeth'    => 'array',
             'vitals'            => 'array',
+            'reason_for_visit' => 'encrypted',
+            'dental_findings' => 'encrypted',
+            'diagnosis' => 'encrypted',
+            'treatment_performed' => 'encrypted',
+            'recommendations' => 'encrypted',
+            'notes' => 'encrypted',
+            'staff_notes' => 'encrypted',
         ];
     }
 

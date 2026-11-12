@@ -42,6 +42,8 @@ php artisan storage:link    # makes uploaded profile photos reachable at /storag
 php artisan serve
 ```
 
+> **Back up `APP_KEY`.** Sensitive clinic fields (diagnoses, treatments, notes, etc.) are encrypted in the database using `APP_KEY` from `backend/.env`. If the key is lost or changed, that data becomes permanently unreadable. Keep a secure copy of the key (e.g. in a password manager) before deploying or migrating servers. After pulling this change on an existing install, run `php artisan migrate && php artisan data:encrypt-existing` once to encrypt rows stored before encryption was enabled.
+
 The API runs at http://localhost:8000.
 
 ### Frontend (React)
@@ -77,6 +79,7 @@ php artisan optimize
 Check these in `backend/.env` before running `php artisan optimize`:
 
 - `APP_ENV=production` and **`APP_DEBUG=false`** (debug mode exposes stack traces and is slower).
+- `APP_KEY` must be the same key the database was encrypted with — losing it makes encrypted consultation data unreadable. Back it up.
 - `LOG_LEVEL=warning` (the template sets this).
 - `CACHE_STORE=file` for one server, `redis` for several.
 

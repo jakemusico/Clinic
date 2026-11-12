@@ -22,6 +22,7 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -39,6 +40,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Force HTTPS only in production — local XAMPP dev stays on plain http.
+        if (app()->environment('production')) {
+            URL::forceScheme('https');
+        }
+
         $this->configureRateLimiting();
         $this->bumpCacheVersionsOnChange();
         $this->syncInventoryAlertsOnStockChange();

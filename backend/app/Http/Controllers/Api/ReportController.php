@@ -19,6 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Support\ConsultationRow;
 use App\Support\ComplaintCategoryResolver;
+use App\Support\EncryptedFields;
 use App\Support\Placeholder;
 use App\Support\Roles;
 use App\Support\CacheVersion;
@@ -838,8 +839,9 @@ class ReportController extends Controller
                     ->get();
 
                 foreach ($groups as $g) {
+                    // complaint_text/diagnosis may be ciphertext (encrypted casts) — decrypt for categorizing.
                     $cat = $this->resolvedCategoryName($g->cid, $g->cname, $maps)
-                        ?? $this->categorizeComplaint(null, $g->complaint_text, $g->diagnosis, $care);
+                        ?? $this->categorizeComplaint(null, EncryptedFields::decrypt($g->complaint_text), EncryptedFields::decrypt($g->diagnosis), $care);
                     $bump($cat, (int) $g->c);
                 }
             }
