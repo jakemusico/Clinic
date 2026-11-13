@@ -132,6 +132,8 @@ Route::middleware(['auth:sanctum', 'active', 'password.changed'])->group(functio
 
     // ── In-App Notifications ────────────────────────────────────────────
     Route::get('notifications', [NotificationController::class, 'index']);
+    // Lightweight poll for live updates: only notifications newer than ?since=<id> + unread count.
+    Route::get('notifications/poll', [NotificationController::class, 'poll']);
     Route::patch('notifications/{notification}/read', [NotificationController::class, 'markAsRead']);
     Route::patch('notifications/{notification}/unread', [NotificationController::class, 'markAsUnread']);
     Route::delete('notifications/{notification}', [NotificationController::class, 'destroy']);

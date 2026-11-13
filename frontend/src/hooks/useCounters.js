@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { countersApi } from '../api/counters'
+import { notificationsApi } from '../api/notifications'
 import { poll } from '../utils/polling'
 
 /**
@@ -12,6 +13,7 @@ import { poll } from '../utils/polling'
  */
 
 const POLL_MS = 45_000
+const NOTIF_POLL_MS = 2_500
 const EVENTS = ['notifications-updated', 'appointments-updated', 'messages-updated']
 
 const INITIAL = {
@@ -24,8 +26,12 @@ const INITIAL = {
 let state = INITIAL
 let subscribers = 0
 let stopPolling = null
+let stopFastPoll = null
 let stopTimer = null
 let refreshTimer = null
+// Cursor for the fast notification poll: the id of the newest notification already seen.
+let lastNotifId = 0
+let notifPrimed = false
 const listeners = new Set()
 
 const emit = () => listeners.forEach((l) => l())
@@ -48,10 +54,43 @@ export function refreshCounters() {
   refreshTimer = setTimeout(() => fetchCounters().catch(() => {}), 250)
 }
 
+/**
+ * Fast notification poll (~every 2.5 s, visible tabs only — poll() pauses when hidden).
+ * Asks the server only for notifications newer than the last seen id, so a tick is a
+ * tiny indexed query. A fresh notification updates the badge right away and fires
+ * 'notifications-updated', which makes the notification list reload live.
+ */
+async function fetchNotificationPoll() {
+  const { data } = await notificationsApi.poll(lastNotifId)
+  const items = data.notifications || data.data || []
+  const unread = typeof data.unread_count === 'number' ? data.unread_count : null
+
+  // Badge updates even when the change came from somewhere else (e.g. read on another device).
+  if (unread !== null && unread !== state.notifications.unread_count) {
+    state = { ...state, notifications: { ...state.notifications, unread_count: unread } }
+    emit()
+  }
+
+  const previousCursor = lastNotifId
+  lastNotifId = Math.max(lastNotifId, data.latest_id || 0, ...items.map((n) => n.id || 0))
+
+  if (!notifPrimed) {
+    // First tick only sets the cursor — everything already listed is not "new".
+    notifPrimed = true
+    return
+  }
+
+  // Anything newer than the previous cursor arrived since the last tick.
+  if (lastNotifId > previousCursor || items.some((n) => n.id > previousCursor)) {
+    window.dispatchEvent(new Event('notifications-updated'))
+  }
+}
+
 function start() {
   clearTimeout(stopTimer)
   if (stopPolling) return
   stopPolling = poll(fetchCounters, POLL_MS)
+  stopFastPoll = poll(fetchNotificationPoll, NOTIF_POLL_MS)
   EVENTS.forEach((e) => window.addEventListener(e, refreshCounters))
 }
 
@@ -61,6 +100,10 @@ function stop() {
   stopTimer = setTimeout(() => {
     stopPolling?.()
     stopPolling = null
+    stopFastPoll?.()
+    stopFastPoll = null
+    lastNotifId = 0
+    notifPrimed = false
     EVENTS.forEach((e) => window.removeEventListener(e, refreshCounters))
     clearTimeout(refreshTimer)
     state = INITIAL // the next user must not see this user's numbers

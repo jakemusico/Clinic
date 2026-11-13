@@ -104,6 +104,39 @@ class NotificationController extends Controller
     }
 
     /**
+     * GET /api/notifications/poll?since=<id>
+     * Lightweight endpoint for the frontend's fast poll (every few seconds): returns only the
+     * notifications newer than `since` plus the current unread count, so a tick costs almost
+     * nothing. Same visibility rules as index() — a user only ever sees their own notifications.
+     */
+    public function poll(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $since = max(0, (int) $request->query('since', 0));
+
+        $visible = self::visibleQuery($user);
+
+        $unreadCount = (clone $visible)->where('is_read', false)->count();
+
+        $items = (clone $visible)
+            ->where('id', '>', $since)
+            ->orderByDesc('id')
+            ->limit(20)
+            ->get();
+
+        // Cursor is over ALL of the user's notifications (not just visible ones) so a hidden
+        // notification can never stall it — the id sequence only moves forward.
+        $latestId = (int) (Notification::where('user_id', $user->id)->max('id') ?? 0);
+
+        return response()->json([
+            'unread_count'  => $unreadCount,
+            'latest_id'     => $latestId,
+            'notifications' => $items,
+            'data'          => $items,
+        ]);
+    }
+
+    /**
      * PATCH /api/notifications/{notification}/read
      * Mark a single notification as read.
      */
