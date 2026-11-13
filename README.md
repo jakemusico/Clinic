@@ -156,18 +156,18 @@ curl -s -o /dev/null -w "%{size_download} bytes, %{time_total}s\n" -H "Accept-En
 - **Polling only when needed.** Nothing polls in a hidden tab (the staff heartbeat, every 60 s, is the only exception, because it reports "online"). An open chat panel polls every 7 seconds.
 - **Indexes.** Migration `2026_11_05_000001_add_performance_indexes` indexes the dates, status and foreign-key columns the dashboards and lists filter on. It is safe to run on a database that already has some of them.
 
-### 5. Scheduler (required for the inventory alerts and appointment reminders)
-Low-stock and expiry alerts for the admins are created by the `inventory:sync-alerts` command, which Laravel's scheduler runs every 5 minutes. They are also created within a minute of any stock change. The polled `GET /api/counters` and `GET /api/notifications` no longer create them. Without the scheduler, alerts that depend only on time (a batch reaching its expiry date overnight) appear only after the next stock change.
+### 5. Scheduler (optional)
+Appointment reminders (24 hours and 1 hour before a confirmed appointment) and the admins' time-based inventory alerts are created **inside the notifications poll** (`GET /api/notifications/poll`), throttled per user — no cron or `schedule:work` needed; they work as soon as a user has the app open.
 
-Appointment reminders (24 hours and 1 hour before a confirmed appointment) are sent by `appointments:send-reminders`, which the scheduler runs every minute. **Without a running scheduler, patients never get reminders** — this is the most common cause of "the 1-hour reminder didn't arrive". To run it once by hand: `php artisan appointments:send-reminders`.
+If you do run Laravel's scheduler anyway, `appointments:send-reminders` (every minute) and `inventory:sync-alerts` (every 5 minutes) still exist and share the same atomic "sent" markers, so nothing is ever sent twice:
 ```bash
 php artisan schedule:work      # development: leave it running in a terminal
 ```
-Production: add one cron entry (`crontab -e`) that runs every minute:
+Production (optional): add one cron entry (`crontab -e`) that runs every minute:
 ```
 * * * * * cd /var/www/clinic/backend && php artisan schedule:run >> /dev/null 2>&1
 ```
-On Windows, create a Task Scheduler task that runs `php artisan schedule:run` in `backend/` every minute (on this dev machine one already exists as `ClinicScheduler`). To run a sync once by hand: `php artisan inventory:sync-alerts`.
+On Windows, a Task Scheduler task running `php artisan schedule:run` in `backend/` every minute does the same. To run either sync once by hand: `php artisan appointments:send-reminders` / `php artisan inventory:sync-alerts`.
 ### Rate limits
 Requests over a limit get HTTP 429 and the message "Too many requests. Please wait N seconds and try again." (the `Retry-After` header and a `retry_after` field carry the wait). Limits per minute: sign in 10 per email and address (60 per address), register 5 per address, chatbot question 30 per user, chat message 20 per user, book an appointment 10 per user, broadcast announcement 5 per user. They are defined in `AppServiceProvider::configureRateLimiting()` and attached in `routes/api.php` as `throttle:<name>`. Behind a proxy, set `TRUSTED_PROXIES` so the limits use the visitor's address and not the proxy's.
 ### Caching

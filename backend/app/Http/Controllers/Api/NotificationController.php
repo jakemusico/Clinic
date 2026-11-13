@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\AppointmentReminders;
 use App\Support\CacheVersion;
 use App\Support\Paging;
 use App\Http\Controllers\Controller;
@@ -10,6 +11,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class NotificationController extends Controller
 {
@@ -66,6 +68,7 @@ class NotificationController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
+        $this->ensureDueReminders($user);
 
         $query = self::visibleQuery($user);
 
@@ -112,6 +115,7 @@ class NotificationController extends Controller
     public function poll(Request $request): JsonResponse
     {
         $user = $request->user();
+        $this->ensureDueReminders($user);
         $since = max(0, (int) $request->query('since', 0));
 
         $visible = self::visibleQuery($user);
@@ -134,6 +138,25 @@ class NotificationController extends Controller
             'notifications' => $items,
             'data'          => $items,
         ]);
+    }
+
+    /**
+     * Create due appointment reminders (and, for admins, time-based inventory alerts)
+     * inside this request — no scheduler required. Both are internally throttled:
+     * reminders at most once a minute per user, inventory alerts once per 5 minutes
+     * app-wide, and every reminder is claimed atomically so nothing is sent twice.
+     */
+    private function ensureDueReminders(User $user): void
+    {
+        AppointmentReminders::forUser($user);
+
+        if ($user->role === 'admin' && Cache::add('inventory-alerts:poll-sync', 1, 300)) {
+            try {
+                InventoryController::checkAlertsAndNotifyAdmins();
+            } catch (\Throwable $e) {
+                Log::warning('Inventory alert sync failed', ['error' => $e->getMessage()]);
+            }
+        }
     }
 
     /**
