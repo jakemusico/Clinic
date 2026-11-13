@@ -423,8 +423,10 @@ class AppointmentController extends Controller
             }
 
             $appointment->update([
-                'scheduled_at' => $newSchedule,
-                'status'       => 'pending', // an open appointment goes back to pending (to be confirmed again)
+                'scheduled_at'        => $newSchedule,
+                'status'              => 'pending', // an open appointment goes back to pending (to be confirmed again)
+                'reminder_24h_sent_at' => null,    // new time: reminders must be able to fire again
+                'reminder_1h_sent_at'  => null,
             ]);
 
             return null;

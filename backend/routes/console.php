@@ -12,3 +12,7 @@ Artisan::command('inspire', function () {
 // Needs the scheduler to run: `php artisan schedule:work` while developing, a cron entry in production
 // (* * * * * php /path/to/backend/artisan schedule:run). See the README.
 Schedule::command('inventory:sync-alerts')->everyFiveMinutes()->withoutOverlapping();
+
+// Appointment reminders (24h and 1h before confirmed appointments). Needs the scheduler:
+// `php artisan schedule:work` while developing, a cron entry in production. See the README.
+Schedule::command('appointments:send-reminders')->everyMinute()->withoutOverlapping();
