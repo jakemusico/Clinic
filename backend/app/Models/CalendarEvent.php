@@ -2,12 +2,16 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\NormalizesText;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class CalendarEvent extends Model
 {
-    use HasFactory;
+    use HasFactory, NormalizesText;
+
+    protected array $properCaseFields   = ['title'];
+    protected array $sentenceCaseFields = ['description'];
 
     protected $fillable = [
         'title',

@@ -16,7 +16,7 @@ final class PhoneNumber
 {
     /** Every request/model field that holds a phone number. */
     public const FIELDS = [
-        'contact_no',            // users.contact_no: the user's own number (unique)
+        'contact_no',            // users.contact_no: the user's own number (may be shared within a family)
         'guardian_contact',      // patients.guardian_contact
         'emergency_contact_no',  // patients.emergency_contact_no
         'emergency_alt_contact', // patients.emergency_alt_contact

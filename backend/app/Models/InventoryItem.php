@@ -2,12 +2,18 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\NormalizesText;
 use App\Support\CacheVersion;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class InventoryItem extends Model
 {
+    use NormalizesText;
+
+    protected array $properCaseFields   = ['name', 'location'];
+    protected array $sentenceCaseFields = ['description'];
+
     protected $fillable = [
         'name',
         'category',

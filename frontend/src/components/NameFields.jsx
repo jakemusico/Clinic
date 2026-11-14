@@ -1,4 +1,5 @@
 import React from 'react'
+import { properCase } from '../utils/textCase'
 
 /**
  * Shared NameFields Component
@@ -23,6 +24,14 @@ export default function NameFields({
     }
   }
 
+  // Format the name on blur so the user sees the result before saving
+  const handleBlur = (field, e) => {
+    const v = properCase(e.target.value)
+    if (v !== e.target.value && typeof onChange === 'function') {
+      onChange(field, v, e)
+    }
+  }
+
   // Row 1: First Name | Middle Name
   // Row 2: Last Name  | Suffix (optional)
   const content = (
@@ -37,6 +46,7 @@ export default function NameFields({
               name="first_name"
               value={values.first_name || ''}
               onChange={(e) => handleChange('first_name', e)}
+              onBlur={(e) => handleBlur('first_name', e)}
               className={`${inputClassName} ${errors.first_name ? 'input-error' : ''}`.trim()}
               required
               disabled={disabled}
@@ -53,6 +63,7 @@ export default function NameFields({
               name="middle_name"
               value={values.middle_name || ''}
               onChange={(e) => handleChange('middle_name', e)}
+              onBlur={(e) => handleBlur('middle_name', e)}
               className={`${inputClassName} ${errors.middle_name ? 'input-error' : ''}`.trim()}
               disabled={disabled}
             />
@@ -69,6 +80,7 @@ export default function NameFields({
               name="first_name"
               value={values.first_name || ''}
               onChange={(e) => handleChange('first_name', e)}
+              onBlur={(e) => handleBlur('last_name', e)}
               className={`${inputClassName} ${errors.first_name ? 'input-error' : ''}`.trim()}
               required
               disabled={disabled}
@@ -85,6 +97,7 @@ export default function NameFields({
               name="middle_name"
               value={values.middle_name || ''}
               onChange={(e) => handleChange('middle_name', e)}
+              onBlur={(e) => handleBlur('suffix', e)}
               className={`${inputClassName} ${errors.middle_name ? 'input-error' : ''}`.trim()}
               disabled={disabled}
             />
@@ -103,6 +116,7 @@ export default function NameFields({
               name="last_name"
               value={values.last_name || ''}
               onChange={(e) => handleChange('last_name', e)}
+              onBlur={(e) => handleBlur('first_name', e)}
               className={`${inputClassName} ${errors.last_name ? 'input-error' : ''}`.trim()}
               required
               disabled={disabled}
@@ -119,6 +133,7 @@ export default function NameFields({
               name="suffix"
               value={values.suffix || ''}
               onChange={(e) => handleChange('suffix', e)}
+              onBlur={(e) => handleBlur('middle_name', e)}
               className={`${inputClassName} ${errors.suffix ? 'input-error' : ''}`.trim()}
               disabled={disabled}
             />
@@ -135,6 +150,7 @@ export default function NameFields({
               name="last_name"
               value={values.last_name || ''}
               onChange={(e) => handleChange('last_name', e)}
+              onBlur={(e) => handleBlur('last_name', e)}
               className={`${inputClassName} ${errors.last_name ? 'input-error' : ''}`.trim()}
               required
               disabled={disabled}
@@ -151,6 +167,7 @@ export default function NameFields({
               name="suffix"
               value={values.suffix || ''}
               onChange={(e) => handleChange('suffix', e)}
+              onBlur={(e) => handleBlur('suffix', e)}
               className={`${inputClassName} ${errors.suffix ? 'input-error' : ''}`.trim()}
               disabled={disabled}
             />

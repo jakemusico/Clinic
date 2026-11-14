@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\NormalizesText;
 use App\Support\PhoneNumber;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
@@ -10,6 +11,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Patient extends Model
 {
+    use NormalizesText;
+
+    protected array $properCaseFields = [
+        'guardian_name', 'guardian_relationship', 'emergency_name', 'emergency_relationship',
+    ];
+
+    protected array $sentenceCaseFields = [
+        'allergies', 'current_medications', 'medical_conditions', 'medical_history', 'other_health_notes',
+    ];
+
     protected $fillable = [
         'user_id',
         'blood_type',

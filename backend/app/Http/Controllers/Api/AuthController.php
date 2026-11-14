@@ -37,7 +37,7 @@ class AuthController extends Controller
             'role'                  => ['required', 'string', 'in:student,faculty_staff'],
             'date_of_birth'         => ['required', 'date', 'before:today'],
             'sex'                   => ['required', 'string', 'in:male,female'],
-            'contact_no'            => ['nullable', 'string', ...PhilippineMobile::ownNumber()],
+            'contact_no'            => ['nullable', 'string', new PhilippineMobile()],
             'address'               => ['nullable', 'string', 'max:500'],
             'terms_accepted'        => ['required', 'accepted'],
             // Student-only fields
@@ -57,7 +57,6 @@ class AuthController extends Controller
             // Faculty-only fields
             'department'            => ['nullable', 'string', 'max:255'],
         ], NameRules::messages() + [
-            'contact_no.unique' => PhilippineMobile::UNIQUE_MESSAGE,
             'email.regex'       => 'Please use your @urios.edu.ph email address.',
         ]);
 
@@ -332,8 +331,8 @@ class AuthController extends Controller
             'grade_level'           => ['nullable', 'string', 'max:50'],
             'section'               => ['nullable', 'string', 'max:100'],
             'school_year'           => ['nullable', 'string', 'max:50'],
-            // Own number: valid PH mobile, unique (a number the user already has is never re-checked)
-            'contact_no'            => ['nullable', 'string', ...PhilippineMobile::ownNumber($user->id, $request->input('contact_no'))],
+            // Own number: valid PH mobile (numbers may be shared within a family)
+            'contact_no'            => ['nullable', 'string', new PhilippineMobile()],
             'address'               => ['nullable', 'string', 'max:500'],
             'age'                   => ['nullable', 'integer', 'min:1', 'max:120'],
             'department'            => ['nullable', 'string', 'max:255'],
@@ -364,7 +363,6 @@ class AuthController extends Controller
             'student_id.unique'            => 'This ID is already used by another account.',
             'student_id.max'               => 'The ID must not be longer than 50 characters.',
             'license_no.max'               => 'The PRC license number must not be longer than 100 characters.',
-            'contact_no.unique'            => PhilippineMobile::UNIQUE_MESSAGE,
             'date_of_birth.date'           => 'Please enter a valid date of birth.',
             'date_of_birth.before_or_equal'=> 'Date of birth cannot be in the future.',
             'sex.in'                       => 'Please select Male or Female.',

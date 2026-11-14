@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\NormalizesText;
 use App\Support\PhoneNumber;
 use App\Support\Roles;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -17,7 +18,14 @@ use Laravel\Sanctum\HasApiTokens;
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, NormalizesText;
+
+    /** Short profile fields stored in Proper Case (emails, phones, IDs and dates are excluded). */
+    protected array $properCaseFields = [
+        'title', 'first_name', 'middle_name', 'last_name', 'suffix',
+        'address', 'department', 'specialization', 'grade_level', 'section',
+        'school_year', 'guardian_relationship',
+    ];
 
     /**
      * Mass assignment (create/update/fill with request data) can set these columns.

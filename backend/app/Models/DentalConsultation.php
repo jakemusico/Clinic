@@ -2,12 +2,24 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\NormalizesText;
 use App\Support\CacheVersion;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class DentalConsultation extends Model
 {
+    use NormalizesText;
+
+    protected array $properCaseFields = [
+        'service_name', 'reason_for_visit', 'complaint_category',
+    ];
+
+    protected array $sentenceCaseFields = [
+        'dental_findings', 'diagnosis', 'treatment_performed',
+        'recommendations', 'notes', 'staff_notes',
+    ];
+
     protected $fillable = [
         'patient_id',
         'appointment_id',

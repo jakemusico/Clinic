@@ -1,0 +1,26 @@
+warning: in the working copy of 'frontend/src/components/NameFields.jsx', LF will be replaced by CRLF the next time Git touches it
+ .../app/Http/Controllers/Api/AuthController.php    |  8 [32m++[m[31m---[m
+ .../app/Http/Controllers/Api/UserController.php    |  8 [32m++[m[31m---[m
+ backend/app/Models/Announcement.php                |  6 [32m+++[m[31m-[m
+ backend/app/Models/CalendarEvent.php               |  6 [32m+++[m[31m-[m
+ backend/app/Models/ClinicRecord.php                | 12 [32m++++++++[m
+ backend/app/Models/ClinicService.php               |  6 [32m++++[m
+ backend/app/Models/ClinicStaffSchedule.php         |  5 [32m++++[m
+ backend/app/Models/ComplaintCategory.php           |  5 [32m++++[m
+ backend/app/Models/DentalChartTooth.php            |  5 [32m++++[m
+ backend/app/Models/DentalConsultation.php          | 12 [32m++++++++[m
+ backend/app/Models/InventoryBatch.php              |  6 [32m++++[m
+ backend/app/Models/InventoryItem.php               |  6 [32m++++[m
+ backend/app/Models/InventoryTransaction.php        |  5 [32m++++[m
+ backend/app/Models/Message.php                     |  5 [32m+++[m[31m-[m
+ backend/app/Models/Patient.php                     | 11 [32m+++++++[m
+ backend/app/Models/Section.php                     |  5 [32m+++[m[31m-[m
+ backend/app/Models/StaffUnavailability.php         |  5 [32m++++[m
+ backend/app/Models/User.php                        | 10 [32m++++++[m[31m-[m
+ backend/app/Rules/PhilippineMobile.php             | 35 [32m++[m[31m--------------------[m
+ backend/app/Support/PhoneNumber.php                |  2 [32m+[m[31m-[m
+ frontend/src/components/NameFields.jsx             | 17 [32m+++++++++++[m
+ frontend/src/pages/ProfilePage.css                 |  6 [32m++++[m
+ frontend/src/pages/ProfilePage.jsx                 | 32 [32m+++++++++++++++[m[31m-----[m
+ frontend/src/pages/Register.jsx                    | 13 [32m++++++[m[31m--[m
+ 24 files changed, 174 insertions(+), 57 deletions(-)

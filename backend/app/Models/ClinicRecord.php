@@ -2,12 +2,24 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\NormalizesText;
 use App\Support\CacheVersion;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ClinicRecord extends Model
 {
+    use NormalizesText;
+
+    protected array $properCaseFields = [
+        'service_name', 'chief_complaint', 'complaint_category',
+    ];
+
+    protected array $sentenceCaseFields = [
+        'diagnosis', 'prescription', 'remarks', 'treatment',
+        'symptoms', 'assessment', 'recommendation', 'notes',
+    ];
+
     protected $fillable = [
         'patient_id',
         'appointment_id',

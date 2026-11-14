@@ -11,6 +11,7 @@ import NameFields, { formatFullName } from '../components/NameFields'
 import Avatar from '../components/Avatar'
 import useProfilePhoto from '../hooks/useProfilePhoto'
 import { getApiErrorMessage, getFieldErrors } from '../utils/apiError'
+import { properCase, sentenceCase } from '../utils/textCase'
 import { SCHOOL_YEARS } from '../constants/schoolData'
 import Dropdown from '../components/Dropdown'
 import './ProfilePage.css'
@@ -189,6 +190,13 @@ function PatientProfilePage() {
     setFormData(prev => ({ ...prev, [field]: value }))
     // editing a field clears the error that was shown for it
     setFieldErrors(prev => (prev[field] ? { ...prev, [field]: '' } : prev))
+  }
+
+  // Format text on blur so the user sees the result before saving
+  // (mirrors the backend NormalizesText rules).
+  const blurFormat = (field, fn) => (e) => {
+    const v = fn(e.target.value)
+    if (v !== e.target.value) handleChange(field, v)
   }
 
   const handleCopyParentToEmergency = () => {
@@ -599,7 +607,8 @@ function PatientProfilePage() {
               <div className="profile-field-group" style={{ gridColumn: '1 / -1' }}>
                 <label>Complete Address</label>
                 <textarea className="profile-textarea" value={formData.address}
-                  onChange={e => handleChange('address', e.target.value)} rows={2} disabled={ro} />
+                  onChange={e => handleChange('address', e.target.value)}
+                  onBlur={blurFormat('address', properCase)} rows={2} disabled={ro} />
               </div>
             </div>
 
@@ -623,7 +632,8 @@ function PatientProfilePage() {
               <div className="profile-field-group">
                 <label>Parent / Guardian Name</label>
                 <input type="text" className="profile-input" value={formData.guardian_name}
-                  onChange={e => handleChange('guardian_name', e.target.value)} disabled={ro} />
+                  onChange={e => handleChange('guardian_name', e.target.value)}
+                  onBlur={blurFormat('guardian_name', properCase)} disabled={ro} />
               </div>
               <div className="profile-field-group">
                 <label>Relationship to Student</label>
@@ -677,7 +687,8 @@ function PatientProfilePage() {
               <div className="profile-field-group">
                 <label>Emergency Contact Name</label>
                 <input type="text" className="profile-input" value={formData.emergency_name}
-                  onChange={e => handleChange('emergency_name', e.target.value)} disabled={ro} />
+                  onChange={e => handleChange('emergency_name', e.target.value)}
+                  onBlur={blurFormat('emergency_name', properCase)} disabled={ro} />
               </div>
               <div className="profile-field-group">
                 <label>Relationship to Student</label>
@@ -739,12 +750,14 @@ function PatientProfilePage() {
               <div className="profile-field-group">
                 <label>Medical Conditions</label>
                 <input type="text" className="profile-input" value={formData.medical_conditions}
-                  onChange={e => handleChange('medical_conditions', e.target.value)} disabled={ro} />
+                  onChange={e => handleChange('medical_conditions', e.target.value)}
+                  onBlur={blurFormat('medical_conditions', sentenceCase)} placeholder="If none, put N/A" disabled={ro} />
               </div>
               <div className="profile-field-group" style={{ gridColumn: '1 / -1' }}>
                 <label>Allergies {isEditing && <span className="optional">Select from common items or type manually</span>}</label>
                 <input type="text" className="profile-input" value={formData.allergies}
-                  onChange={e => handleChange('allergies', e.target.value)} disabled={ro} />
+                  onChange={e => handleChange('allergies', e.target.value)}
+                  onBlur={blurFormat('allergies', sentenceCase)} placeholder="If none, put N/A" disabled={ro} />
                 {isEditing && (
                   <div className="quick-tag-wrap">
                     {COMMON_ALLERGIES.map(tag => {
@@ -763,17 +776,20 @@ function PatientProfilePage() {
               <div className="profile-field-group" style={{ gridColumn: '1 / -1' }}>
                 <label>Current Medications</label>
                 <textarea className="profile-textarea" value={formData.current_medications}
-                  onChange={e => handleChange('current_medications', e.target.value)} rows={2} disabled={ro} />
+                  onChange={e => handleChange('current_medications', e.target.value)}
+                  onBlur={blurFormat('current_medications', sentenceCase)} placeholder="If none, put N/A" rows={2} disabled={ro} />
               </div>
               <div className="profile-field-group" style={{ gridColumn: '1 / -1' }}>
                 <label>Medical History</label>
                 <textarea className="profile-textarea" value={formData.medical_history}
-                  onChange={e => handleChange('medical_history', e.target.value)} rows={2} disabled={ro} />
+                  onChange={e => handleChange('medical_history', e.target.value)}
+                  onBlur={blurFormat('medical_history', sentenceCase)} placeholder="If none, put N/A" rows={2} disabled={ro} />
               </div>
               <div className="profile-field-group" style={{ gridColumn: '1 / -1' }}>
                 <label>Other Health Notes</label>
                 <textarea className="profile-textarea" value={formData.other_health_notes}
-                  onChange={e => handleChange('other_health_notes', e.target.value)} rows={2} disabled={ro} />
+                  onChange={e => handleChange('other_health_notes', e.target.value)}
+                  onBlur={blurFormat('other_health_notes', sentenceCase)} placeholder="If none, put N/A" rows={2} disabled={ro} />
               </div>
             </div>
 

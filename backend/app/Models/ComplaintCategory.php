@@ -2,10 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\NormalizesText;
 use Illuminate\Database\Eloquent\Model;
 
 class ComplaintCategory extends Model
 {
+    use NormalizesText;
+
+    protected array $properCaseFields = ['name'];
+
     protected $fillable = [
         'name',
         'type',

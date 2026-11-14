@@ -12,6 +12,7 @@ import axios from 'axios'
 import useSubmitLock from '../hooks/useSubmitLock'
 import { useSectionsAndGradeLevels } from '../hooks/useReferenceData'
 import { getApiErrorMessage, getFieldErrors } from '../utils/apiError'
+import { properCase } from '../utils/textCase'
 import { todayISO } from '../utils/dateUtils'
 import GoogleAuthButton from '../components/GoogleAuthButton'
 
@@ -176,6 +177,14 @@ export default function Register() {
     })
     setErrors(prev => ({ ...prev, [name]: '' }))
   }, [])
+
+  // Format short text fields on blur (mirrors the backend NormalizesText rules)
+  const blurProper = useCallback((e) => {
+    const v = properCase(e.target.value)
+    if (v !== e.target.value) {
+      handleChange({ target: { name: e.target.name, value: v, type: 'text' } })
+    }
+  }, [handleChange])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -352,7 +361,7 @@ export default function Register() {
           <div className="form-group">
             <label htmlFor="reg-address">{isStudent ? 'Home Address *' : 'Address'}</label>
             <input id="reg-address" type="text" name="address"
-              value={form.address} onChange={handleChange}
+              value={form.address} onChange={handleChange} onBlur={blurProper}
               className={errors.address ? 'input-error' : ''} />
             {errors.address && <span className="field-error">{errors.address}</span>}
           </div>
@@ -404,7 +413,7 @@ export default function Register() {
                 <div className="form-group">
                   <label htmlFor="reg-guardian-name">Parent / Guardian Name *</label>
                   <input id="reg-guardian-name" type="text" name="guardian_name"
-                    value={form.guardian_name} onChange={handleChange}
+                    value={form.guardian_name} onChange={handleChange} onBlur={blurProper}
                     className={errors.guardian_name ? 'input-error' : ''} />
                   {errors.guardian_name && <span className="field-error">{errors.guardian_name}</span>}
                 </div>

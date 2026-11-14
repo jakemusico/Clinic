@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\NormalizesText;
 use App\Support\CacheVersion;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,6 +10,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class InventoryBatch extends Model
 {
+    use NormalizesText;
+
+    protected array $properCaseFields   = ['supplier'];
+    protected array $sentenceCaseFields = ['notes'];
+
     protected $fillable = [
         'item_id',
         'batch_no',

@@ -77,7 +77,7 @@ class UserController extends Controller
         $rules = $this->baseRules($role);
         $rules['password'] = ['required', 'string', 'min:8'];
 
-        $validated = $request->validate($rules, NameRules::messages(['title', 'first_name', 'middle_name', 'last_name']) + ['contact_no.unique' => PhilippineMobile::UNIQUE_MESSAGE]);
+        $validated = $request->validate($rules, NameRules::messages(['title', 'first_name', 'middle_name', 'last_name']));
 
         $userData = $this->buildUserData($validated, $role);
         $userData['password'] = Hash::make($validated['password']);
@@ -122,7 +122,7 @@ class UserController extends Controller
             $rules['password'] = ['string', 'min:8'];
         }
 
-        $validated = $request->validate($rules, NameRules::messages(['title', 'first_name', 'middle_name', 'last_name']) + ['contact_no.unique' => PhilippineMobile::UNIQUE_MESSAGE]);
+        $validated = $request->validate($rules, NameRules::messages(['title', 'first_name', 'middle_name', 'last_name']));
 
         $oldValues = $user->toArray();
         $oldRole   = $user->role_slug;
@@ -349,8 +349,8 @@ class UserController extends Controller
             'email'       => ['required', 'string', 'email', 'max:255', $uniqueEmail],
             'role'        => ['nullable', 'string'],
             'role_id'     => ['nullable', 'integer', 'exists:roles,id'],
-            // A valid PH mobile, unique among users (an unchanged number is not re-checked)
-            'contact_no'  => ['nullable', 'string', ...PhilippineMobile::ownNumber($ignoreId, request()->input('contact_no'))],
+            // A valid PH mobile (numbers may be shared within a family)
+            'contact_no'  => ['nullable', 'string', new PhilippineMobile()],
         ];
 
         // Role-specific rules

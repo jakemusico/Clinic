@@ -2,15 +2,21 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\NormalizesText;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ClinicService extends Model
 {
+    use NormalizesText;
+
     public const CARE_MEDICAL = 'medical';
     public const CARE_DENTAL  = 'dental';
     public const CARE_TYPES   = [self::CARE_MEDICAL, self::CARE_DENTAL];
+
+    protected array $properCaseFields   = ['name'];
+    protected array $sentenceCaseFields = ['description'];
 
     protected $fillable = [
         'name',
