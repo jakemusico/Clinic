@@ -19,7 +19,7 @@ class BackfillPatients extends Command
     public function handle(): int
     {
         $created = 0;
-        User::whereIn('role', ['student', 'faculty_staff'])
+        User::roleIs(['student', 'faculty_staff'])
             ->whereDoesntHave('patient')
             ->chunkById(200, function ($users) use (&$created) {
                 foreach ($users as $user) {

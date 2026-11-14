@@ -1168,7 +1168,7 @@ class InventoryController extends Controller
     public static function checkAlertsAndNotifyAdmins(): void
     {
         try {
-            $admins = User::where('role', 'admin')->where('is_active', true)->get();
+            $admins = User::roleIs('admin')->where('is_active', true)->get();
             if ($admins->isEmpty()) {
                 return;
             }

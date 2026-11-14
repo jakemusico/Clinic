@@ -183,7 +183,8 @@ class AnnouncementController extends Controller
         DB::transaction(function () use ($announcement, $sender) {
             // Remove linked notifications
             Notification::where('type', 'announcement')
-                ->where('linked_id', $announcement->id)
+                ->where('target_type', 'announcement')
+                ->where('target_id', $announcement->id)
                 ->delete();
 
             AuditLogger::log('announcement_deleted', Announcement::class, $announcement->id);
@@ -216,7 +217,7 @@ class AnnouncementController extends Controller
         try {
             $roles = self::audienceRoles($announcement->audience);
 
-            $users = User::whereIn('role', $roles)
+            $users = User::roleIs($roles)
                 ->where('is_active', true)
                 ->where('id', '!=', $creatorId)
                 ->get();
@@ -233,7 +234,6 @@ class AnnouncementController extends Controller
                 'type'        => 'announcement',
                 'target_type' => 'announcement',
                 'target_id'   => $announcement->id,
-                'linked_id'   => $announcement->id,
                 'is_read'     => false,
                 'action_url'  => null,
                 'created_at'  => $now,

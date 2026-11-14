@@ -60,7 +60,7 @@ class AuditLogController extends Controller
         $actions = AuditLog::distinct()->pluck('action');
 
         // Get list of distinct users who have performed actions
-        $users = User::whereHas('auditLogs')->orderBy('name')->get(['id', 'name', 'email', 'role']);
+        $users = User::whereHas('auditLogs')->orderBy('name')->get(['id', 'name', 'email', 'role_id']);
 
         return response()->json([
             'logs'         => $logs,

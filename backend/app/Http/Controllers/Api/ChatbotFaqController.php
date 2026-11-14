@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ChatbotCategory;
 use App\Models\ChatbotFaq;
 use App\Services\FaqPlaceholders;
 use Illuminate\Http\JsonResponse;
@@ -111,10 +112,13 @@ class ChatbotFaqController extends Controller
 
         $this->rejectUnknownPlaceholders($validated['answer']);
 
+        $categoryName = strtolower(trim($validated['category']));
+
         $faq = ChatbotFaq::create([
             'question'     => $validated['question'],
             'answer'       => $validated['answer'],
-            'category'     => strtolower(trim($validated['category'])),
+            'category'     => $categoryName,
+            'category_id'  => $this->resolveCategoryId($categoryName),
             'keywords'     => $validated['keywords'] ?? null,
             'sort_order'   => $validated['sort_order'] ?? 0,
             'is_active'    => $validated['is_active'] ?? true,
@@ -142,10 +146,13 @@ class ChatbotFaqController extends Controller
 
         $this->rejectUnknownPlaceholders($validated['answer']);
 
+        $categoryName = strtolower(trim($validated['category']));
+
         $chatbotFaq->update([
             'question'     => $validated['question'],
             'answer'       => $validated['answer'],
-            'category'     => strtolower(trim($validated['category'])),
+            'category'     => $categoryName,
+            'category_id'  => $this->resolveCategoryId($categoryName),
             'keywords'     => $validated['keywords'] ?? null,
             'sort_order'   => $validated['sort_order'] ?? 0,
             'is_active'    => $validated['is_active'] ?? $chatbotFaq->is_active,
@@ -183,6 +190,18 @@ class ChatbotFaqController extends Controller
             'message' => 'FAQ Help page visibility updated.',
             'faq'     => $chatbotFaq,
         ]);
+    }
+
+    /**
+     * FAQs are submitted with a category name; make sure a matching
+     * chatbot_categories row exists and return its id for the FK.
+     */
+    private function resolveCategoryId(string $name): ?int
+    {
+        return ChatbotCategory::firstOrCreate(
+            ['name' => $name],
+            ['is_active' => true]
+        )->id;
     }
 
     /**

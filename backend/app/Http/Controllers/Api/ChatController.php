@@ -132,15 +132,9 @@ class ChatController extends Controller
 
         // Find user IDs corresponding to this role
         if ($role === 'nurse') {
-            $staffUsers = User::where(function ($q) {
-                $q->whereIn('role', ['clinic_staff', 'nurse'])
-                  ->orWhereHas('roleRelation', fn($rq) => $rq->whereIn('slug', ['clinic_staff', 'nurse']));
-            })->where('is_active', true)->get();
+            $staffUsers = User::roleIs(['clinic_staff', 'nurse'])->where('is_active', true)->get();
         } else {
-            $staffUsers = User::where(function ($q) {
-                $q->where('role', 'dentist')
-                  ->orWhereHas('roleRelation', fn($rq) => $rq->where('slug', 'dentist'));
-            })->where('is_active', true)->get();
+            $staffUsers = User::roleIs('dentist')->where('is_active', true)->get();
         }
 
         $staffUserIds = $staffUsers->pluck('id');
@@ -353,7 +347,7 @@ class ChatController extends Controller
 
         $query = Conversation::where('staff_role', $staffRole)
             ->with([
-                'student:id,name,title,first_name,middle_name,last_name,suffix,role,role_id,department,grade_level,section,avatar',
+                'student:id,name,title,first_name,middle_name,last_name,suffix,role_id,department,grade_level,section,avatar',
                 'latestMessage',
             ])
             ->withCount([
@@ -426,7 +420,7 @@ class ChatController extends Controller
         CacheVersion::bump('counters-chat');   // a bulk update fires no model events
 
         $conversation->load([
-            'student:id,name,title,first_name,middle_name,last_name,suffix,role,role_id,department,grade_level,section,avatar',
+            'student:id,name,title,first_name,middle_name,last_name,suffix,role_id,department,grade_level,section,avatar',
         ]);
         $this->loadMessagePage($conversation, $request->integer('before') ?: null);
 
@@ -466,7 +460,7 @@ class ChatController extends Controller
                 return response()->json([
                     'message'      => $existing,
                     'conversation' => $conversation->fresh([
-                        'student:id,name,title,first_name,middle_name,last_name,suffix,role,role_id,department,grade_level,section,avatar',
+                        'student:id,name,title,first_name,middle_name,last_name,suffix,role_id,department,grade_level,section,avatar',
                     ]),
                 ], 200);
             }
@@ -530,7 +524,7 @@ class ChatController extends Controller
         return response()->json([
             'message'      => $message,
             'conversation' => $conversation->fresh([
-                'student:id,name,title,first_name,middle_name,last_name,suffix,role,role_id,department,grade_level,section,avatar',
+                'student:id,name,title,first_name,middle_name,last_name,suffix,role_id,department,grade_level,section,avatar',
             ]),
         ], 201);
     }
@@ -655,10 +649,7 @@ class ChatController extends Controller
             ->whereDoesntHave('messages', function ($q) {
                 // Has at least one staff reply
                 $q->whereHas('sender', function ($sq) {
-                    $sq->whereIn('role', ['clinic_staff', 'dentist'])
-                       ->orWhereHas('roleRelation', function ($rq) {
-                           $rq->whereIn('slug', ['clinic_staff', 'nurse', 'dentist']);
-                       });
+                    $sq->roleIs(['clinic_staff', 'dentist']);
                 });
             })
             ->where('created_at', '<', now()->subHours(24))

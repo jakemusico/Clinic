@@ -27,17 +27,13 @@ class DatabaseSeeder extends Seeder
         $user = User::where('email', $email)->first();
 
         if (! $user) {
-            // `role`, `role_id` and `must_change_password` are not mass-assignable: they are set one by one.
-            $role   = $attributes['role'] ?? null;
+            // `role_id` and `must_change_password` are not mass-assignable: they are set one by one.
             $roleId = $attributes['role_id'] ?? null;
             unset($attributes['role'], $attributes['role_id']);
 
             $user = new User($attributes + ['email' => $email, 'password' => Hash::make($password)]);
             if ($roleId !== null) {
                 $user->role_id = $roleId;
-            }
-            if ($role !== null) {
-                $user->role = $role;
             }
             $user->must_change_password = ! SeedPassword::isLocal();
 
@@ -80,7 +76,6 @@ class DatabaseSeeder extends Seeder
             'first_name' => 'System',
             'last_name' => 'Administrator',
             'role_id' => 1,
-            'role' => 'admin',
         ]);
 
         // Clinic Staff (Nurse)
@@ -89,7 +84,6 @@ class DatabaseSeeder extends Seeder
             'first_name' => 'Nurse',
             'last_name' => 'Joy',
             'role_id' => 2,
-            'role' => 'clinic_staff',
         ]);
 
         // Dentist
@@ -98,7 +92,6 @@ class DatabaseSeeder extends Seeder
             'first_name' => 'Arthur',
             'last_name' => 'Dent',
             'role_id' => 3,
-            'role' => 'dentist',
         ]);
 
         // Seed default working schedules (Mon-Fri 08:00-12:00, 13:00-17:00)
@@ -137,7 +130,6 @@ class DatabaseSeeder extends Seeder
             'first_name' => 'Juan',
             'last_name' => 'Dela Cruz',
             'role_id' => 4,
-            'role' => 'student',
             'student_id' => '2024-0001',
             'department' => 'College of Engineering',
         ]);
@@ -148,7 +140,6 @@ class DatabaseSeeder extends Seeder
             'first_name' => 'Maria',
             'last_name' => 'Santos',
             'role_id' => 5,
-            'role' => 'faculty_staff',
             'department' => 'College of Science',
         ]);
 

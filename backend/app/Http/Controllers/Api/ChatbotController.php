@@ -262,8 +262,9 @@ class ChatbotController extends Controller
                 LIMIT 1
             )
             LEFT JOIN users u ON u.id = m.sender_id
+            LEFT JOIN roles ur ON ur.id = u.role_id
             WHERE c.status = 'open'
-              AND (u.role = 'student' OR m.sender_id = c.student_id)
+              AND (ur.slug = 'student' OR m.sender_id = c.student_id)
         ")->n ?? 0);
 
         // 2. Average staff response time = average gap between a student message and the first staff reply
@@ -273,15 +274,17 @@ class ChatbotController extends Controller
             FROM messages sm
             JOIN conversations c ON c.id = sm.conversation_id
             LEFT JOIN users su ON su.id = sm.sender_id
+            LEFT JOIN roles sur ON sur.id = su.role_id
             JOIN messages r ON r.id = (
                 SELECT m3.id FROM messages m3
-                JOIN users u3 ON u3.id = m3.sender_id AND u3.role IN ('clinic_staff', 'nurse', 'dentist')
+                JOIN users u3 ON u3.id = m3.sender_id
+                JOIN roles u3r ON u3r.id = u3.role_id AND u3r.slug IN ('clinic_staff', 'dentist')
                 WHERE m3.conversation_id = sm.conversation_id
                   AND (m3.created_at > sm.created_at OR (m3.created_at = sm.created_at AND m3.id > sm.id))
                 ORDER BY m3.created_at ASC, m3.id ASC
                 LIMIT 1
             )
-            WHERE (su.role = 'student' OR sm.sender_id = c.student_id)
+            WHERE (sur.slug = 'student' OR sm.sender_id = c.student_id)
         ");
         $avgResponseMinutes = $avg && $avg->avg_minutes !== null ? (float) $avg->avg_minutes : null;
 

@@ -15,7 +15,7 @@ class InventorySeeder extends Seeder
      */
     public function run(): void
     {
-        $admin = User::where('role', 'admin')->first() ?? User::first();
+        $admin = User::roleIs('admin')->first() ?? User::first();
         $adminId = $admin?->id ?? 1;
 
         // ── 1. MEDICINES ──────────────────────────────────────────────────────

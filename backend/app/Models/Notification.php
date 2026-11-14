@@ -16,7 +16,6 @@ class Notification extends Model
         'target_id',
         'is_read',
         'action_url',
-        'linked_id',
     ];
 
     protected function casts(): array

@@ -17,11 +17,11 @@ class TodayAppointmentsSeeder extends Seeder
     {
         $today = Carbon::today()->toDateString();
 
-        $studentPatient = Patient::whereHas('user', fn($q) => $q->where('role', 'student'))->first() ?? Patient::first();
-        $facultyPatient = Patient::whereHas('user', fn($q) => $q->where('role', 'faculty_staff'))->first() ?? $studentPatient;
+        $studentPatient = Patient::whereHas('user', fn($q) => $q->roleIs('student'))->first() ?? Patient::first();
+        $facultyPatient = Patient::whereHas('user', fn($q) => $q->roleIs('faculty_staff'))->first() ?? $studentPatient;
 
-        $nurseUser = User::where('role', 'clinic_staff')->first() ?? User::first();
-        $dentistUser = User::where('role', 'dentist')->first() ?? User::first();
+        $nurseUser = User::roleIs('clinic_staff')->first() ?? User::first();
+        $dentistUser = User::roleIs('dentist')->first() ?? User::first();
 
         $medicalService = ClinicService::where('name', 'like', '%Medical Consultation%')->first()
             ?? ClinicService::where('name', 'like', '%First Aid%')->first()

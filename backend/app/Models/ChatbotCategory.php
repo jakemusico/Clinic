@@ -25,7 +25,7 @@ class ChatbotCategory extends Model
      */
     public function faqs()
     {
-        return $this->hasMany(ChatbotFaq::class, 'category', 'name');
+        return $this->hasMany(ChatbotFaq::class, 'category_id');
     }
 
     /**

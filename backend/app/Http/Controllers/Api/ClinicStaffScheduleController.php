@@ -27,7 +27,7 @@ class ClinicStaffScheduleController extends Controller
 
         if ($user->isAdmin()) {
             $staffId = $request->query('staff_id');
-            $query = ClinicStaffSchedule::with('user:id,name,email,role')
+            $query = ClinicStaffSchedule::with('user:id,name,email,role_id')
                 ->orderByRaw("FIELD(day_of_week, 'monday','tuesday','wednesday','thursday','friday','saturday','sunday')")
                 ->orderBy('start_time');
 
@@ -37,12 +37,9 @@ class ClinicStaffScheduleController extends Controller
 
             return response()->json([
                 'schedules'   => $query->get(),
-                'staff_list'  => User::where(function($q) {
-                        $q->whereIn('role', ['clinic_staff', 'nurse', 'dentist'])
-                          ->orWhereHas('roleRelation', fn($rq) => $rq->whereIn('slug', ['clinic_staff', 'nurse', 'dentist']));
-                    })
+                'staff_list'  => User::roleIs(['clinic_staff', 'nurse', 'dentist'])
                     ->where('is_active', true)
-                    ->select('id', 'name', 'email', 'role', 'role_id')
+                    ->select('id', 'name', 'email', 'role_id')
                     ->orderBy('name')
                     ->get(),
             ]);
@@ -50,7 +47,7 @@ class ClinicStaffScheduleController extends Controller
 
         // Clinic staff / Dentist — own schedules only
         $schedules = ClinicStaffSchedule::where('user_id', $user->id)
-            ->with('user:id,name,email,role')
+            ->with('user:id,name,email,role_id')
             ->orderByRaw("FIELD(day_of_week, 'monday','tuesday','wednesday','thursday','friday','saturday','sunday')")
             ->orderBy('start_time')
             ->get();
@@ -88,7 +85,7 @@ class ClinicStaffScheduleController extends Controller
             if (empty($validated['user_id'])) {
                 return response()->json(['message' => 'Please select a staff member for this schedule.'], 422);
             }
-            $targetUser = User::whereIn('role', ['clinic_staff', 'dentist'])->find($validated['user_id']);
+            $targetUser = User::roleIs(['clinic_staff', 'dentist'])->find($validated['user_id']);
             if (!$targetUser) {
                 return response()->json(['message' => 'Selected user is not a valid clinic staff or dentist.'], 422);
             }
@@ -145,7 +142,7 @@ class ClinicStaffScheduleController extends Controller
 
         $targetUserId = $clinicStaffSchedule->user_id;
         if ($user->role === 'admin' && !empty($validated['user_id'])) {
-            $targetUser = User::whereIn('role', ['clinic_staff', 'dentist'])->find($validated['user_id']);
+            $targetUser = User::roleIs(['clinic_staff', 'dentist'])->find($validated['user_id']);
             if (!$targetUser) {
                 return response()->json(['message' => 'Selected user is not a valid clinic staff or dentist.'], 422);
             }
@@ -218,9 +215,7 @@ class ClinicStaffScheduleController extends Controller
         $roles = ($type === 'dental') ? ['dentist'] : ['clinic_staff', 'nurse'];
 
         // Active staff members for this appointment type
-        $staffMembers = User::where(function($q) use ($roles) {
-            $q->whereIn('role', $roles)->orWhereHas('roleRelation', fn($rq) => $rq->whereIn('slug', $roles));
-        })->where('is_active', true)->get();
+        $staffMembers = User::roleIs($roles)->where('is_active', true)->get();
 
         if ($staffMembers->isEmpty()) {
             return response()->json([
@@ -303,9 +298,7 @@ class ClinicStaffScheduleController extends Controller
             $staffQuery = User::where('id', $request->staff_id)->where('is_active', true);
         } else {
             $targetRoles = ($type === 'dental') ? ['dentist'] : ['clinic_staff', 'nurse'];
-            $staffQuery = User::where(function($q) use ($targetRoles) {
-                $q->whereIn('role', $targetRoles)->orWhereHas('roleRelation', fn($rq) => $rq->whereIn('slug', $targetRoles));
-            })->where('is_active', true);
+            $staffQuery = User::roleIs($targetRoles)->where('is_active', true);
         }
 
         $staffMembers = $staffQuery->get();
@@ -455,7 +448,7 @@ class ClinicStaffScheduleController extends Controller
 
         if ($user->role === 'admin') {
             $staffId = $request->query('staff_id');
-            $query = StaffUnavailability::with('user:id,name,email,role')
+            $query = StaffUnavailability::with('user:id,name,email,role_id')
                 ->orderBy('unavailable_date');
 
             if ($staffId && $staffId !== 'all') {
@@ -466,7 +459,7 @@ class ClinicStaffScheduleController extends Controller
         }
 
         $records = StaffUnavailability::where('user_id', $user->id)
-            ->with('user:id,name,email,role')
+            ->with('user:id,name,email,role_id')
             ->orderBy('unavailable_date')
             ->get();
 
@@ -490,7 +483,7 @@ class ClinicStaffScheduleController extends Controller
             if (empty($validated['user_id'])) {
                 return response()->json(['message' => 'Please select a staff member to block this date for.'], 422);
             }
-            $targetUser = User::whereIn('role', ['clinic_staff', 'dentist'])->find($validated['user_id']);
+            $targetUser = User::roleIs(['clinic_staff', 'dentist'])->find($validated['user_id']);
             if (!$targetUser) {
                 return response()->json(['message' => 'Selected user is not a valid clinic staff or dentist.'], 422);
             }

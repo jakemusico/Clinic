@@ -103,7 +103,8 @@ class ChatbotCategoryController extends Controller
      */
     public function destroy(ChatbotCategory $chatbotCategory): JsonResponse
     {
-        $faqCount = $chatbotCategory->faqs()->count();
+        $faqCount = $chatbotCategory->faqs()->count()
+            + ChatbotFaq::whereNull('category_id')->where('category', $chatbotCategory->name)->count();
 
         if ($faqCount > 0) {
             return response()->json([

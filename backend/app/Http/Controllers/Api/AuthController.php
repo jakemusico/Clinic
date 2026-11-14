@@ -108,7 +108,6 @@ class AuthController extends Controller
             // Not mass-assignable: set one by one. Public registration only ever gets a patient role
             // (the request is validated to student / faculty_staff above), active, no forced password change.
             $user->role_id              = $roleId;
-            $user->role                 = $roleSlug;
             $user->is_active            = true;
             $user->must_change_password = false;
             $user->has_medical_access   = false;
@@ -143,9 +142,7 @@ class AuthController extends Controller
 
         // Notify admins about the new user registration
         try {
-            $admins = User::where(function($q) {
-                $q->where('role', 'admin')->orWhereHas('roleRelation', fn($rq) => $rq->where('slug', 'admin'));
-            })->where('is_active', true)->get();
+            $admins = User::roleIs('admin')->where('is_active', true)->get();
             $roleLabel = $user->role_slug === 'student' ? 'Student' : 'Faculty / Staff';
             foreach ($admins as $admin) {
                 Notification::create([
@@ -476,7 +473,6 @@ class AuthController extends Controller
         // 4. Update or Create Patient Model (students, faculty/staff, or existing patients)
         $patient = $user->patient;
         $isStudentOrPatient = in_array($user->role_slug, ['student', 'faculty_staff'])
-            || in_array($user->attributes['role'] ?? '', ['student', 'faculty_staff'])
             || $patient !== null;
 
         if ($isStudentOrPatient) {

@@ -314,7 +314,7 @@ class AppointmentController extends Controller
 
         // Check staff role
         $staff = User::findOrFail($staffId);
-        if (!in_array($staff->role, ['clinic_staff', 'dentist'])) {
+        if (!Roles::is($staff, Roles::NURSE, Roles::DENTIST)) {
             return response()->json(['message' => 'Selected staff member is not part of the clinic crew.'], 422);
         }
 
@@ -603,10 +603,7 @@ class AppointmentController extends Controller
         // Reference data, the same for everybody (name and photo only): cached 5 minutes; creating, renaming,
         // (de)activating or deleting an account starts a new version.
         $staff = Cache::remember(CacheVersion::key('users', 'staff-list'), 300, function () {
-            return User::where(function($q) {
-                    $q->whereIn('role', ['clinic_staff', 'nurse', 'dentist'])
-                      ->orWhereHas('roleRelation', fn($rq) => $rq->whereIn('slug', ['clinic_staff', 'nurse', 'dentist']));
-                })
+            return User::roleIs(['clinic_staff', 'nurse', 'dentist'])
                 ->where('is_active', true)
                 ->select(Appointment::STAFF_COLUMNS)
                 ->get()

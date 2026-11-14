@@ -269,10 +269,7 @@ class FaqPlaceholders
     {
         $userIds = User::query()
             ->where('is_active', true)
-            ->where(function ($q) use ($roles) {
-                $q->whereIn('role', $roles)
-                  ->orWhereHas('roleRelation', fn ($r) => $r->whereIn('slug', $roles));
-            })
+            ->roleIs($roles)
             ->pluck('id');
 
         if ($userIds->isEmpty()) {

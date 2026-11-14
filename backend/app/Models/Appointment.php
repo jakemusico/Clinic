@@ -26,10 +26,10 @@ class Appointment extends Model
      * what is needed to show a name and a photo. No email, contact number, address, date of birth
      * or license number. (name, role and avatar_url are computed from these.)
      */
-    public const STAFF_COLUMNS = ['id', 'name', 'title', 'first_name', 'middle_name', 'last_name', 'suffix', 'role', 'role_id', 'avatar'];
+    public const STAFF_COLUMNS = ['id', 'name', 'title', 'first_name', 'middle_name', 'last_name', 'suffix', 'role_id', 'avatar'];
 
     /** The only columns of the patient's account that appointment responses carry. */
-    public const PATIENT_USER_COLUMNS = ['id', 'name', 'title', 'first_name', 'middle_name', 'last_name', 'suffix', 'student_id', 'department', 'grade_level', 'section', 'role', 'role_id', 'avatar'];
+    public const PATIENT_USER_COLUMNS = ['id', 'name', 'title', 'first_name', 'middle_name', 'last_name', 'suffix', 'student_id', 'department', 'grade_level', 'section', 'role_id', 'avatar'];
 
     /**
      * Eager-load list for appointment responses: explicit columns for the patient and the staff

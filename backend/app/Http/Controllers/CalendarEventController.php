@@ -62,8 +62,8 @@ class CalendarEventController extends Controller
             'start_date'  => 'required|date',
             'end_date'    => 'nullable|date|after_or_equal:start_date',
             'all_day'     => 'boolean',
-            'start_time'  => 'nullable|string',
-            'end_time'    => 'nullable|string',
+            'start_time'  => ['nullable', 'string', 'regex:/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/'],
+            'end_time'    => ['nullable', 'string', 'regex:/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/'],
             'description' => 'nullable|string|max:1000',
             'audience'    => 'required|string|in:All,Students,Faculty/Staff,Clinic Staff,Staff,Nurses,Dentists',
         ]);
@@ -95,8 +95,8 @@ class CalendarEventController extends Controller
             'start_date'  => 'required|date',
             'end_date'    => 'nullable|date|after_or_equal:start_date',
             'all_day'     => 'boolean',
-            'start_time'  => 'nullable|string',
-            'end_time'    => 'nullable|string',
+            'start_time'  => ['nullable', 'string', 'regex:/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/'],
+            'end_time'    => ['nullable', 'string', 'regex:/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/'],
             'description' => 'nullable|string|max:1000',
             'audience'    => 'required|string|in:All,Students,Faculty/Staff,Clinic Staff,Staff,Nurses,Dentists',
         ]);
@@ -150,10 +150,7 @@ class CalendarEventController extends Controller
 
             $roles = $audienceMap[$event->audience] ?? ['student', 'clinic_staff', 'nurse', 'dentist', 'faculty_staff', 'admin'];
 
-            $users = User::where(function($q) use ($roles) {
-                    $q->whereIn('role', $roles)
-                      ->orWhereHas('roleRelation', fn($rq) => $rq->whereIn('slug', $roles));
-                })
+            $users = User::roleIs($roles)
                 ->where('is_active', true)
                 ->where('id', '!=', $creatorId)
                 ->get();
@@ -194,7 +191,6 @@ class CalendarEventController extends Controller
                     'type'        => $type,
                     'target_type' => 'calendar_event',
                     'target_id'   => $event->id,
-                    'linked_id'   => $event->id,
                     'is_read'     => false,
                     'action_url'  => '/calendar',
                     'created_at'  => $now,

@@ -64,7 +64,7 @@ class AnnouncementsSeeder extends Seeder
                 default    => ['student', 'clinic_staff', 'dentist', 'admin'],
             };
 
-            $users = User::whereIn('role', $roles)
+            $users = User::roleIs($roles)
                 ->where('is_active', true)
                 ->get();
 
@@ -77,17 +77,19 @@ class AnnouncementsSeeder extends Seeder
             foreach ($users as $user) {
                 // Skip if notification already exists for this user+announcement
                 $exists = Notification::where('type', 'announcement')
-                    ->where('linked_id', $ann->id)
+                    ->where('target_type', 'announcement')
+                    ->where('target_id', $ann->id)
                     ->where('user_id', $user->id)
                     ->exists();
 
                 if (!$exists) {
                     $rows[] = [
-                        'user_id'    => $user->id,
-                        'title'      => $ann->title,
-                        'message'    => $ann->message,
-                        'type'       => 'announcement',
-                        'linked_id'  => $ann->id,
+                        'user_id'     => $user->id,
+                        'title'       => $ann->title,
+                        'message'     => $ann->message,
+                        'type'        => 'announcement',
+                        'target_type' => 'announcement',
+                        'target_id'   => $ann->id,
                         'is_read'    => false,
                         'action_url' => null,
                         'created_at' => $ann->created_at,

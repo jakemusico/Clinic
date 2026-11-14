@@ -37,10 +37,7 @@ class NotificationService
 
             $roles = $audienceMap[$audience] ?? $audienceMap['All'];
 
-            $users = User::where(function($q) use ($roles) {
-                    $q->whereIn('role', $roles)
-                      ->orWhereHas('roleRelation', fn($rq) => $rq->whereIn('slug', $roles));
-                })
+            $users = User::roleIs($roles)
                 ->where('is_active', true)
                 ->where('id', '!=', $creatorId)
                 ->get();

@@ -159,7 +159,6 @@ class GoogleAuthController extends Controller
             $user->google_id         = $profile['sub'];
             $user->email_verified_at = now();
             $user->role_id              = $roleId;
-            $user->role                 = $roleSlug;
             $user->is_active            = true;
             $user->must_change_password = false;
             $user->has_medical_access   = false;

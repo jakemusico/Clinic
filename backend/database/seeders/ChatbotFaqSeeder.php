@@ -233,6 +233,10 @@ class ChatbotFaqSeeder extends Seeder
             if (isset($templates[$data['question']])) {
                 $data['answer'] = $templates[$data['question']];
             }
+            $data['category_id'] = \App\Models\ChatbotCategory::firstOrCreate(
+                ['name' => $data['category']],
+                ['is_active' => true]
+            )->id;
             ChatbotFaq::create($data);
         }
 

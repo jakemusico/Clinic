@@ -47,18 +47,8 @@ class UserController extends Controller
         }
 
         if ($request->has('role') && $request->role != 'all') {
-            $roleFilter = $request->role;
-            $query->where(function ($q) use ($roleFilter) {
-                $q->where('role', $roleFilter)
-                  ->orWhereHas('roleRelation', function ($rq) use ($roleFilter) {
-                      $rq->where('slug', $roleFilter);
-                  });
-                if ($roleFilter === 'clinic_staff') {
-                    $q->orWhere('role', 'nurse')->orWhereHas('roleRelation', fn($rq) => $rq->where('slug', 'nurse'));
-                } elseif ($roleFilter === 'nurse') {
-                    $q->orWhere('role', 'clinic_staff')->orWhereHas('roleRelation', fn($rq) => $rq->where('slug', 'clinic_staff'));
-                }
-            });
+            // Roles::of normalises aliases, so 'nurse' and 'clinic_staff' find the same users
+            $query->roleIs(Roles::of($request->role) ?? $request->role);
         }
 
         if ($request->has('status') && $request->status != 'all') {
@@ -222,17 +212,12 @@ class UserController extends Controller
     {
         $user = $request->user();
         $allowedStaff = ['clinic_staff', 'nurse', 'dentist', 'admin'];
-        if (!in_array($user->role_slug, $allowedStaff) && !in_array($user->attributes['role'] ?? '', $allowedStaff)) {
+        if (!in_array(Roles::of($user), $allowedStaff)) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $query = User::query()
-            ->where(function ($q) {
-                $q->whereIn('role', ['student', 'faculty_staff'])
-                  ->orWhereHas('roleRelation', function ($rq) {
-                      $rq->whereIn('slug', ['student', 'faculty_staff']);
-                  });
-            })
+            ->roleIs(['student', 'faculty_staff'])
             ->where('is_active', true);
 
         if ($request->has('query') && $request->query('query') != '') {
@@ -245,7 +230,7 @@ class UserController extends Controller
             });
         }
 
-        $users = $query->limit(5)->get(['id', 'name', 'first_name', 'middle_name', 'last_name', 'suffix', 'student_id', 'role', 'role_id', 'grade_level', 'section', 'avatar']);
+        $users = $query->limit(5)->get(['id', 'name', 'first_name', 'middle_name', 'last_name', 'suffix', 'student_id', 'role_id', 'grade_level', 'section', 'avatar']);
 
         return response()->json(['users' => $users]);
     }
@@ -257,19 +242,14 @@ class UserController extends Controller
     {
         $user = $request->user();
         $allowedStaff = ['clinic_staff', 'nurse', 'dentist', 'admin'];
-        if (!in_array($user->role_slug, $allowedStaff) && !in_array($user->attributes['role'] ?? '', $allowedStaff)) {
+        if (!in_array(Roles::of($user), $allowedStaff)) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $type = $request->query('type', 'student'); // 'student' or 'faculty_staff'
         
         $query = User::query()
-            ->where(function ($q) use ($type) {
-                $q->where('role', $type)
-                  ->orWhereHas('roleRelation', function ($rq) use ($type) {
-                      $rq->where('slug', $type);
-                  });
-            })
+            ->roleIs(Roles::of($type) ?? $type)
             ->where('is_active', true);
 
         if ($request->has('search') && $request->query('search') != '') {
@@ -311,7 +291,7 @@ class UserController extends Controller
     {
         $authUser = $request->user();
         $allowedStaff = ['clinic_staff', 'nurse', 'dentist', 'admin'];
-        if (!in_array($authUser->role_slug, $allowedStaff) && !in_array($authUser->attributes['role'] ?? '', $allowedStaff) && $authUser->id !== $user->id) {
+        if (!in_array(Roles::of($authUser), $allowedStaff) && $authUser->id !== $user->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -464,8 +444,6 @@ class UserController extends Controller
     private function assignAccessFields(User $user, array $validated, string $role, int $roleId): void
     {
         $user->role_id = $roleId;
-        // Canonical slug (nurse -> clinic_staff) so it always fits the users.role column
-        $user->role = Roles::of($role) ?? $role;
 
         if ($role === 'admin' && isset($validated['has_medical_access'])) {
             $user->has_medical_access = (bool) $validated['has_medical_access'];

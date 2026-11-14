@@ -468,7 +468,7 @@ class ClinicRecordController extends Controller
         $pick = $request->boolean('pick');
 
         $users = User::with('patient')
-            ->whereIn('role', ['student', 'faculty_staff'])
+            ->roleIs(['student', 'faculty_staff'])
             ->when($search, function ($query) use ($search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'like', "%{$search}%")
@@ -482,7 +482,7 @@ class ClinicRecordController extends Controller
                 });
             })
             // All columns ProfileReadiness reads must be selected, or they count as empty.
-            ->select(['id', 'name', 'first_name', 'last_name', 'email', 'student_id', 'role', 'contact_no', 'department', 'grade_level', 'section', 'avatar', 'date_of_birth', 'sex', 'address'])
+            ->select(['id', 'name', 'first_name', 'last_name', 'email', 'student_id', 'role_id', 'contact_no', 'department', 'grade_level', 'section', 'avatar', 'date_of_birth', 'sex', 'address'])
             ->orderBy('name')
             ->when($pick, fn ($q) => $q->limit(50))
             ->get();

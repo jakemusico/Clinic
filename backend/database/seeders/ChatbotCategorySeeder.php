@@ -52,5 +52,13 @@ class ChatbotCategorySeeder extends Seeder
                 );
             }
         }
+
+        // Link FAQs to their category row by name (case-insensitive).
+        foreach (ChatbotFaq::whereNull('category_id')->whereNotNull('category')->get() as $faq) {
+            $category = ChatbotCategory::whereRaw('LOWER(name) = ?', [strtolower(trim($faq->category))])->first();
+            if ($category) {
+                $faq->update(['category_id' => $category->id]);
+            }
+        }
     }
 }

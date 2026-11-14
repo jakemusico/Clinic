@@ -285,11 +285,11 @@ class ReportController extends Controller
 
         $staffQuery = User::orderBy('name');
         if ($roleType === 'dental') {
-            $staffQuery->where('role', 'dentist');
+            $staffQuery->roleIs('dentist');
         } elseif ($roleType === 'medical') {
-            $staffQuery->where('role', 'clinic_staff');
+            $staffQuery->roleIs('clinic_staff');
         } else {
-            $staffQuery->whereIn('role', ['clinic_staff', 'dentist']);
+            $staffQuery->roleIs(['clinic_staff', 'dentist']);
         }
         $staff = $staffQuery->get(['id', 'name']);
         $filterServices = ClinicService::orderBy('name')->get(['id', 'name']);
@@ -389,11 +389,11 @@ class ReportController extends Controller
     {
         $staffQuery = User::orderBy('name');
         if ($roleType === 'dental') {
-            $staffQuery->where('role', 'dentist');
+            $staffQuery->roleIs('dentist');
         } elseif ($roleType === 'medical') {
-            $staffQuery->where('role', 'clinic_staff');
+            $staffQuery->roleIs('clinic_staff');
         } else {
-            $staffQuery->whereIn('role', ['clinic_staff', 'dentist']);
+            $staffQuery->roleIs(['clinic_staff', 'dentist']);
         }
         return [
             'staff'     => $staffQuery->get(['id', 'name']),
@@ -486,12 +486,13 @@ class ReportController extends Controller
                 $q = DB::table($table)
                     ->join('patients as p', 'p.id', '=', "{$alias}.patient_id")
                     ->leftJoin('users as u', 'u.id', '=', 'p.user_id')
+                    ->leftJoin('roles as ur', 'ur.id', '=', 'u.role_id')
                     ->whereRaw("COALESCE({$alias}.{$dateCol}, DATE({$alias}.created_at)) BETWEEN ? AND ?", [$dateFrom, $dateTo]);
                 if ($care === 'dental') {
                     $q->where(fn ($x) => $x->where("{$alias}.status", 'completed')->orWhereNull("{$alias}.status"));
                 }
                 $this->applyConsultationFilters($q, $alias, $serviceId, $svcName, $staffId);
-                foreach ($q->selectRaw("COALESCE(u.role, 'student') AS role, COUNT(*) AS c")->groupBy('role')->pluck('c', 'role') as $role => $c) {
+                foreach ($q->selectRaw("COALESCE(ur.slug, 'student') AS role, COUNT(*) AS c")->groupBy('role')->pluck('c', 'role') as $role => $c) {
                     if (isset($roleCounts[$role])) {
                         $roleCounts[$role] += (int) $c;
                     }
@@ -1028,7 +1029,8 @@ class ReportController extends Controller
         // each conversation is joined in), instead of loading every conversation with all its messages.
         $firstStaffReply = DB::table('messages as m')
             ->join('users as u', 'u.id', '=', 'm.sender_id')
-            ->whereIn('u.role', ['clinic_staff', 'dentist'])
+            ->join('roles as ur', 'ur.id', '=', 'u.role_id')
+            ->whereIn('ur.slug', ['clinic_staff', 'dentist'])
             ->whereNull('m.deleted_at')
             ->groupBy('m.conversation_id')
             ->selectRaw('m.conversation_id, MIN(m.created_at) AS first_staff_at');

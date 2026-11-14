@@ -293,12 +293,12 @@ class NotificationController extends Controller
 
         // Fallback deduction if target_type is not yet explicitly set
         if (!$type) {
-            if ($notification->type === 'announcement' || $notification->linked_id) {
+            if ($notification->type === 'announcement') {
                 $type = 'announcement';
-                $id   = $notification->linked_id;
+                $id   = $notification->target_id;
             } elseif ($notification->action_url === '/calendar') {
                 $type = 'calendar_event';
-                $id   = $notification->linked_id;
+                $id   = $notification->target_id;
             } elseif (stripos($notification->title, 'Stock') !== false || stripos($notification->title, 'Expired') !== false || stripos($notification->title, 'Expiring') !== false) {
                 $type = 'inventory_item';
             } elseif (stripos($notification->title, 'User') !== false) {

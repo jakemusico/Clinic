@@ -22,10 +22,11 @@ class User extends Authenticatable
     /**
      * Mass assignment (create/update/fill with request data) can set these columns.
      *
-     * NOT in this list on purpose, so request data can never reach them: `role`, `role_id`,
+     * NOT in this list on purpose, so request data can never reach them: `role_id`,
      * `is_active`, `must_change_password` and `has_medical_access`. Set those one by one in code,
      * e.g. `$user->role_id = $role->id;`, after the access decision has been made.
-     * (`role` is also kept in step with `role_id` by the saving hook below.)
+     * `role_id` is the only stored role; `$user->role` is a read/write alias resolved through
+     * the roles table (see getRoleAttribute / the saving hook).
      */
     protected $fillable = [
         'title',
@@ -61,6 +62,7 @@ class User extends Authenticatable
 
     protected $appends = [
         'name',
+        'role',
         'role_slug',
         'avatar_url',
     ];
@@ -149,8 +151,17 @@ class User extends Authenticatable
     }
 
     /**
-     * Accessor for role slug, resolving from roleRelation relationship or existing role column.
-     * Note: We use roleRelation (not role) to avoid naming conflict with the `role` DB column.
+     * `role` is not a column anymore: role_id -> roles is the single source of truth.
+     * Reading `$user->role` returns the canonical role slug (what the old column held),
+     * and writing `$user->role = 'slug'` is resolved to role_id by the saving hook.
+     */
+    public function getRoleAttribute(): ?string
+    {
+        return $this->role_slug;
+    }
+
+    /**
+     * Accessor for role slug, resolved through roleRelation / role_id.
      */
     public function getRoleSlugAttribute(): ?string
     {
@@ -158,8 +169,7 @@ class User extends Authenticatable
         if ($this->relationLoaded('roleRelation') && $this->getRelation('roleRelation')) {
             return $this->getRelation('roleRelation')->slug;
         }
-        // Fallback to the raw role column value
-        return $this->attributes['role'] ?? null;
+        return Roles::slugForId($this->role_id);
     }
 
     /**
@@ -170,16 +180,13 @@ class User extends Authenticatable
         if ($this->relationLoaded('roleRelation') && $this->getRelation('roleRelation')) {
             return $this->getRelation('roleRelation')->name;
         }
-        if (!empty($this->role_id)) {
-            return Role::find($this->role_id)?->name;
-        }
-        return null;
+        return Roles::nameForId($this->role_id);
     }
 
     // --- Relationships ---
 
     /**
-     * BelongsTo Role (named roleRelation to avoid conflict with the `role` column).
+     * BelongsTo Role (named roleRelation to avoid conflict with the `role` accessor).
      * Use ->load('roleRelation') or ->with('roleRelation') everywhere.
      */
     public function roleRelation(): BelongsTo
@@ -250,11 +257,28 @@ class User extends Authenticatable
         return Roles::is($this, Roles::FACULTY);
     }
 
+    /**
+     * Filter users by role slug(s) — the query-side counterpart of $user->role.
+     * Aliases are normalised ('nurse' -> 'clinic_staff', 'faculty' -> 'faculty_staff').
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
+     */
+    public function scopeRoleIs($query, string|array $roles)
+    {
+        $slugs = collect((array) $roles)
+            ->map(fn ($r) => Roles::of($r))
+            ->filter()
+            ->unique()
+            ->values();
+
+        return $query->whereHas('roleRelation', fn ($q) => $q->whereIn('slug', $slugs));
+    }
+
     protected static function booted()
     {
         static::creating(function ($user) {
             if (empty($user->title)) {
-                $role = $user->role_slug ?? $user->attributes['role'] ?? '';
+                $role = $user->role_slug ?? '';
                 if ($role === 'dentist') {
                     $user->title = 'Dr.';
                 } elseif (in_array($role, ['clinic_staff', 'nurse'])) {
@@ -279,21 +303,19 @@ class User extends Authenticatable
                 $user->attributes['name'] = $fullName;
             }
 
-            // Sync role_id and role column
-            if (!empty($user->role_id)) {
-                $role = Role::find($user->role_id);
-                if ($role) {
-                    // always the canonical slug: an alias such as 'nurse' is not a value of the users.role column
-                    $user->attributes['role'] = Roles::of($role->slug) ?? $role->slug;
+            // `role` is not a column: a slug written to it (e.g. $user->role = 'admin')
+            // is resolved to role_id — but only when role_id was not set explicitly,
+            // since role_id is the authoritative value — then removed from the attributes
+            // so the insert/update never references the dropped column.
+            if (array_key_exists('role', $user->attributes)) {
+                $slug = Roles::of($user->attributes['role']) ?? $user->attributes['role'];
+                if (empty($user->role_id) && $slug) {
+                    $role = Role::where('slug', $slug)->first();
+                    if ($role) {
+                        $user->role_id = $role->id;
+                    }
                 }
-            } elseif (!empty($user->attributes['role'])) {
-                $slug = $user->attributes['role'];
-                if ($slug === 'nurse') $slug = 'clinic_staff';
-                $role = Role::where('slug', $slug)->orWhere('slug', $user->attributes['role'])->first();
-                if ($role) {
-                    $user->role_id = $role->id;
-                    $user->attributes['role'] = Roles::of($role->slug) ?? $role->slug;
-                }
+                unset($user->attributes['role']);
             }
         });
     }

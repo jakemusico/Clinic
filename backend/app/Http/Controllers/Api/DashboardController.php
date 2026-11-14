@@ -456,16 +456,14 @@ class DashboardController extends Controller
         $todayAppointments = Appointment::whereBetween('scheduled_at', [$from, $to])->count();
         $consultationsToday = $this->consultationsToday(ClinicRecord::class, 'visit_date')
             + $this->consultationsToday(DentalConsultation::class, 'consultation_date');
-        $registeredStudents = Cache::remember(CacheVersion::key('users', 'registered-students'), self::STUDENT_COUNT_TTL, fn () => User::where('role', 'student')->count());
+        $registeredStudents = Cache::remember(CacheVersion::key('users', 'registered-students'), self::STUDENT_COUNT_TTL, fn () => User::roleIs('student')->count());
         $invAlerts = $this->getInventoryAlertSummary();
 
         // Unanswered conversations count (open with no staff reply in 24h). Conversation state is never cached.
         $unansweredConversations = Conversation::where('status', 'open')
             ->where('created_at', '<', Carbon::now()->subHours(24))
             ->whereDoesntHave('messages', function ($q) {
-                $q->whereHas('sender', function ($sq) {
-                    $sq->whereIn('role', ['clinic_staff', 'dentist']);
-                });
+                $q->whereHas('sender', fn ($sq) => $sq->roleIs(['clinic_staff', 'dentist']));
             })
             ->count();
 

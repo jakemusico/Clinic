@@ -121,7 +121,7 @@ class AppServiceProvider extends ServiceProvider
         User::created(fn () => CacheVersion::bump('users'));
         User::deleted(fn () => CacheVersion::bump('users'));
         User::updated(function (User $user) {
-            if ($user->wasChanged(['is_active', 'role', 'role_id', 'first_name', 'middle_name', 'last_name', 'suffix', 'title', 'avatar'])) {
+            if ($user->wasChanged(['is_active', 'role_id', 'first_name', 'middle_name', 'last_name', 'suffix', 'title', 'avatar'])) {
                 CacheVersion::bump('users');
             }
         });

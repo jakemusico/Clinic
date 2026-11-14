@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Role;
 use App\Models\User;
 
 /**
@@ -38,6 +39,26 @@ final class Roles
 
     /** Roles that are patients and may only see their own data. */
     public const PATIENTS = [self::STUDENT, self::FACULTY];
+
+    /** Roles table rows keyed by id, loaded once per request (the table has a handful of rows). */
+    private static ?array $byId = null;
+
+    private static function byId(): array
+    {
+        return self::$byId ??= Role::all()->keyBy('id')->all();
+    }
+
+    /** Role slug for a role_id without touching the relation (no N+1, nothing added to toArray). */
+    public static function slugForId(int|string|null $id): ?string
+    {
+        return $id !== null ? (self::byId()[(int) $id]->slug ?? null) : null;
+    }
+
+    /** Role display name for a role_id. */
+    public static function nameForId(int|string|null $id): ?string
+    {
+        return $id !== null ? (self::byId()[(int) $id]->name ?? null) : null;
+    }
 
     /** Canonical role slug of a user (or of a raw slug), or null when there is none. */
     public static function of(User|string|null $who): ?string

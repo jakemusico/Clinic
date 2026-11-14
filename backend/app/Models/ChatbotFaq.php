@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ChatbotFaq extends Model
 {
@@ -10,6 +11,7 @@ class ChatbotFaq extends Model
         'question',
         'answer',
         'category',
+        'category_id',
         'keywords',
         'sort_order',
         'is_active',
@@ -23,6 +25,15 @@ class ChatbotFaq extends Model
             'show_on_help' => 'boolean',
             'sort_order'   => 'integer',
         ];
+    }
+
+    /**
+     * The category row this FAQ belongs to. `category` stays as the denormalized
+     * name snapshot used for display and filtering.
+     */
+    public function categoryRelation(): BelongsTo
+    {
+        return $this->belongsTo(ChatbotCategory::class, 'category_id');
     }
 
     /**
