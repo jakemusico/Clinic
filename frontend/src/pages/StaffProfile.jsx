@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import DashboardLayout from '../components/DashboardLayout'
 import { useAuth } from '../context/AuthContext'
@@ -12,6 +13,7 @@ import useProfilePhoto from '../hooks/useProfilePhoto'
 import { getApiErrorMessage, getFieldErrors } from '../utils/apiError'
 import './ProfilePage.css'
 import { EMPTY } from '../utils/emptyValue'
+import SetPasswordBanner from '../components/SetPasswordBanner'
 
 // ── SVG Icon Helper ──────────────────────────────────────────────────────────
 function ProfileIcon({ name, size = 16 }) {
@@ -45,7 +47,8 @@ export default function StaffProfile() {
   const roleName  = isAdmin ? 'Administrator' : (isDentist ? 'Dentist' : 'Nurse')
 
   // ── Active Tab ─────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState('profile') // 'profile' | 'account'
+  const [searchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') === 'account' ? 'account' : 'profile') // 'profile' | 'account'
 
   // ── View / Edit Mode ────────────────────────────────────────────────────────
   const [isEditing, setIsEditing] = useState(false)
@@ -56,7 +59,10 @@ export default function StaffProfile() {
   const [showDiscardModal, setShowDiscardModal] = useState(false)
   const [pendingTab, setPendingTab] = useState(null)
   const [savedData, setSavedData] = useState(null)
-  const [showChangePassword, setShowChangePassword] = useState(false)
+  const [showChangePassword, setShowChangePassword] = useState(() => searchParams.get('password') === '1')
+  // Google sign-ups have no usable password yet: the section becomes "Set Password"
+  // and the current-password field is hidden until has_password flips to true.
+  const needsPasswordSetup = user?.has_password === false
 
   // ── Form State ────────────────────────────────────────────────────────────
   const [formData, setFormData] = useState({
@@ -254,13 +260,16 @@ export default function StaffProfile() {
 
   const handleChangePassword = async (e) => {
     e.preventDefault()
-    if (!passwordForm.current_password) { toast.error('Please enter your current password.'); return }
+    if (!needsPasswordSetup && !passwordForm.current_password) { toast.error('Please enter your current password.'); return }
     if (!checkPasswordRules(passwordForm.password)) { toast.error('New password does not meet all requirements.'); return }
     if (passwordForm.password !== passwordForm.password_confirmation) { toast.error('New passwords do not match.'); return }
     setChangingPassword(true)
     try {
       await authApi.changePassword(passwordForm)
-      toast.success('Password updated successfully.')
+      toast.success(needsPasswordSetup
+        ? 'Password set! You can now log in with your email and password.'
+        : 'Password updated successfully.')
+      updateUser({ has_password: true, must_change_password: false })
       setPasswordForm({ current_password: '', password: '', password_confirmation: '' })
       setShowChangePassword(false)
     } catch (err) {
@@ -350,6 +359,8 @@ export default function StaffProfile() {
 
           {/* RIGHT COLUMN: TABS AND FORM */}
           <div className="staff-main-content">
+
+            <SetPasswordBanner onAction={() => { setActiveTab('account'); setShowChangePassword(true) }} />
 
             {/* Tabs Navigation */}
             <div className="staff-tabs-card">
@@ -536,14 +547,14 @@ export default function StaffProfile() {
                 <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 'var(--radius-sm, 8px)', padding: '1.25rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: showChangePassword ? '1rem' : 0 }}>
                     <div>
-                      <h4 style={{ fontSize: '0.92rem', fontWeight: 600, color: '#0F172A', marginBottom: '0.15rem' }}>Change Password</h4>
-                      {!showChangePassword && <p style={{ fontSize: '0.8rem', color: '#64748B', margin: 0 }}>Update your account password.</p>}
+                      <h4 style={{ fontSize: '0.92rem', fontWeight: 600, color: '#0F172A', marginBottom: '0.15rem' }}>{needsPasswordSetup ? 'Set Password' : 'Change Password'}</h4>
+                      {!showChangePassword && <p style={{ fontSize: '0.8rem', color: '#64748B', margin: 0 }}>{needsPasswordSetup ? 'Create a password to enable email sign-in.' : 'Update your account password.'}</p>}
                     </div>
                     {!showChangePassword ? (
                       <button type="button" className="btn-secondary"
                         style={{ fontSize: '0.82rem', padding: '0.45rem 0.85rem', flexShrink: 0 }}
                         onClick={() => setShowChangePassword(true)}>
-                        Change Password
+                        {needsPasswordSetup ? 'Set Password' : 'Change Password'}
                       </button>
                     ) : (
                       <button type="button" className="btn-secondary"
@@ -557,9 +568,12 @@ export default function StaffProfile() {
                   {showChangePassword && (
                     <form onSubmit={handleChangePassword}>
                       <p style={{ fontSize: '0.8rem', color: '#64748B', marginBottom: '1rem' }}>
-                        Password must be at least 8 characters with uppercase, lowercase, number, and symbol.
+                        {needsPasswordSetup
+                          ? 'You signed in with Google, so there is no current password. Setting one enables manual email/password login.'
+                          : 'Password must be at least 8 characters with uppercase, lowercase, number, and symbol.'}
                       </p>
                       <div className="profile-form-grid">
+                        {!needsPasswordSetup && (
                         <div className="profile-field-group">
                           <label>Current Password</label>
                           <div style={{ position: 'relative' }}>
@@ -572,6 +586,7 @@ export default function StaffProfile() {
                             <EyeBtn field="current" />
                           </div>
                         </div>
+                        )}
                         <div className="profile-field-group">
                           <label>New Password</label>
                           <div style={{ position: 'relative' }}>
@@ -612,7 +627,7 @@ export default function StaffProfile() {
 
                       <div className="pw-form-actions" style={{ marginTop: '1.25rem', display: 'flex', justifyContent: 'flex-end' }}>
                         <button type="submit" className="btn-primary" disabled={changingPassword}>
-                          {changingPassword ? 'Updating…' : 'Update Password'}
+                          {changingPassword ? 'Updating…' : (needsPasswordSetup ? 'Set Password' : 'Update Password')}
                         </button>
                       </div>
                     </form>

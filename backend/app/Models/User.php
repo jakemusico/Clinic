@@ -83,6 +83,7 @@ class User extends Authenticatable
             'is_active'           => 'boolean',
             'must_change_password'=> 'boolean',
             'has_medical_access'  => 'boolean',
+            'has_password'        => 'boolean',
         ];
     }
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Notification;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\AuditLogger;
@@ -162,11 +163,22 @@ class GoogleAuthController extends Controller
             $user->is_active            = true;
             $user->must_change_password = false;
             $user->has_medical_access   = false;
+            $user->has_password         = false;   // random unusable password until they set one
             $user->save();
 
             // Google gives no DOB/sex yet — the profile stays incomplete and the 100%
             // readiness rule keeps applying until My Profile is finished.
             $user->patient()->create([]);
+
+            // Security prompt: nudge them to set a local password so they can
+            // also sign in manually with email + password later.
+            Notification::create([
+                'user_id'    => $user->id,
+                'title'      => 'Set Your Account Password',
+                'message'    => 'You signed in with Google. For added security and manual email login access, please set a local password in your Account Settings.',
+                'type'       => 'warning',
+                'action_url' => '/profile?tab=account&password=1',
+            ]);
 
             return $user;
         });

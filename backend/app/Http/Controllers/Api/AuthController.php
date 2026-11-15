@@ -559,14 +559,14 @@ class AuthController extends Controller
         /** @var User $user */
         $user = $request->user();
 
+        // Accounts without a usable password (Google sign-ups) set their first
+        // one without proving a current password; everyone else must.
         $validated = $request->validate([
-            // Google-created accounts have a random unusable password: they are already
-            // signed in, so they may set their first password without the current one.
-            'current_password'      => [$user->google_id ? 'nullable' : 'required', 'string'],
+            'current_password'      => [$user->has_password ? 'required' : 'nullable', 'string'],
             'password'              => ['required', 'confirmed', Password::min(8)],
         ]);
 
-        if (! $user->google_id || $request->filled('current_password')) {
+        if ($user->has_password) {
             if (! Hash::check($validated['current_password'] ?? '', $user->password)) {
                 throw ValidationException::withMessages([
                     'current_password' => ['The current password provided is incorrect.'],
@@ -574,9 +574,20 @@ class AuthController extends Controller
             }
         }
 
+        $firstPassword = ! $user->has_password;
+
         $user->password             = Hash::make($validated['password']);
+        $user->has_password         = true;   // not mass-assignable, set explicitly
         $user->must_change_password = false;   // not mass-assignable, set explicitly
         $user->save();
+
+        // A Google sign-up just set its first password: clear the security prompt.
+        if ($firstPassword) {
+            Notification::where('user_id', $user->id)
+                ->where('title', 'Set Your Account Password')
+                ->where('is_read', false)
+                ->update(['is_read' => true]);
+        }
 
         // A new password signs out every other session (a stolen token stops working). The token
         // making this request is kept, so the user stays signed in on this device.

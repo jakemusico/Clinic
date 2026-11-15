@@ -38,6 +38,9 @@ function allValid(pw) {
 export default function ChangePasswordPage() {
   const { user, updateUser, logout } = useAuth()
   const navigate = useNavigate()
+  // Google sign-ups have no usable password — they set their first one here
+  // without a current-password field.
+  const needsPasswordSetup = user?.has_password === false
 
   const [form, setForm] = useState({
     current_password:      '',
@@ -70,7 +73,7 @@ export default function ChangePasswordPage() {
     e.preventDefault()
     const errs = {}
 
-    if (!form.current_password) errs.current_password = 'Required.'
+    if (!needsPasswordSetup && !form.current_password) errs.current_password = 'Required.'
     if (!allValid(form.password)) errs.password = 'Password does not meet all requirements.'
     if (form.password !== form.password_confirmation) errs.password_confirmation = 'Passwords do not match.'
 
@@ -87,9 +90,11 @@ export default function ChangePasswordPage() {
         password:              form.password,
         password_confirmation: form.password_confirmation,
       })
-      // Clear the flag in the local user object
-      updateUser({ must_change_password: false })
-      toast.success('Password changed! Welcome to the system.')
+      // Clear the flags in the local user object
+      updateUser({ must_change_password: false, has_password: true })
+      toast.success(needsPasswordSetup
+        ? 'Password set! Welcome to the system.'
+        : 'Password changed! Welcome to the system.')
       navigate(ROLE_ROUTES[user?.role] || '/login', { replace: true })
     } catch (err) {
       const fieldErrors = getFieldErrors(err)
@@ -142,13 +147,16 @@ export default function ChangePasswordPage() {
             Set Your New Password
           </h1>
           <p style={{ fontSize: '0.84rem', color: 'var(--text-sub)', margin: 0 }}>
-            Your account requires you to change your temporary password before continuing.
+            {needsPasswordSetup
+              ? 'You signed in with Google. Create a password so you can also log in with your email.'
+              : 'Your account requires you to change your temporary password before continuing.'}
           </p>
         </div>
 
         <form onSubmit={handleSubmit} noValidate>
 
-          {/* Current (temporary) password */}
+          {/* Current (temporary) password — hidden for Google sign-ups setting their first one */}
+          {!needsPasswordSetup && (
           <div className="form-group" style={{ marginBottom: '1rem' }}>
             <label className="form-label">Temporary Password *</label>
             <div style={{ position: 'relative' }}>
@@ -170,6 +178,7 @@ export default function ChangePasswordPage() {
             </div>
             {errors.current_password && <span className="field-error">{errors.current_password}</span>}
           </div>
+          )}
 
           {/* New password */}
           <div className="form-group" style={{ marginBottom: '1rem' }}>

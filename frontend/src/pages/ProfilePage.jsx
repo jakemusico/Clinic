@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import DashboardLayout from '../components/DashboardLayout'
 import { useAuth } from '../context/AuthContext'
@@ -14,6 +15,7 @@ import { getApiErrorMessage, getFieldErrors } from '../utils/apiError'
 import { properCase, sentenceCase } from '../utils/textCase'
 import { SCHOOL_YEARS } from '../constants/schoolData'
 import Dropdown from '../components/Dropdown'
+import SetPasswordBanner from '../components/SetPasswordBanner'
 import './ProfilePage.css'
 import { EMPTY } from '../utils/emptyValue'
 
@@ -113,7 +115,9 @@ function PatientProfilePage() {
   // Profile photo: crop dialog + multipart upload/remove (shared by every role)
   const { pickPhoto, requestRemove, busy: photoBusy, photoUi } = useProfilePhoto()
 
-  const [activeTab, setActiveTab] = useState('student')
+  const [searchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState(() =>
+    ['account', 'all'].includes(searchParams.get('tab')) ? searchParams.get('tab') : 'student')
   const [saving, setSaving] = useState(false)
   const [loadingProfile, setLoadingProfile] = useState(true)
   const [showPrintModal, setShowPrintModal] = useState(false)
@@ -126,7 +130,10 @@ function PatientProfilePage() {
   const [tabErrors, setTabErrors] = useState(new Set()) // tabs that currently have validation errors (red dot)
   const [savedData, setSavedData] = useState(() => (user ? buildFormData(user) : null))
   const [readinessInfo, setReadinessInfo] = useState(null) // { percent, missing } from the API (same source as the consultation badges)
-  const [showChangePassword, setShowChangePassword] = useState(false)
+  const [showChangePassword, setShowChangePassword] = useState(() => searchParams.get('password') === '1')
+  // Google sign-ups have no usable password yet: the section becomes "Set Password"
+  // and the current-password field is hidden until has_password flips to true.
+  const needsPasswordSetup = user?.has_password === false
 
   const { sections: dbSections, gradeLevels: dbGradeLevels } = useSectionsAndGradeLevels()
 
@@ -311,13 +318,16 @@ function PatientProfilePage() {
 
   const handleChangePassword = async (e) => {
     e.preventDefault()
-    if (!passwordForm.current_password) { toast.error('Please enter your current password.'); return }
+    if (!needsPasswordSetup && !passwordForm.current_password) { toast.error('Please enter your current password.'); return }
     if (!checkPasswordRules(passwordForm.password)) { toast.error('New password does not meet all requirements. Check the checklist below.'); return }
     if (passwordForm.password !== passwordForm.password_confirmation) { toast.error('New passwords do not match.'); return }
     setChangingPassword(true)
     try {
       await authApi.changePassword(passwordForm)
-      toast.success('Password updated successfully.')
+      toast.success(needsPasswordSetup
+        ? 'Password set! You can now log in with your email and password.'
+        : 'Password updated successfully.')
+      updateUser({ has_password: true, must_change_password: false })
       setPasswordForm({ current_password: '', password: '', password_confirmation: '' })
       setShowChangePassword(false)
     } catch (err) {
@@ -455,6 +465,8 @@ function PatientProfilePage() {
         </div>
 
         {photoUi}
+
+        <SetPasswordBanner onAction={() => { setActiveTab('account'); setShowChangePassword(true) }} />
 
         {/* TABS */}
         <div className="profile-nav-tabs-wrap">
@@ -856,14 +868,14 @@ function PatientProfilePage() {
             <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 'var(--radius-sm, 8px)', padding: '1.25rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: showChangePassword ? '1rem' : 0 }}>
                 <div>
-                  <h4 style={{ fontSize: '0.92rem', fontWeight: 600, color: '#0F172A', marginBottom: '0.15rem' }}>Change Password</h4>
-                  {!showChangePassword && <p style={{ fontSize: '0.8rem', color: '#64748B', margin: 0 }}>Update your account password.</p>}
+                  <h4 style={{ fontSize: '0.92rem', fontWeight: 600, color: '#0F172A', marginBottom: '0.15rem' }}>{needsPasswordSetup ? 'Set Password' : 'Change Password'}</h4>
+                  {!showChangePassword && <p style={{ fontSize: '0.8rem', color: '#64748B', margin: 0 }}>{needsPasswordSetup ? 'Create a password to enable email sign-in.' : 'Update your account password.'}</p>}
                 </div>
                 {!showChangePassword ? (
                   <button type="button" className="btn-secondary"
                     style={{ fontSize: '0.82rem', padding: '0.45rem 0.85rem', flexShrink: 0 }}
                     onClick={() => setShowChangePassword(true)}>
-                    Change Password
+                    {needsPasswordSetup ? 'Set Password' : 'Change Password'}
                   </button>
                 ) : (
                   <button type="button" className="btn-secondary"
@@ -877,9 +889,12 @@ function PatientProfilePage() {
               {showChangePassword && (
                 <form onSubmit={handleChangePassword}>
                   <p style={{ fontSize: '0.8rem', color: '#64748B', marginBottom: '1rem' }}>
-                    Password must be at least 8 characters long.
+                    {needsPasswordSetup
+                      ? 'You signed in with Google, so there is no current password. Setting one enables manual email/password login.'
+                      : 'Password must be at least 8 characters long.'}
                   </p>
                   <div className="profile-form-grid">
+                    {!needsPasswordSetup && (
                     <div className="profile-field-group">
                       <label>Current Password</label>
                       <div style={{ position: 'relative' }}>
@@ -895,6 +910,7 @@ function PatientProfilePage() {
                         </button>
                       </div>
                     </div>
+                    )}
                     <div className="profile-field-group">
                       <label>New Password</label>
                       <div style={{ position: 'relative' }}>
@@ -940,7 +956,7 @@ function PatientProfilePage() {
                   <div className="pw-form-actions" style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
                     <button type="submit" className="btn-primary" disabled={changingPassword}
                       style={{ fontSize: '0.82rem', padding: '0.45rem 0.95rem' }}>
-                      {changingPassword ? 'Updating Password...' : 'Update Password'}
+                      {changingPassword ? 'Updating Password...' : (needsPasswordSetup ? 'Set Password' : 'Update Password')}
                     </button>
                   </div>
                 </form>
