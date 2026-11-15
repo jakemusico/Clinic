@@ -61,7 +61,7 @@ class ChatController extends Controller
     /** Most conversations a staff list returns when the caller does not page. */
     private const CONVERSATION_LIST_LIMIT = 300;
 
-    private const SENDER_COLUMNS = 'sender:id,name,first_name,middle_name,last_name,suffix,title,role,avatar';
+    private const SENDER_COLUMNS = 'sender:id,name,first_name,middle_name,last_name,suffix,title,avatar';
 
     /**
      * Put the newest MESSAGE_PAGE messages of a conversation on it (oldest first, soft-deleted "unsent"
@@ -456,7 +456,7 @@ class ChatController extends Controller
                 ->where('sender_id', $user->id)
                 ->first();
             if ($existing) {
-                $existing->load('sender:id,name,first_name,middle_name,last_name,suffix,title,role,avatar');
+                $existing->load('sender:id,name,first_name,middle_name,last_name,suffix,title,avatar');
                 return response()->json([
                     'message'      => $existing,
                     'conversation' => $conversation->fresh([
@@ -519,7 +519,7 @@ class ChatController extends Controller
             \Log::error('Chat notification error: ' . $e->getMessage());
         }
 
-        $message->load('sender:id,name,first_name,middle_name,last_name,suffix,title,role,avatar');
+        $message->load('sender:id,name,first_name,middle_name,last_name,suffix,title,avatar');
 
         return response()->json([
             'message'      => $message,
