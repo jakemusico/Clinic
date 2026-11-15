@@ -24,7 +24,7 @@ class User extends Authenticatable
     protected array $properCaseFields = [
         'title', 'first_name', 'middle_name', 'last_name', 'suffix',
         'address', 'department', 'specialization', 'grade_level', 'section',
-        'school_year', 'guardian_relationship',
+        'school_year',
     ];
 
     /**
@@ -59,7 +59,6 @@ class User extends Authenticatable
         'date_of_birth',
         'sex',
         'terms_accepted_at',
-        'guardian_relationship',
         'last_active_at',
     ];
 
@@ -324,6 +323,34 @@ class User extends Authenticatable
                     }
                 }
                 unset($user->attributes['role']);
+            }
+        });
+
+        // Demographics are stored on both users and patients; users is the write
+        // path, so keep the linked patient row in sync whenever they change.
+        static::saved(function ($user) {
+            if (! $user->wasChanged(['date_of_birth', 'sex', 'age'])) {
+                return;
+            }
+
+            $patient = $user->patient()->first();
+            if (! $patient) {
+                return;
+            }
+
+            $sync = [];
+            if ($user->wasChanged('date_of_birth')) {
+                $sync['date_of_birth'] = $user->date_of_birth;
+            }
+            if ($user->wasChanged('sex')) {
+                $sync['gender'] = $user->sex;
+            }
+            if ($user->wasChanged('age')) {
+                $sync['age'] = $user->age;
+            }
+
+            if ($sync) {
+                $patient->fill($sync)->save();
             }
         });
     }

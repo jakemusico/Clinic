@@ -27,6 +27,24 @@ class ChatbotFaq extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        // `category` is the denormalized lowercase name used for display and
+        // filtering; `category_id` is the FK to chatbot_categories. Keep the two
+        // in sync whichever side is written.
+        static::saving(function (ChatbotFaq $faq) {
+            if ($faq->category_id) {
+                $name = ChatbotCategory::whereKey($faq->category_id)->value('name');
+                if ($name !== null) {
+                    $faq->category = strtolower(trim($name));
+                }
+            } elseif ($faq->category) {
+                $faq->category_id = ChatbotCategory::whereRaw('LOWER(name) = ?', [mb_strtolower(trim($faq->category))])
+                    ->value('id');
+            }
+        });
+    }
+
     /**
      * The category row this FAQ belongs to. `category` stays as the denormalized
      * name snapshot used for display and filtering.

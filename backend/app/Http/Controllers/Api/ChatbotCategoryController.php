@@ -86,9 +86,11 @@ class ChatbotCategoryController extends Controller
             'is_active'  => $validated['is_active'] ?? $chatbotCategory->is_active,
         ]);
 
-        // If category name changed, update all FAQs using the old name
+        // If category name changed, update all FAQs using the old name — both the
+        // FK-linked rows and legacy rows that only carry the category string.
         if ($oldName !== $newName) {
-            ChatbotFaq::where('category', $oldName)->update(['category' => $newName]);
+            ChatbotFaq::where('category_id', $chatbotCategory->id)->update(['category' => $newName]);
+            ChatbotFaq::whereNull('category_id')->where('category', $oldName)->update(['category' => $newName]);
         }
 
         return response()->json([

@@ -99,7 +99,6 @@ class AuthController extends Controller
                 'contact_no'            => $validated['contact_no'] ?? null,
                 'grade_level'           => $validated['grade_level'] ?? null,
                 'section'               => $validated['section'] ?? null,
-                'guardian_relationship' => $validated['guardian_relationship'] ?? null,
                 'address'               => $validated['address'] ?? null,
                 'terms_accepted_at'     => now(),
             ]);

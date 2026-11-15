@@ -177,3 +177,4 @@ Cached API data uses versioned keys (`App\Support\CacheVersion`), not cache tags
 
 - Never commit `.env` files. Use `.env.example` as the template.
 - The seeder creates demo accounts with a default password. Change or remove them before any real deployment.
+- Before a demo or deployment, remove leftover test rows with `php artisan db:clean-test-data` (add `--dry-run` first to preview). It deletes test announcements, bulk/gibberish chatbot question logs, test chat messages, unprofessional `patients.medical_history` lines and duplicate same-day appointments — it never touches rows a consultation points at.

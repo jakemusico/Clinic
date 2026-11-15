@@ -80,7 +80,7 @@ function buildFormData(user) {
     address: user?.address || '',
     contact_no: user?.contact_no || '',
     guardian_name: p.guardian_name || '',
-    guardian_relationship: p.guardian_relationship || user?.guardian_relationship || '',
+    guardian_relationship: p.guardian_relationship || '',
     guardian_contact: p.guardian_contact || '',
     guardian_email: p.guardian_email || '',
     emergency_name: p.emergency_name || '',
