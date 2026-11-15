@@ -50,6 +50,7 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? [
                 (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_VERIFY_SERVER_CERT : PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT) => false,
+                PDO::ATTR_PERSISTENT => true,
             ] : [],
         ],
 
