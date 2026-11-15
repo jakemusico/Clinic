@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Http;
 
 class AuthController extends Controller
 {
@@ -610,7 +611,7 @@ class AuthController extends Controller
         ]);
     }
 
-    /**
+/**
      * POST /api/auth/forgot-password
      * Always returns the same generic message (no account enumeration).
      * Generates a hashed, 60-minute reset token and emails the frontend link.
@@ -644,7 +645,37 @@ class AuthController extends Controller
             . '/reset-password?token=' . $token . '&email=' . urlencode($user->email);
 
         try {
-            Mail::to($user->email)->send(new PasswordResetMail($user, $resetUrl));
+            $brevoApiKey = env('BREVO_API_KEY');
+
+            if ($brevoApiKey) {
+                $mailable = new PasswordResetMail($user, $resetUrl);
+                $htmlContent = $mailable->render();
+
+                $response = Http::withHeaders([
+                    'api-key' => $brevoApiKey,
+                    'accept' => 'application/json',
+                    'content-type' => 'application/json',
+                ])->post('https://api.brevo.com/v3/smtp/email', [
+                    'sender' => [
+                        'name' => config('mail.from.name', 'FSUU Clinic'),
+                        'email' => config('mail.from.address'),
+                    ],
+                    'to' => [
+                        [
+                            'email' => $user->email,
+                            'name' => $user->name ?? $user->email,
+                        ],
+                    ],
+                    'subject' => 'Reset Your FSUU Clinic Password',
+                    'htmlContent' => $htmlContent,
+                ]);
+
+                if ($response->failed()) {
+                    throw new \RuntimeException('Brevo API error: ' . $response->body());
+                }
+            } else {
+                Mail::to($user->email)->send(new PasswordResetMail($user, $resetUrl));
+            }
         } catch (\Throwable $e) {
             // Don't leak delivery failures; the response stays generic.
             Log::error('Password reset email failed', ['user_id' => $user->id, 'error' => $e->getMessage()]);
