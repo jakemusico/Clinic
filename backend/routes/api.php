@@ -42,6 +42,10 @@ Route::prefix('auth')->group(function () {
     Route::get ('google/redirect',  [GoogleAuthController::class, 'redirect'])->middleware('throttle:oauth');
     Route::get ('google/callback',  [GoogleAuthController::class, 'callback'])->middleware('throttle:oauth');
     Route::post('google/complete',  [GoogleAuthController::class, 'complete'])->middleware('throttle:oauth');
+
+    // Password reset — public, rate-limited
+    Route::post('forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
+    Route::post('reset-password',  [AuthController::class, 'resetPassword'])->middleware('throttle:10,1');
 });
 
 // ── Public Settings (terms & privacy for registration page) ─────────────

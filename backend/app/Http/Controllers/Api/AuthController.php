@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\PasswordResetMail;
 use App\Models\Notification;
 use App\Models\User;
 use App\Models\Role;
@@ -16,6 +17,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
@@ -33,7 +36,7 @@ class AuthController extends Controller
             'last_name'             => ['required', 'string', 'max:100', ...NameRules::person()],
             'suffix'                => ['nullable', 'string', 'max:50', ...NameRules::suffix()],
             'email'                 => ['required', 'string', 'email', 'max:255', 'unique:users', 'regex:/@urios\.edu\.ph$/i'],
-            'password'              => ['required', 'confirmed', Password::min(8)],
+            'password'              => ['required', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
             'role'                  => ['required', 'string', 'in:student,faculty_staff'],
             'date_of_birth'         => ['required', 'date', 'before:today'],
             'sex'                   => ['required', 'string', 'in:male,female'],
@@ -563,7 +566,7 @@ class AuthController extends Controller
         // one without proving a current password; everyone else must.
         $validated = $request->validate([
             'current_password'      => [$user->has_password ? 'required' : 'nullable', 'string'],
-            'password'              => ['required', 'confirmed', Password::min(8)],
+            'password'              => ['required', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
         ]);
 
         if ($user->has_password) {
@@ -604,6 +607,103 @@ class AuthController extends Controller
 
         return response()->json([
             'message' => 'Password has been updated successfully.',
+        ]);
+    }
+
+    /**
+     * POST /api/auth/forgot-password
+     * Always returns the same generic message (no account enumeration).
+     * Generates a hashed, 60-minute reset token and emails the frontend link.
+     */
+    public function forgotPassword(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email' => ['required', 'email'],
+        ]);
+
+        $generic = response()->json([
+            'message' => 'If an account with that email exists, a password reset link has been sent.',
+        ]);
+
+        $user = User::where('email', $validated['email'])
+            ->where('is_active', true)
+            ->first();
+
+        if (! $user) {
+            return $generic;
+        }
+
+        $token = Str::random(64);
+
+        DB::table('password_reset_tokens')->updateOrInsert(
+            ['email' => $user->email],
+            ['token' => Hash::make($token), 'created_at' => now()]
+        );
+
+        $resetUrl = rtrim((string) config('app.frontend_url'), '/')
+            . '/reset-password?token=' . $token . '&email=' . urlencode($user->email);
+
+        try {
+            Mail::to($user->email)->send(new PasswordResetMail($user, $resetUrl));
+        } catch (\Throwable $e) {
+            // Don't leak delivery failures; the response stays generic.
+            Log::error('Password reset email failed', ['user_id' => $user->id, 'error' => $e->getMessage()]);
+        }
+
+        return $generic;
+    }
+
+    /**
+     * POST /api/auth/reset-password
+     * Verifies the emailed token, sets the new password, and revokes sessions.
+     */
+    public function resetPassword(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'token'                 => ['required', 'string'],
+            'email'                 => ['required', 'email'],
+            'password'              => ['required', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
+        ]);
+
+        $record = DB::table('password_reset_tokens')
+            ->where('email', $validated['email'])
+            ->first();
+
+        $expireMinutes = (int) config('auth.passwords.users.expire', 60);
+        $tokenValid = $record
+            && Hash::check($validated['token'], $record->token)
+            && now()->diffInMinutes(\Carbon\Carbon::parse($record->created_at), false) <= $expireMinutes;
+
+        $user = User::where('email', $validated['email'])
+            ->where('is_active', true)
+            ->first();
+
+        if (! $tokenValid || ! $user) {
+            throw ValidationException::withMessages([
+                'email' => ['This password reset link is invalid or has expired. Please request a new one.'],
+            ]);
+        }
+
+        $user->password             = Hash::make($validated['password']);
+        $user->has_password         = true;
+        $user->must_change_password = false;
+        $user->save();
+
+        // The account now has a real password: clear the Google sign-up prompt
+        // and revoke every existing session/token.
+        Notification::where('user_id', $user->id)
+            ->where('title', 'Set Your Account Password')
+            ->where('is_read', false)
+            ->update(['is_read' => true]);
+
+        $user->tokens()->delete();
+
+        DB::table('password_reset_tokens')->where('email', $validated['email'])->delete();
+
+        AuditLogger::log('password_reset', User::class, $user->id);
+
+        return response()->json([
+            'message' => 'Password has been reset successfully. You can now log in with your new password.',
         ]);
     }
 }
