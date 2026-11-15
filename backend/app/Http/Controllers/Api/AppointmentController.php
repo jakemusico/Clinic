@@ -427,6 +427,7 @@ class AppointmentController extends Controller
                 'status'              => 'pending', // an open appointment goes back to pending (to be confirmed again)
                 'reminder_24h_sent_at' => null,    // new time: reminders must be able to fire again
                 'reminder_1h_sent_at'  => null,
+                'reminder_30m_sent_at' => null,
             ]);
 
             return null;

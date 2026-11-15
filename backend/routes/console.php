@@ -13,6 +13,7 @@ Artisan::command('inspire', function () {
 // (* * * * * php /path/to/backend/artisan schedule:run). See the README.
 Schedule::command('inventory:sync-alerts')->everyFiveMinutes()->withoutOverlapping();
 
-// Appointment reminders (24h and 1h before confirmed appointments). Needs the scheduler:
+// Appointment reminders (24h, 1h and 30m before confirmed appointments; the patient's
+// 1h/30m reminders are also emailed). Needs the scheduler:
 // `php artisan schedule:work` while developing, a cron entry in production. See the README.
 Schedule::command('appointments:send-reminders')->everyMinute()->withoutOverlapping();

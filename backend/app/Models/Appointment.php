@@ -70,8 +70,11 @@ class Appointment extends Model
     protected function casts(): array
     {
         return [
-            'scheduled_at' => 'datetime',
-            'is_read'      => 'boolean',
+            'scheduled_at'          => 'datetime',
+            'is_read'               => 'boolean',
+            'reminder_24h_sent_at'  => 'datetime',
+            'reminder_1h_sent_at'   => 'datetime',
+            'reminder_30m_sent_at'  => 'datetime',
         ];
     }
 
