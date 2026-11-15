@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import { ROLE_ROUTES } from '../components/RouteGuards'
 import { getApiErrorMessage } from '../utils/apiError'
 import fsuuLogo from '../assets/fsuu_logo.png'
+import fsuuBuilding from '../assets/fsuu_building.jpg'
 
 const ROLE_CHOICES = [
   { value: 'student',       label: 'Student' },
@@ -64,23 +65,50 @@ export default function GoogleAuthCallback() {
     }
   }
 
+  const subtitle = token
+    ? 'Signing you in with Google…'
+    : pending
+      ? 'Choose how you will use the clinic portal'
+      : 'This sign-in link is invalid or has expired'
+
   return (
     <div className="login-page-wrapper login-centered">
+      <div
+        className="login-bg-layer"
+        style={{
+          backgroundImage: `linear-gradient(rgba(15, 24, 42, 0.44), rgba(15, 24, 42, 0.44)), url(${fsuuBuilding})`,
+        }}
+      />
+
       <div className="login-card-box" style={{ maxWidth: '440px', textAlign: 'center' }}>
-        <img src={fsuuLogo} alt="FSUU Logo" className="login-official-logo" style={{ marginBottom: '0.75rem' }} />
+        <div className="login-logo-header">
+          <img
+            src={fsuuLogo}
+            alt="Fr. Saturnino Urios University Official Seal"
+            className="login-official-logo"
+          />
+          <h1 className="login-app-title">FSUU Clinic</h1>
+          <p className="login-app-subtitle">{subtitle}</p>
+        </div>
 
         {token ? (
-          <>
-            <div className="btn-spinner" style={{ margin: '1.5rem auto' }} />
-            <p className="login-subtitle">Signing you in…</p>
-          </>
-        ) : pending ? (
-          <>
-            <h2 className="login-title" style={{ marginBottom: '0.35rem' }}>Almost done</h2>
-            <p className="login-subtitle" style={{ marginBottom: '1.25rem' }}>
-              Choose how you will use the clinic portal.
+          <div style={{ width: '100%' }}>
+            <div className="btn-spinner" style={{ margin: '1.25rem auto', width: '34px', height: '34px', borderWidth: '3px' }} />
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-sub, #64748B)', margin: '0.75rem 0 0' }}>
+              Please wait while we verify your account.
             </p>
-            {error && <span className="field-error" style={{ display: 'block', marginBottom: '0.75rem' }}>{error}</span>}
+          </div>
+        ) : pending ? (
+          <div style={{ width: '100%' }}>
+            {error && (
+              <div className="field-error" style={{
+                display: 'block', textAlign: 'left', marginBottom: '1rem',
+                background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px',
+                padding: '0.65rem 0.85rem', fontSize: '0.82rem',
+              }}>
+                {error}
+              </div>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
               {ROLE_CHOICES.map(r => (
                 <button
@@ -94,17 +122,20 @@ export default function GoogleAuthCallback() {
                 </button>
               ))}
             </div>
-          </>
+          </div>
         ) : (
-          <>
-            <h2 className="login-title" style={{ marginBottom: '0.35rem' }}>Sign-in failed</h2>
-            <p className="login-subtitle" style={{ marginBottom: '1.25rem' }}>
-              {error || 'This Google link is invalid or has expired.'}
-            </p>
-            <Link to="/login" className="btn-primary btn-full" style={{ display: 'inline-block', textDecoration: 'none' }}>
-              Back to Sign In
+          <div style={{ width: '100%' }}>
+            <div className="field-error" style={{
+              display: 'block', textAlign: 'left', marginBottom: '1rem',
+              background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px',
+              padding: '0.75rem 0.9rem', fontSize: '0.85rem',
+            }}>
+              {error || 'This Google link is invalid or has expired. Please try signing in again.'}
+            </div>
+            <Link to="/login" className="btn-primary btn-full" style={{ display: 'block', textDecoration: 'none', textAlign: 'center' }}>
+              Back to Login
             </Link>
-          </>
+          </div>
         )}
       </div>
     </div>

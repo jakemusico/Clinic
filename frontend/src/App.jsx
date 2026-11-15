@@ -8,6 +8,8 @@ import { PageFallback } from './components/dashboard/Fallbacks'
 import ErrorBoundary from './components/ErrorBoundary'
 
 import Login    from './pages/Login'
+import ForgotPasswordPage from './pages/ForgotPasswordPage'
+import ResetPasswordPage  from './pages/ResetPasswordPage'
 import GoogleAuthCallback from './pages/GoogleAuthCallback'
 const Register = lazy(() => import('./pages/Register'))
 const StudentDashboard = lazy(() => import('./pages/dashboards/StudentDashboard'))
@@ -97,6 +99,8 @@ export default function App() {
             {/* Public */}
             <Route path="/login"    element={<PublicRoute><Login /></PublicRoute>} />
             <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
+            <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
+            <Route path="/reset-password"  element={<PublicRoute><ResetPasswordPage /></PublicRoute>} />
             {/* Google OAuth landing: ?token=… signs in, ?pending=… finishes sign-up */}
             <Route path="/auth/google" element={<GoogleAuthCallback />} />
 
