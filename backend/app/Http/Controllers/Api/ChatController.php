@@ -561,7 +561,7 @@ class ChatController extends Controller
 
         return response()->json([
             'message' => 'Message updated successfully.',
-            'data'    => $message->fresh(['sender:id,name,first_name,middle_name,last_name,suffix,title,role,avatar']),
+            'data'    => $message->fresh(['sender:id,name,first_name,middle_name,last_name,suffix,title,avatar']),
         ]);
     }
 
