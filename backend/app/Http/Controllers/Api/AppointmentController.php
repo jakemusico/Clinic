@@ -21,6 +21,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 
 class AppointmentController extends Controller
@@ -588,6 +590,11 @@ class AppointmentController extends Controller
             'action_url' => $statusActionUrl,
         ]);
 
+        // Only a staff confirmation emails the patient — other status changes stay in-app only.
+        if ($newStatus === 'confirmed' && Roles::isClinicStaff($user)) {
+            $this->sendConfirmationEmail($appointment);
+        }
+
         return response()->json([
             'message'     => "Appointment marked as {$statusLabel}.",
             'appointment' => $appointment->load(['service', Appointment::staffRelation()]),
@@ -677,5 +684,43 @@ class AppointmentController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Email the patient that their appointment was confirmed. Same safeguards as the
+     * reminder emails: skipped when no real mail transport is configured (log/array
+     * drivers) or the patient has no email, and a mail failure is logged, never thrown —
+     * it must not break or roll back the confirmation.
+     */
+    private function sendConfirmationEmail(Appointment $appointment): void
+    {
+        $patient = $appointment->patient?->user;
+
+        if (in_array(config('mail.default'), ['log', 'array'], true) || ! $patient?->email) {
+            return;
+        }
+
+        $when        = Carbon::parse($appointment->scheduled_at)->setTimezone('Asia/Manila');
+        $serviceName = $appointment->service?->name ?? 'clinic';
+        $staffName   = $appointment->staff?->name ?? 'the clinic staff';
+
+        $body = "Hello {$patient->name},\n\n"
+            . "Your {$serviceName} appointment on "
+            . $when->format('M d, Y \a\t g:i A') . " with {$staffName} has been confirmed.\n\n"
+            . "Please arrive on time.\n\n"
+            . 'FSUU Clinic';
+
+        try {
+            Mail::raw($body, function ($mail) use ($patient) {
+                $mail->to($patient->email)
+                     ->subject('Appointment Confirmed - FSUU Clinic');
+            });
+        } catch (\Throwable $e) {
+            Log::warning('Appointment confirmation email failed', [
+                'appointment_id' => $appointment->id,
+                'user_id'        => $patient->id,
+                'error'          => $e->getMessage(),
+            ]);
+        }
     }
 }

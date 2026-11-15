@@ -48,12 +48,15 @@ return [
     | considered expired. This will override any values set in the token's
     | "expires_at" attribute, but first-party sessions are not affected.
     |
-    | Tokens expire 12 hours (720 minutes) after login; users sign in again.
-    | Override with SANCTUM_EXPIRATION_MINUTES in .env.
+    | 0 (the default) means tokens never expire on their own: a user stays
+    | signed in until they log out manually or the token is revoked
+    | (password change, sign-in on another device). Set
+    | SANCTUM_EXPIRATION_MINUTES to a positive number of minutes to re-enable
+    | timed expiry.
     |
     */
 
-    'expiration' => (int) env('SANCTUM_EXPIRATION_MINUTES', 720),
+    'expiration' => (int) env('SANCTUM_EXPIRATION_MINUTES', 0),
 
     /*
     |--------------------------------------------------------------------------
