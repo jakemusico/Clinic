@@ -82,6 +82,7 @@ Check these in `backend/.env` before running `php artisan optimize`:
 - `APP_KEY` must be the same key the database was encrypted with — losing it makes encrypted consultation data unreadable. Back it up.
 - `LOG_LEVEL=warning` (the template sets this).
 - `CACHE_STORE=file` for one server, `redis` for several.
+- `SANCTUM_EXPIRATION_MINUTES=720` — API tokens expire 12 hours after login (the `.env.production.example` template already sets this; do not set it to `0` in production).
 
 After `config:cache`, Laravel no longer reads `.env`. Whenever you change `.env` or any route, run `php artisan optimize:clear && php artisan optimize` again. Queue workers and PHP-FPM must be restarted/reloaded after a deploy so they pick up the new code.
 
@@ -156,18 +157,18 @@ curl -s -o /dev/null -w "%{size_download} bytes, %{time_total}s\n" -H "Accept-En
 - **Polling only when needed.** Nothing polls in a hidden tab (the staff heartbeat, every 60 s, is the only exception, because it reports "online"). An open chat panel polls every 7 seconds.
 - **Indexes.** Migration `2026_11_05_000001_add_performance_indexes` indexes the dates, status and foreign-key columns the dashboards and lists filter on. It is safe to run on a database that already has some of them.
 
-### 5. Scheduler (optional)
-Appointment reminders (24 hours and 1 hour before a confirmed appointment) and the admins' time-based inventory alerts are created **inside the notifications poll** (`GET /api/notifications/poll`), throttled per user — no cron or `schedule:work` needed; they work as soon as a user has the app open.
+### 5. Scheduler (required in production)
+Appointment reminders (24 hours, 1 hour and 30 minutes before a confirmed appointment — the 1h/30m ones are also emailed to the patient) and the admins' time-based inventory alerts are registered in `backend/routes/console.php` and run through Laravel's scheduler. Reminders are also created lazily inside the notifications poll as a fallback, but **the cron entry below is the reliable path and is required in production** so reminders and emails fire on time even when nobody has the app open.
 
-If you do run Laravel's scheduler anyway, `appointments:send-reminders` (every minute) and `inventory:sync-alerts` (every 5 minutes) still exist and share the same atomic "sent" markers, so nothing is ever sent twice:
-```bash
-php artisan schedule:work      # development: leave it running in a terminal
-```
-Production (optional): add one cron entry (`crontab -e`) that runs every minute:
+Add one cron entry (`crontab -e`) that runs every minute — a ready-made template is in `backend/deploy/crontab.example`:
 ```
 * * * * * cd /var/www/clinic/backend && php artisan schedule:run >> /dev/null 2>&1
 ```
-On Windows, a Task Scheduler task running `php artisan schedule:run` in `backend/` every minute does the same. To run either sync once by hand: `php artisan appointments:send-reminders` / `php artisan inventory:sync-alerts`.
+(Replace `/var/www/clinic/backend` with the actual path to `backend/` on the server.)
+
+Verify with `php artisan schedule:list`. To run a sync once by hand: `php artisan appointments:send-reminders` / `php artisan inventory:sync-alerts`.
+
+For development, `php artisan schedule:work` (leave it running in a terminal) does the same without cron.
 ### Rate limits
 Requests over a limit get HTTP 429 and the message "Too many requests. Please wait N seconds and try again." (the `Retry-After` header and a `retry_after` field carry the wait). Limits per minute: sign in 10 per email and address (60 per address), register 5 per address, chatbot question 30 per user, chat message 20 per user, book an appointment 10 per user, broadcast announcement 5 per user. They are defined in `AppServiceProvider::configureRateLimiting()` and attached in `routes/api.php` as `throttle:<name>`. Behind a proxy, set `TRUSTED_PROXIES` so the limits use the visitor's address and not the proxy's.
 ### Caching

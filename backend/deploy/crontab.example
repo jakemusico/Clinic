@@ -1,0 +1,11 @@
+# Production cron entry for the FSUU Clinic backend.
+#
+# Install:  crontab -e   then paste the line below (fix the path to this repo's backend/).
+# The scheduler runs routes/console.php every minute, which fires:
+#   - appointments:send-reminders   (every minute — 24h / 1h / 30m reminders + emails)
+#   - inventory:sync-alerts         (every 5 minutes — expiry-based stock alerts)
+#
+# * * * * * cd /var/www/clinic/backend && php artisan schedule:run >> /dev/null 2>&1
+#
+# Verify it is running:  php artisan schedule:list
+# Check the last run:    tail -n 50 storage/logs/laravel.log
