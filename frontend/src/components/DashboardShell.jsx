@@ -557,7 +557,7 @@ export default function DashboardShell() {
   const studentAcademicMeta = [
     user?.grade_level,
     user?.section || null,
-    user?.school_year ? `SY ${user.school_year}` : null,
+    user?.school_year ? `SY ${String(user.school_year).replace(/â€./g, '-').replace(/[–—]/g, '-')}` : null,
   ].filter(Boolean).join(' · ')
 
   const userMeta = user?.role === 'student'

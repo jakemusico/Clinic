@@ -2,7 +2,7 @@ import api from './axios'
 import { invalidate } from './referenceCache'
 
 // Saving a consultation can dispense medicines, so the cached item/stock list is forgotten.
-const stockMayHaveChanged = () => invalidate('inventory:')
+const stockMayHaveChanged = () => { invalidate('inventory:'); invalidate('dashboard'); }
 
 export const dentalApi = {
   listConsultations: (params) => api.get('/dental/consultations', { params }),

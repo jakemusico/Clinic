@@ -5,6 +5,7 @@ import DashboardLayout from '../components/DashboardLayout'
 import EventDetailsModal from '../components/EventDetailsModal'
 import Dropdown from '../components/Dropdown'
 import { notificationsApi } from '../api/notifications'
+import { invalidate } from '../api/referenceCache'
 import { useAuth } from '../context/AuthContext'
 import { useChatbot } from '../context/ChatbotContext'
 import {
@@ -192,7 +193,7 @@ export default function NotificationsPage() {
 
   useEffect(() => {
     load()
-    const handleUpdate = () => load()
+    const handleUpdate = () => { invalidate('notifications'); load() }   // live event: bypass the short cache
     window.addEventListener('notifications-updated', handleUpdate)
     return () => {
       window.removeEventListener('notifications-updated', handleUpdate)

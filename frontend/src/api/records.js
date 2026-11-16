@@ -3,7 +3,7 @@ import { invalidate } from './referenceCache'
 import { referenceApi } from './reference'
 
 // Saving a consultation can dispense medicines, so the cached item/stock list is forgotten.
-const stockMayHaveChanged = () => invalidate('inventory:')
+const stockMayHaveChanged = () => { invalidate('inventory:'); invalidate('dashboard'); }
 
 export const recordsApi = {
   list:     (params)   => api.get('/clinic/records', { params }),

@@ -47,6 +47,13 @@ export default function DentalAppointmentsPage() {
     fetchAppointments()
   }, [page, pageSize, filterStatus, debouncedSearchQuery, range.from, range.to])
 
+  // Mark dental appointments as read once per visit — not on every list reload.
+  useEffect(() => {
+    appointmentsApi.markAllRead({ appointment_type: 'dental' })
+      .then(() => window.dispatchEvent(new Event('appointments-updated')))
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
     if (highlightId && appointments.length > 0) {
       setTimeout(() => {
@@ -72,11 +79,6 @@ export default function DentalAppointmentsPage() {
       setLastPage(res.data.last_page || 1)
       setTotal(res.data.total || 0)
       setStatusCounts(res.data.status_counts || {})
-      // Mark dental appointments as read for dentist/admin and update badge
-      try {
-        await appointmentsApi.markAllRead({ appointment_type: 'dental' })
-        window.dispatchEvent(new Event('appointments-updated'))
-      } catch { }
     } catch (err) {
       toast.error('Failed to load dental appointments.')
     } finally {

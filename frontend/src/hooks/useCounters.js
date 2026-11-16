@@ -13,7 +13,7 @@ import { poll } from '../utils/polling'
  */
 
 const POLL_MS = 45_000
-const NOTIF_POLL_MS = 2_500
+const NOTIF_POLL_MS = 10_000
 const EVENTS = ['notifications-updated', 'appointments-updated', 'messages-updated']
 
 const INITIAL = {
@@ -55,7 +55,8 @@ export function refreshCounters() {
 }
 
 /**
- * Fast notification poll (~every 2.5 s, visible tabs only — poll() pauses when hidden).
+ * Fast notification poll (~every 10 s, visible tabs only — poll() pauses when hidden,
+ * so a backgrounded tab makes no requests at all).
  * Asks the server only for notifications newer than the last seen id, so a tick is a
  * tiny indexed query. A fresh notification updates the badge right away and fires
  * 'notifications-updated', which makes the notification list reload live.

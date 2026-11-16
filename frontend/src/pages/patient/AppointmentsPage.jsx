@@ -701,12 +701,13 @@ export default function AppointmentsPage() {
   const loadInitialData = async () => {
     setLoading(true)
     try {
-      const appRes = await appointmentsApi.list()
+      // Independent reads run in parallel instead of one-after-another.
+      const [appRes, pRes] = await Promise.all([
+        appointmentsApi.list(),
+        authApi.getProfile().catch(() => null),   // readiness is best-effort; the API still enforces it
+      ])
       setAppointments(appRes.data.appointments || [])
-      try {
-        const pRes = await authApi.getProfile()
-        setReadiness({ percent: pRes.data.readiness ?? 100, missing: pRes.data.missing_fields || [] })
-      } catch { /* readiness check is best-effort; the API still enforces it */ }
+      if (pRes) setReadiness({ percent: pRes.data.readiness ?? 100, missing: pRes.data.missing_fields || [] })
     } catch {
       toast.error('Failed to load appointments data.')
     } finally {

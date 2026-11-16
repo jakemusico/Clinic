@@ -198,16 +198,19 @@ export default function AppointmentsManagementPage() {
       setLastPage(data.last_page || 1)
       setTotal(data.total || 0)
       setStatusCounts(data.status_counts || {})
-      // Mark medical appointments as read for staff/admin and update badge
-      try {
-        await appointmentsApi.markAllRead({ appointment_type: 'medical' })
-        window.dispatchEvent(new Event('appointments-updated'))
-      } catch { }
     } catch { toast.error('Failed to load appointments.') }
     finally { setLoading(false) }
   }
 
   useEffect(() => { load() }, [page, pageSize, filter, debouncedSearch, range.from, range.to])
+
+  // Mark this desk's appointments as read once per visit — doing it inside load()
+  // fired a POST + badge refetch on every page turn, filter and keystroke.
+  useEffect(() => {
+    appointmentsApi.markAllRead({ appointment_type: 'medical' })
+      .then(() => window.dispatchEvent(new Event('appointments-updated')))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (highlightId && appointments.length > 0) {

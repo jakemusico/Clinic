@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import DashboardLayout from '../../components/DashboardLayout'
 import { dashboardApi } from '../../api/dashboard'
+import { invalidate } from '../../api/referenceCache'
 import { useAuth } from '../../context/AuthContext'
 import { CardFallback, LoadError } from '../../components/dashboard/Fallbacks'
 import { getApiErrorMessage } from '../../utils/apiError'
@@ -69,9 +70,10 @@ export default function StudentDashboard() {
 
   useEffect(() => {
     load()
-    // an announcement was posted or removed in this browser: reload
-    window.addEventListener('announcements-updated', load)
-    return () => window.removeEventListener('announcements-updated', load)
+    // an announcement was posted or removed in this browser: reload (bypass the short dashboard cache)
+    const onAnnouncements = () => { invalidate('dashboard'); load() }
+    window.addEventListener('announcements-updated', onAnnouncements)
+    return () => window.removeEventListener('announcements-updated', onAnnouncements)
   }, [load])
 
   const retry = () => { setLoading(true); load() }
