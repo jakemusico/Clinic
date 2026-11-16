@@ -122,8 +122,10 @@ export default function PatientSearchBar() {
       {isOpen && (
         <div style={{
           position: 'absolute', top: 'calc(100% + 0.25rem)', left: 0, right: 0,
-          background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '6px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 100, overflow: 'hidden'
+          // Solid opaque surface: --bg-card can be translucent in some themes,
+          // which let page content bleed through the results.
+          background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px',
+          boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.18), 0 8px 10px -6px rgba(15, 23, 42, 0.12)', zIndex: 1000, overflow: 'hidden'
         }}>
           <div style={{ padding: '0.4rem 0.75rem', fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', background: 'var(--bg-hover)', borderBottom: '1px solid var(--border)' }}>
             Patients
