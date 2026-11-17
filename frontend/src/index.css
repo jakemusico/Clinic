@@ -10052,3 +10052,17 @@ button.consult-section-head:focus-visible { outline: 2px solid var(--accent); ou
     padding-bottom: 0.4rem !important;
   }
 }
+
+/* Hide the browser-native password reveal/clear icons (Edge/Chromium inject a
+   second eye next to our custom React show/hide toggle). */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear,
+input[type="password"]::-webkit-credentials-auto-fill-button {
+  display: none !important;
+}
+
+input[type="password"] {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
