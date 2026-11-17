@@ -32,6 +32,10 @@ class SystemSettingsController extends Controller
             if ($key === 'chat_auto_resolve_days') {
                 return response()->json(['key' => 'chat_auto_resolve_days', 'value' => '7']);
             }
+            if ($key === 'chatbot_fallback_message') {
+                // Empty means "use the built-in default" in ChatbotController.
+                return response()->json(['key' => 'chatbot_fallback_message', 'value' => '']);
+            }
             if ($key === 'clinic_info') {
                 $default = [
                     'schedule' => [

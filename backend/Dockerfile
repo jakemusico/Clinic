@@ -25,5 +25,5 @@ RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cac
 
 EXPOSE 80
 
-# Link storage, cache config/routes, and start Apache
-CMD php artisan storage:link || true && php artisan config:cache && php artisan route:cache && apache2-foreground
+# Link storage, run migrations/seeders, cache config/routes, and start Apache
+CMD php artisan storage:link || true && php artisan migrate --force && php artisan db:seed --class=SymptomFirstAidSeeder --force && php artisan config:cache && php artisan route:cache && apache2-foreground

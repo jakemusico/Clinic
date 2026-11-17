@@ -8,6 +8,7 @@ use App\Models\ChatbotCategory;
 use App\Models\ChatbotQuestionLog;
 use App\Models\Conversation;
 use App\Models\Message;
+use App\Models\SystemSetting;
 use App\Services\FaqPlaceholders;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -37,10 +38,17 @@ class ChatbotController extends Controller
      */
     private function fallbackResponse(): array
     {
+        // Admins can replace the lead sentence in Admin > Chatbot FAQs; the
+        // clinic contact block below is always appended dynamically.
+        $custom = trim((string) SystemSetting::getValue('chatbot_fallback_message', ''));
+        $lead   = $custom !== ''
+            ? $custom
+            : "I'm sorry, I couldn't find an answer to your question.";
+
         return [
             'type'    => 'fallback',
             'message' => $this->placeholders->render(
-                "I'm sorry, I couldn't find an answer to your question.\n\n"
+                $lead . "\n\n"
                 . "Please contact the clinic staff directly:\n"
                 . "Hotline: {clinic_hotline}\n"
                 . "Email: {clinic_email}\n"

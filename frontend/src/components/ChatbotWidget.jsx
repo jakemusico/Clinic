@@ -1211,6 +1211,7 @@ function ChatbotWidgetInner() {
         text: `**${item.question}**\n\n${item.answer}`,
         navActions,
         suggestions: getSuggestions(cat, navActions),
+        chatButtons: canUseChat && chatEnabled && cat === 'first-aid',
       }
     }
 
@@ -1226,7 +1227,7 @@ function ChatbotWidgetInner() {
     } catch {
       pushErr('Could not load that answer. Please try again.')
     }
-  }, [pushUser, buildNavActions, pushBotWithDelay, pushErr])
+  }, [pushUser, buildNavActions, pushBotWithDelay, pushErr, canUseChat, chatEnabled])
 
   /* ── Category selected ────────────────────────────────────── */
   const handleCategorySelect = useCallback(async (btn) => {
@@ -1304,6 +1305,9 @@ function ChatbotWidgetInner() {
           text: `**${data.question}**\n\n${data.answer}`,
           navActions,
           suggestions: getSuggestions(data.category, navActions),
+          // First-aid/symptom answers end with "click Chat with Nurse/Dentist" —
+          // render those buttons right under the reply.
+          chatButtons: canUseChat && chatEnabled && data.category === 'first-aid',
         })
       } else {
         pushBotWithDelay({

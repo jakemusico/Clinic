@@ -1236,13 +1236,21 @@ function SettingsTab() {
   // Draft values while editing
   const [draft, setDraft] = useState({ ...saved })
 
+  // Chatbot fallback message (Q&A assistant "no answer" reply) — separate card
+  const FALLBACK_DEFAULT = "I'm sorry, I couldn't find an answer to your question."
+  const [fbSaved,    setFbSaved]    = useState('')
+  const [fbDraft,    setFbDraft]    = useState('')
+  const [fbEditing,  setFbEditing]  = useState(false)
+  const [fbSaving,   setFbSaving]   = useState(false)
+
   const load = async () => {
     setLoading(true)
     try {
-      const [r1, r2, r3, nurseRes, dentistRes, infoRes] = await Promise.all([
+      const [r1, r2, r3, r4, nurseRes, dentistRes, infoRes] = await Promise.all([
         adminApi.getSetting('chat_enabled'),
         adminApi.getSetting('chat_offline_message'),
         adminApi.getSetting('chat_auto_resolve_days'),
+        adminApi.getSetting('chatbot_fallback_message').catch(() => ({ data: { value: '' } })),
         chatApi.getStatus('nurse').catch(() => ({ data: null })),
         chatApi.getStatus('dentist').catch(() => ({ data: null })),
         adminApi.getSetting('clinic_info').catch(() => ({ data: null })),
@@ -1255,6 +1263,10 @@ function SettingsTab() {
       }
       setSaved(fetched)
       setDraft(fetched)
+
+      const fb = r4.data?.value || ''
+      setFbSaved(fb)
+      setFbDraft(fb)
 
       // Chat availability data
       setNurseStatus(nurseRes.data)
@@ -1342,6 +1354,29 @@ function SettingsTab() {
   }
 
   const vals = editing ? draft : saved
+
+  const fbStartEdit  = () => { setFbDraft(fbSaved); setFbEditing(true) }
+  const fbCancelEdit = () => { setFbDraft(fbSaved); setFbEditing(false) }
+
+  const saveFallback = async () => {
+    const trimmed = fbDraft.trim()
+    if (trimmed.length > 500) {
+      toast.error('Fallback message must not exceed 500 characters.')
+      return
+    }
+    setFbSaving(true)
+    try {
+      await adminApi.updateSetting('chatbot_fallback_message', trimmed)
+      setFbSaved(trimmed)
+      setFbDraft(trimmed)
+      setFbEditing(false)
+      toast.success(trimmed ? 'Fallback message saved.' : 'Fallback message reset to default.')
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to save fallback message.')
+    } finally {
+      setFbSaving(false)
+    }
+  }
 
   return (
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1.75rem', paddingBottom: '2.5rem' }}>
@@ -1493,6 +1528,82 @@ function SettingsTab() {
               </span>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* ── CARD 1b: Chatbot Fallback Message ──────────────────── */}
+      <div className="admin-card" style={{ width: '100%', padding: '1.75rem' }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          paddingBottom: '1.25rem',
+          borderBottom: '1px solid var(--border)',
+          gap: '1rem',
+          flexWrap: 'wrap',
+        }}>
+          <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text)' }}>
+              Chatbot Fallback Message
+            </h3>
+            <p style={{ margin: '0.25rem 0 0', fontSize: '0.82rem', color: 'var(--text-sub)', lineHeight: 1.45 }}>
+              Shown when the Help Assistant cannot find an answer. Leave empty to use the default text —
+              the clinic hotline, email, days and hours are always appended automatically below it.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+            {!fbEditing ? (
+              <button type="button" className="btn-secondary" onClick={fbStartEdit}>
+                Edit
+              </button>
+            ) : (
+              <>
+                <button type="button" className="btn-ghost" onClick={fbCancelEdit} disabled={fbSaving}>
+                  Cancel
+                </button>
+                <button type="button" className="btn-primary" onClick={saveFallback} disabled={fbSaving}>
+                  {fbSaving ? 'Saving…' : 'Save Changes'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div style={{ paddingTop: '1.25rem' }}>
+          <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: '0.92rem', marginBottom: '0.25rem' }}>
+            Message
+          </div>
+          <div style={{ fontSize: '0.82rem', color: 'var(--text-sub)', marginBottom: '0.75rem', lineHeight: 1.45 }}>
+            Default: “{FALLBACK_DEFAULT}”
+          </div>
+          <textarea
+            className="form-input"
+            rows={4}
+            maxLength={500}
+            style={{
+              width: '100%',
+              resize: 'vertical',
+              background: fbEditing ? '#ffffff' : 'var(--bg-crust)',
+              color: 'var(--text)',
+              lineHeight: 1.6,
+            }}
+            value={fbEditing ? fbDraft : (fbSaved || FALLBACK_DEFAULT)}
+            disabled={!fbEditing}
+            placeholder={FALLBACK_DEFAULT}
+            onChange={e => setFbDraft(e.target.value)}
+          />
+          {fbEditing && (
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem' }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setFbDraft('')}
+                disabled={fbSaving}
+              >
+                Use Default
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
