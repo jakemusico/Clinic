@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast'
 import DashboardLayout from '../../components/DashboardLayout'
 import api from '../../api/axios'
 import { adminApi } from '../../api/admin'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 export default function ClinicInfoPage() {
   const navigate = useNavigate()
@@ -242,7 +243,7 @@ export default function ClinicInfoPage() {
       </div>
 
       {loading || !form ? (
-        <div className="table-loading"><span className="loader-ring" /></div>
+        <TableSkeleton />
       ) : (
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           

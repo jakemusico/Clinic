@@ -8,6 +8,7 @@ import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/ConfirmModal'
 import { EMPTY } from '../../utils/emptyValue'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 const EVENT_TYPES = ['Clinic Closure', 'Health Activity', 'Holiday', 'Announcement']
 const AUDIENCES   = ['All', 'Students', 'Faculty/Staff', 'Clinic Staff']
@@ -221,7 +222,7 @@ export default function AdminCalendarPage() {
       {/* ── Table card ──────────────────────────────────────────────── */}
       <div className="data-table-wrap">
         {loading ? (
-          <div className="table-loading"><span className="loader-ring" /></div>
+          <TableSkeleton />
         ) : filtered.length === 0 ? (
           <div className="empty-state">
             <p>{searchTerm || typeFilter !== 'All' ? 'No events match your search or filter.' : 'No calendar events found.'}</p>

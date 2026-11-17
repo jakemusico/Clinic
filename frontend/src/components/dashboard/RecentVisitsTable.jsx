@@ -4,6 +4,7 @@ import EmptyState from './EmptyState'
 import Pagination from '../Pagination'
 import { EMPTY, serviceLabel } from '../../utils/emptyValue'
 import { formatDate } from '../../utils/dateUtils'
+import { ListSkeleton } from '../ui/Skeleton'
 
 export default function RecentVisitsTable({
   visits = [],
@@ -34,9 +35,7 @@ export default function RecentVisitsTable({
 
       <div className="dash-card-body-table">
         {loading ? (
-          <div className="dash-loading-wrap">
-            <div className="loader-ring" />
-          </div>
+          <ListSkeleton />
         ) : visits.length === 0 ? (
           <EmptyState
             message="No consultation visits recorded yet."

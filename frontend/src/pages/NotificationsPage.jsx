@@ -14,6 +14,7 @@ import {
   isAppointmentItem,
   getAppointmentTargetUrl
 } from '../utils/notificationHelpers'
+import { TableSkeleton } from '../components/ui/Skeleton'
 
 function AnnouncementModal({ onClose, onBroadcast }) {
   const [form, setForm]       = useState({ title: '', message: '', type: 'info' })
@@ -387,7 +388,7 @@ export default function NotificationsPage() {
       {/* ── Scrollable List with Cards and Date Groups ──────────────── */}
       <div ref={menuContainerRef}>
         {loading ? (
-          <div className="table-loading"><span className="loader-ring" /></div>
+          <TableSkeleton />
         ) : sortedList.length === 0 ? (
           <div style={{ padding: '3rem 2rem', textAlign: 'center', color: 'var(--text-muted)', background: '#ffffff', borderRadius: '12px', border: '1px solid var(--border)' }}>
             <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>✓</div>

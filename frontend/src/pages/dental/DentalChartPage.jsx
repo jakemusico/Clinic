@@ -6,6 +6,7 @@ import { recordsApi } from '../../api/records'
 import { toast } from 'react-hot-toast'
 import { useAuth } from '../../context/AuthContext'
 import { EMPTY } from '../../utils/emptyValue'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 // FDI Notation Quadrants
 const QUADRANTS = {
@@ -225,7 +226,7 @@ export default function DentalChartPage() {
           </div>
 
           {loading ? (
-            <div className="table-loading"><span className="loader-ring" /></div>
+            <TableSkeleton />
           ) : (
             <div style={{ overflowX: 'auto', paddingBottom: '0.5rem' }}>
               <div style={{ minWidth: '780px', display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>

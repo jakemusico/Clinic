@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import EmptyState from './EmptyState'
 import { EMPTY } from '../../utils/emptyValue'
 import { formatDate } from '../../utils/dateUtils'
+import { ListSkeleton } from '../ui/Skeleton'
 
 export default function RecentConsultationsTable({
   title = "Recent Consultations",
@@ -24,9 +25,7 @@ export default function RecentConsultationsTable({
 
       <div className="dash-card-body-table">
         {loading ? (
-          <div className="dash-loading-wrap">
-            <div className="loader-ring" />
-          </div>
+          <ListSkeleton />
         ) : items.length === 0 ? (
           <EmptyState
             message="No recent consultations found."

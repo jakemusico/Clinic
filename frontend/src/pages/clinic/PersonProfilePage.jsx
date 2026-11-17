@@ -10,6 +10,7 @@ import { LoadError } from '../../components/dashboard/Fallbacks'
 import BackButton from '../../components/BackButton'
 import { getApiErrorMessage } from '../../utils/apiError'
 import useLatestRequest, { isRequestCanceled } from '../../hooks/useLatestRequest'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 export default function PersonProfilePage() {
   const { id } = useParams()
@@ -52,7 +53,7 @@ export default function PersonProfilePage() {
   if (loading) {
     return (
       <DashboardLayout title="Loading Profile..." subtitle="Fetching clinic information...">
-        <div className="table-loading"><div className="loader-ring" /></div>
+        <TableSkeleton />
       </DashboardLayout>
     )
   }

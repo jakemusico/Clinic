@@ -15,6 +15,7 @@ import Avatar from '../../components/Avatar'
 import { serviceLabel } from '../../utils/emptyValue'
 import { formatDateLong } from '../../utils/dateUtils'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 export default function DentalConsultationsPage() {
   const { user } = useAuth()
@@ -327,7 +328,7 @@ export default function DentalConsultationsPage() {
 
           {/* Table */}
           {loading ? (
-            <div className="table-loading"><span className="loader-ring" /></div>
+            <TableSkeleton />
           ) : filteredConsultations.length === 0 ? (
             <div className="empty-state" style={{ background: '#FFFFFF', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '3rem 1.5rem', textAlign: 'center' }}>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.75rem' }}>

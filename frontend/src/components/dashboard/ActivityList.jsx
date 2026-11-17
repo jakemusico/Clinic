@@ -1,6 +1,7 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
 import EmptyState from './EmptyState'
+import { ListSkeleton } from '../ui/Skeleton'
 
 export default function ActivityList({
   title = "Recent Activity",
@@ -21,9 +22,7 @@ export default function ActivityList({
 
       <div className="dash-card-body-list">
         {loading ? (
-          <div className="dash-loading-wrap">
-            <div className="loader-ring" />
-          </div>
+          <ListSkeleton />
         ) : items.length === 0 ? (
           <EmptyState
             message="No recent system activities recorded."

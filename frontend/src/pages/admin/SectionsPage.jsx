@@ -10,6 +10,7 @@ import ConfirmModal from '../../components/ConfirmModal'
 import { GRADE_LEVELS, STRANDS } from '../../constants/schoolData'
 import { EMPTY } from '../../utils/emptyValue'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 // The Register / Profile / User Management pickers read these lists from a short-lived cache
 const forgetSectionLists = () => { invalidate('sections'); invalidate('grade-levels') }
@@ -163,7 +164,7 @@ export default function SectionsPage() {
       {/* ── Table card ──────────────────────────────────────────────── */}
       <div className="data-table-wrap">
         {loading ? (
-          <div className="table-loading"><span className="loader-ring" /></div>
+          <TableSkeleton />
         ) : filtered.length === 0 ? (
           <div className="empty-state">
             <p>{search || gradeFilter !== 'all' ? 'No sections match your search or filter.' : 'No sections found. Add your first section above.'}</p>

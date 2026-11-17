@@ -8,6 +8,7 @@ import { servicesApi } from '../../api/services'
 import { EMPTY } from '../../utils/emptyValue'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import useSubmitLock from '../../hooks/useSubmitLock'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 const EMPTY_FORM = { name: '', care_type: 'medical', description: '', duration_minutes: 30, fee: '', is_active: true }
 
@@ -222,7 +223,7 @@ export default function ServicesPage() {
 
       {/* Table */}
       {loading ? (
-        <div className="table-loading"><span className="loader-ring" /></div>
+        <TableSkeleton />
       ) : filtered.length === 0 ? (
         <div className="empty-state">
           <p>{search ? 'No services match your search.' : 'No services yet. Add the first one!'}</p>

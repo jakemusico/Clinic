@@ -4,6 +4,7 @@ import DashboardLayout from '../../components/DashboardLayout'
 import ConfirmModal from '../../components/ConfirmModal'
 import { adminApi } from '../../api/admin'
 import axios from 'axios'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 export default function TermsEditorPage() {
   const [text, setText]       = useState('')
@@ -61,7 +62,7 @@ export default function TermsEditorPage() {
       subtitle="Edit the text shown to new users during registration."
     >
         {loading ? (
-          <div className="table-loading"><span className="loader-ring" /></div>
+          <TableSkeleton />
         ) : (
           <div className="admin-card">
             {/* Header / Actions inside card */}

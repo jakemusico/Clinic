@@ -6,6 +6,7 @@ import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/ConfirmModal'
 import { announcementsApi } from '../../api/announcements'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 const EMPTY_FORM = {
   title: '',
@@ -156,7 +157,7 @@ export default function AdminAnnouncementsPage() {
 
       {/* Announcements Table */}
       {loading ? (
-        <div className="table-loading"><div className="loader-ring" /></div>
+        <TableSkeleton />
       ) : announcements.length === 0 ? (
         <div className="empty-state">
           <p>No announcements found.</p>

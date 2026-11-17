@@ -5,6 +5,7 @@ import DashboardLayout from '../../components/DashboardLayout'
 import ConfirmModal from '../../components/ConfirmModal'
 import { inventoryApi } from '../../api/inventory'
 import { EMPTY } from '../../utils/emptyValue'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 const Icon = ({ d, size = 16 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
@@ -81,7 +82,7 @@ export default function InventoryDashboardPage() {
   return (
     <DashboardLayout title="Inventory Dashboard" subtitle="Stock levels, expiry alerts, and recent activity.">
       {loading ? (
-        <div className="table-loading"><span className="loader-ring" /></div>
+        <TableSkeleton />
       ) : (
         <>
           {/* Stat Cards */}

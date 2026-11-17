@@ -7,6 +7,7 @@ import Dropdown from '../../components/Dropdown'
 import { adminApi } from '../../api/admin'
 import { EMPTY } from '../../utils/emptyValue'
 import useLatestRequest, { isRequestCanceled } from '../../hooks/useLatestRequest'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 /* ── Human-readable action labels ──────────────────────────────────────── */
 const ACTION_LABELS = {
@@ -297,7 +298,7 @@ export default function AuditLogsPage() {
 
       {/* ── Main Table ────────────────────────────────────────────────── */}
       {loading ? (
-        <div className="table-loading"><span className="loader-ring" /></div>
+        <TableSkeleton />
       ) : logs.length === 0 ? (
         <div className="empty-state">
           <p>{hasActiveFilters ? 'No audit logs match the current filters.' : 'No audit logs recorded yet.'}</p>

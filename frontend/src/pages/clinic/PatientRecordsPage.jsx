@@ -11,6 +11,7 @@ import { EMPTY, serviceLabel } from '../../utils/emptyValue'
 import { ORG_COLUMN_LABEL, ORG_SEARCH_PLACEHOLDER, orgLabel, orgSearchText } from '../../utils/orgLabel'
 import { formatDateLong as formatDate, toDateKey, todayISO } from '../../utils/dateUtils'
 import { buildRoleOptions, filterPatientsByRole } from '../../utils/roleHelper'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 const byNewestVisit = (a, b) => (toDateKey(b.visit_date) || '').localeCompare(toDateKey(a.visit_date) || '')
 
@@ -290,7 +291,7 @@ export default function PatientRecordsPage() {
         </div>
 
         {loading ? (
-          <div className="table-loading"><span className="loader-ring" /></div>
+          <TableSkeleton />
         ) : filteredPatients.length === 0 ? (
           <div className="empty-state">
             <p>{search || activeFilterCount > 0 ? 'No patients match your filters.' : 'No registered patients found.'}</p>

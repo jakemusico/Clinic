@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import EmptyState from './EmptyState'
+import { ListSkeleton } from '../ui/Skeleton'
 
 export default function AlertList({
   title = "Inventory Alerts",
@@ -71,9 +72,7 @@ export default function AlertList({
 
       <div className="dash-card-body-list">
         {loading ? (
-          <div className="dash-loading-wrap">
-            <div className="loader-ring" />
-          </div>
+          <ListSkeleton />
         ) : displayCount === 0 ? (
           <EmptyState
             message={emptyMessage}

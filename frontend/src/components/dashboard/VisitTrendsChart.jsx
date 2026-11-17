@@ -10,6 +10,7 @@ import {
 } from 'recharts'
 import ChartCard from './ChartCard'
 import EmptyState from './EmptyState'
+import { ChartSkeleton } from '../ui/Skeleton'
 
 export default function VisitTrendsChart({ data = [], loading = false, period = 'monthly' }) {
   const totalVisits = data.reduce((sum, d) => sum + (d.visits || 0), 0)
@@ -27,9 +28,7 @@ export default function VisitTrendsChart({ data = [], loading = false, period = 
       badge={`${totalVisits} visit${totalVisits === 1 ? '' : 's'}`}
     >
       {loading ? (
-        <div className="dash-loading-wrap">
-          <div className="loader-ring" />
-        </div>
+        <ChartSkeleton />
       ) : data.length === 0 || totalVisits === 0 ? (
         <EmptyState
           message="No consultation visits recorded in this period."

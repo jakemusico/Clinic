@@ -9,6 +9,7 @@ import {
 } from 'recharts'
 import ChartCard from './ChartCard'
 import EmptyState from './EmptyState'
+import { ChartSkeleton } from '../ui/Skeleton'
 
 // Curated primary healthcare blue palette and tints
 const BLUE_TINTS = [
@@ -36,9 +37,7 @@ export default function FrequentSymptomsChart({ data = [], loading = false, cate
       note={note}
     >
       {loading ? (
-        <div className="dash-loading-wrap">
-          <div className="loader-ring" />
-        </div>
+        <ChartSkeleton />
       ) : data.length === 0 || totalCount === 0 ? (
         <EmptyState
           message="No symptoms or consultation diagnoses found."

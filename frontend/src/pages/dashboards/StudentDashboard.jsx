@@ -9,6 +9,7 @@ import { getApiErrorMessage } from '../../utils/apiError'
 import useLatestRequest, { isRequestCanceled } from '../../hooks/useLatestRequest'
 import { formatAppointmentDate, formatAppointmentTime } from '../../utils/dateUtils'
 import { EMPTY } from '../../utils/emptyValue'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 const CalendarWidget = lazy(() => import('../../components/CalendarWidget'))
 
@@ -132,7 +133,7 @@ export default function StudentDashboard() {
               )}
             </div>
             {loading ? (
-              <div className="table-loading"><div className="loader-ring" /></div>
+              <TableSkeleton />
             ) : nextAppointment ? (
               <div className="appt-body">
                 <div className="appt-title-row">
@@ -237,7 +238,7 @@ export default function StudentDashboard() {
               <Link to="/appointments" style={{ fontSize: '0.775rem', color: 'var(--accent)', fontWeight: 600 }}>Book / Manage</Link>
             </div>
             {loading ? (
-              <div className="table-loading"><div className="loader-ring" /></div>
+              <TableSkeleton />
             ) : (upcomingAppts.length === 0 && completedAppts.length === 0) ? (
               <div className="empty-state">
                 <p>No appointments booked yet.</p>
@@ -278,7 +279,7 @@ export default function StudentDashboard() {
               <Link to="/notifications" style={{ fontSize: '0.75rem', color: 'var(--accent)', fontWeight: 600 }}>View all</Link>
             </div>
             {loading ? (
-              <div className="table-loading"><div className="loader-ring" /></div>
+              <TableSkeleton />
             ) : recentNotifs.length === 0 ? (
               <div className="empty-state" style={{ padding: '1.5rem' }}><p>No new notifications.</p></div>
             ) : (

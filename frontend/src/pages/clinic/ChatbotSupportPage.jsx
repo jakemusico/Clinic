@@ -20,6 +20,7 @@ import {
 } from 'recharts'
 import { EMPTY } from '../../utils/emptyValue'
 import '../ProfilePage.css'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 /* ─── Constants ──────────────────────────────────────────────────── */
 
@@ -317,7 +318,7 @@ function FaqsTab() {
 
       {/* ── Table ─────────────────────────────────────────────── */}
       {loading ? (
-        <div className="table-loading"><span className="loader-ring" /></div>
+        <TableSkeleton />
       ) : displayed.length === 0 ? (
         <div className="empty-state"><p>No FAQs match the current filter.</p></div>
       ) : (
@@ -776,7 +777,7 @@ function CategoriesTab() {
 
       {/* ── Table ─────────────────────────────────────────────── */}
       {loading ? (
-        <div className="table-loading"><span className="loader-ring" /></div>
+        <TableSkeleton />
       ) : categories.length === 0 ? (
         <div className="empty-state"><p>No categories found. Add one to get started.</p></div>
       ) : (
@@ -1007,7 +1008,7 @@ function StatsTab() {
   ]
 
   if (loading) {
-    return <div className="table-loading"><span className="loader-ring" /></div>
+    return <TableSkeleton />
   }
 
   return (
@@ -1350,7 +1351,7 @@ function SettingsTab() {
   }
 
   if (loading) {
-    return <div className="table-loading"><span className="loader-ring" /></div>
+    return <TableSkeleton />
   }
 
   const vals = editing ? draft : saved

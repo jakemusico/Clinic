@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'react-hot-toast'
 import DashboardLayout from '../../components/DashboardLayout'
 import { complaintCategoriesApi } from '../../api/complaintCategories'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 const TYPES = [
   { value: 'medical', label: 'Medical' },
@@ -128,7 +129,7 @@ export default function ComplaintCategoriesPage() {
 
       <div className="data-table-wrap">
         {loading ? (
-          <div className="table-loading"><span className="loader-ring" /></div>
+          <TableSkeleton />
         ) : categories.length === 0 ? (
           <div className="empty-state">
             <p>No complaint categories found.</p>

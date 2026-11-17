@@ -13,6 +13,7 @@ import { defaultRange } from '../../utils/dateRange'
 import Avatar from '../../components/Avatar'
 import { EMPTY } from '../../utils/emptyValue'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 const STATUS_BADGES = {
   pending:   'status-badge inactive',
@@ -174,7 +175,7 @@ export default function DentalAppointmentsPage() {
         <div className="fixed-list-body">
           <div className="fixed-list-scroll">
             {loading ? (
-              <div className="table-loading"><span className="loader-ring" /></div>
+              <TableSkeleton />
             ) : filteredAppointments.length === 0 ? (
               <div className="empty-state">
                 <p>No dental appointments match your criteria.</p>

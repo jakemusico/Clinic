@@ -2,6 +2,7 @@ import React from 'react'
 import { Link } from 'react-router-dom'
 import EmptyState from './EmptyState'
 import { EMPTY } from '../../utils/emptyValue'
+import { ListSkeleton } from '../ui/Skeleton'
 
 const STATUS_MAP = {
   pending:   { label: 'Pending',   cls: 'pending' },
@@ -34,9 +35,7 @@ export default function QueueTable({
 
       <div className="dash-card-body-table">
         {loading ? (
-          <div className="dash-loading-wrap">
-            <div className="loader-ring" />
-          </div>
+          <ListSkeleton />
         ) : items.length === 0 ? (
           <EmptyState
             message={

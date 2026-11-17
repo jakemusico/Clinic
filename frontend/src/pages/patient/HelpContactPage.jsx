@@ -3,6 +3,7 @@ import DashboardLayout from '../../components/DashboardLayout'
 import { referenceApi } from '../../api/reference'
 import { chatbotApi } from '../../api/chatbot'
 import { groupScheduleDays } from '../../utils/clinicStorage'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 export default function HelpContactPage() {
   const [clinicInfo, setClinicInfo] = useState(null)
@@ -43,7 +44,7 @@ export default function HelpContactPage() {
       subtitle="Operating hours, campus location, hotlines, and frequently asked questions."
     >
       {loading || !clinicInfo ? (
-        <div className="table-loading"><span className="loader-ring" /></div>
+        <TableSkeleton />
       ) : (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
         

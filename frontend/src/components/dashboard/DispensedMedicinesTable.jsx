@@ -2,6 +2,7 @@ import React from 'react'
 import { Link } from 'react-router-dom'
 import EmptyState from './EmptyState'
 import { EMPTY } from '../../utils/emptyValue'
+import { ListSkeleton } from '../ui/Skeleton'
 
 export default function DispensedMedicinesTable({
   title = "Recently Dispensed Medicines",
@@ -22,9 +23,7 @@ export default function DispensedMedicinesTable({
 
       <div className="dash-card-body-table">
         {loading ? (
-          <div className="dash-loading-wrap">
-            <div className="loader-ring" />
-          </div>
+          <ListSkeleton />
         ) : items.length === 0 ? (
           <EmptyState
             message="No dispensed medicines recorded recently."

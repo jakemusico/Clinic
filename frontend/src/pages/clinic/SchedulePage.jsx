@@ -7,6 +7,7 @@ import { schedulesApi } from '../../api/schedules'
 import { useAuth } from '../../context/AuthContext'
 import { todayISO } from '../../utils/dateUtils'
 import useSubmitLock from '../../hooks/useSubmitLock'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 const DAY_LABELS = { monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed', thursday: 'Thu', friday: 'Fri', saturday: 'Sat', sunday: 'Sun' }
@@ -556,7 +557,7 @@ export default function SchedulePage() {
       </div>
 
       {loading ? (
-        <div className="table-loading"><span className="loader-ring" /></div>
+        <TableSkeleton />
       ) : (
         <>
           {/* Admin Staff Filter Bar */}

@@ -10066,3 +10066,16 @@ input[type="password"] {
   -moz-appearance: none;
   appearance: none;
 }
+
+/* Skeleton loaders — soft pulse on a neutral slate fill (Tailwind animate-pulse
+   equivalent; no Tailwind in this project). */
+@keyframes sk-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.sk-pulse {
+  background: #E2E8F0;
+  border-radius: 6px;
+  animation: sk-pulse 1.6s ease-in-out infinite;
+}

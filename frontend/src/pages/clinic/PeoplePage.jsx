@@ -13,6 +13,7 @@ import { ORG_COLUMN_LABEL, ORG_SEARCH_PLACEHOLDER, orgLabel } from '../../utils/
 import { LoadError } from '../../components/dashboard/Fallbacks'
 import { getApiErrorMessage } from '../../utils/apiError'
 import useLatestRequest, { isRequestCanceled } from '../../hooks/useLatestRequest'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 export default function PeoplePage() {
   const { user } = useAuth()
@@ -128,7 +129,7 @@ export default function PeoplePage() {
         {/* Data Table */}
         <div className="data-table-wrap">
           {loading ? (
-            <div className="table-loading"><div className="loader-ring" /></div>
+            <TableSkeleton />
           ) : loadError ? (
             <LoadError message={loadError} onRetry={() => fetchPeople(search, page)} />
           ) : people.length === 0 ? (

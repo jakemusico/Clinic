@@ -14,6 +14,7 @@ import { defaultRange } from '../../utils/dateRange'
 import { serviceNameOf } from '../../utils/emptyValue'
 import { formatDateLong, toDateKey } from '../../utils/dateUtils'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 // One row shape for medical and dental consultations so the list, stats and filters
 // treat both care types identically (admin sees them merged, everyone else one type).
@@ -336,7 +337,7 @@ export default function ConsultationsPage() {
 
           {/* Loading/Empty/Body Logic */}
           {loading ? (
-            <div className="table-loading"><span className="loader-ring" /></div>
+            <TableSkeleton />
           ) : filteredRows.length === 0 ? (
             <div className="empty-state" style={{ background: '#FFFFFF', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '3rem 1.5rem', textAlign: 'center' }}>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.75rem' }}>

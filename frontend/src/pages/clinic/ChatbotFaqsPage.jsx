@@ -9,6 +9,7 @@ import { usePagination } from '../../hooks/usePagination'
 import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/ConfirmModal'
 import { EMPTY } from '../../utils/emptyValue'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 const CATEGORY_LABELS = {
   appointments: 'Appointments',
@@ -213,7 +214,7 @@ export default function ChatbotFaqsPage() {
       </div>
 
       {loading ? (
-        <div className="table-loading"><span className="loader-ring" /></div>
+        <TableSkeleton />
       ) : loadError ? (
         <div className="empty-state" role="alert">
           <p>{loadError}</p>

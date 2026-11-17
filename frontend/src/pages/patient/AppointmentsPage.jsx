@@ -14,6 +14,7 @@ import DentalIcon from '../../components/DentalIcon'
 import { EMPTY } from '../../utils/emptyValue'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import useSubmitLock from '../../hooks/useSubmitLock'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 const STATUS_BADGES = {
   pending:   'status-badge pending',
@@ -1221,7 +1222,7 @@ export default function AppointmentsPage() {
         </div>
 
         {loading ? (
-          <div className="table-loading"><span className="loader-ring" /></div>
+          <TableSkeleton />
         ) : (
           <>
             {/* ═══════════════════════════════════════════════════════════════

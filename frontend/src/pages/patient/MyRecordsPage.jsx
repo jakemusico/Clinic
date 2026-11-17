@@ -10,6 +10,7 @@ import Avatar from '../../components/Avatar'
 import DentalIcon from '../../components/DentalIcon'
 import { EMPTY, serviceLabel } from '../../utils/emptyValue'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 const Icon = ({ d, size = 16 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
@@ -399,7 +400,7 @@ export default function MyRecordsPage() {
         </div>
 
         {loading ? (
-          <div className="table-loading"><span className="loader-ring" /></div>
+          <TableSkeleton />
         ) : activeTab === 'medical' ? (
           <div className="fixed-list-body">
             {filteredMedical.length === 0 ? (

@@ -1,4 +1,5 @@
 import Pagination from './Pagination'
+import { TableSkeleton } from './ui/Skeleton'
 
 /**
  * The table region of the inventory list pages (Stock In / Stock Out / Transactions).
@@ -47,8 +48,8 @@ export default function InventoryTableShell({ loading, loaded, isEmpty, empty, p
   // so the table does not flash empty every time a filter or sort changes.
   if (!loaded) {
     return (
-      <div className="table-loading" style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span className="loader-ring" />
+      <div className="inventory-table-card" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <TableSkeleton rows={10} columns={6} />
       </div>
     )
   }

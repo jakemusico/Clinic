@@ -24,6 +24,7 @@ import DateInput from '../../components/DateInput'
 import Dropdown from '../../components/Dropdown'
 import DentalIcon from '../../components/DentalIcon'
 import { EMPTY, NO_SERVICE } from '../../utils/emptyValue'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 // (Icon components removed — export buttons use text-only outline style)
 
@@ -696,7 +697,7 @@ export default function ReportsPage() {
                   Appointments Over Time
                 </h3>
                 {loading ? (
-                  <div className="table-loading" style={{ height: '220px' }}><div className="loader-ring" /></div>
+                  <TableSkeleton />
                 ) : appByDate.length === 0 ? (
                   <div style={{ height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                     No appointment trends recorded in this period.
@@ -723,7 +724,7 @@ export default function ReportsPage() {
                   Appointment Status Breakdown
                 </h3>
                 {loading ? (
-                  <div className="table-loading" style={{ height: '220px' }}><div className="loader-ring" /></div>
+                  <TableSkeleton />
                 ) : appPieData.length === 0 ? (
                   <div style={{ height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                     No status distribution available.
@@ -757,7 +758,7 @@ export default function ReportsPage() {
                 </span>
               </div>
               {loading ? (
-                <div className="table-loading" style={{ minHeight: '180px' }}><div className="loader-ring" /></div>
+                <TableSkeleton />
               ) : appointments.length === 0 ? (
                 <div className="empty-state" style={{ padding: '2.5rem', textAlign: 'center' }}>
                   <p style={{ fontWeight: 600, color: 'var(--text-sub)' }}>No appointments found.</p>
@@ -908,7 +909,7 @@ export default function ReportsPage() {
                 Consultations Over Time
               </h3>
               {loading ? (
-                <div className="table-loading" style={{ height: '220px' }}><div className="loader-ring" /></div>
+                <TableSkeleton />
               ) : consByDate.length === 0 ? (
                 <div style={{ height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                   No consultations recorded in this period.
@@ -940,7 +941,7 @@ export default function ReportsPage() {
                 </span>
               </div>
               {loading ? (
-                <div className="table-loading" style={{ minHeight: '180px' }}><div className="loader-ring" /></div>
+                <TableSkeleton />
               ) : consultations.length === 0 ? (
                 <div className="empty-state" style={{ padding: '2.5rem', textAlign: 'center' }}>
                   <p style={{ fontWeight: 600, color: 'var(--text-sub)' }}>No consultations found.</p>
@@ -1084,7 +1085,7 @@ export default function ReportsPage() {
                   Usage Trends (Items Dispensed in Date Range)
                 </h3>
                 {loading ? (
-                  <div className="table-loading" style={{ height: '220px' }}><div className="loader-ring" /></div>
+                  <TableSkeleton />
                 ) : invUsageByDate.length === 0 ? (
                   <div style={{ height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                     No dispensing activity recorded in this period.
@@ -1111,7 +1112,7 @@ export default function ReportsPage() {
                   Stock Volume by Category
                 </h3>
                 {loading ? (
-                  <div className="table-loading" style={{ height: '220px' }}><div className="loader-ring" /></div>
+                  <TableSkeleton />
                 ) : invByCategory.length === 0 ? (
                   <div style={{ height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                     No stock data available.
@@ -1166,7 +1167,7 @@ export default function ReportsPage() {
               </div>
 
               {loading ? (
-                <div className="table-loading" style={{ minHeight: '180px' }}><div className="loader-ring" /></div>
+                <TableSkeleton />
               ) : invSubView === 'stock' ? (
                 /* 1. All Items */
                 <>
@@ -1433,7 +1434,7 @@ export default function ReportsPage() {
                   Case Frequency by Symptom
                 </h3>
                 {loading ? (
-                  <div className="table-loading" style={{ height: '240px' }}><div className="loader-ring" /></div>
+                  <TableSkeleton />
                 ) : symptomBarRows.length === 0 ? (
                   <div style={{ height: '240px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                     No case volume data available.

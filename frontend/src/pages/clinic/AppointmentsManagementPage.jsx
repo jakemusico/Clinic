@@ -14,6 +14,7 @@ import Avatar from '../../components/Avatar'
 import { EMPTY } from '../../utils/emptyValue'
 import useSubmitLock from '../../hooks/useSubmitLock'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 const STATUS_BADGES = {
   pending:   'status-badge inactive',
@@ -314,7 +315,7 @@ export default function AppointmentsManagementPage() {
         </div>
 
         {loading ? (
-          <div className="table-loading"><span className="loader-ring" /></div>
+          <TableSkeleton />
         ) : filtered.length === 0 ? (
           <div className="empty-state">
             <p>No medical appointments match the selected filter.</p>

@@ -8,6 +8,7 @@ import Pagination from '../../components/Pagination'
 import { inventoryApi } from '../../api/inventory'
 import { EMPTY } from '../../utils/emptyValue'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 const BLANK_ITEM = {
   name: '',
@@ -685,9 +686,7 @@ export default function InventoryItemsPage() {
 
       {/* ── Table & Content ─────────────────────────────────────────── */}
       {loading ? (
-        <div className="table-loading" style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span className="loader-ring" />
-        </div>
+        <TableSkeleton />
       ) : loadError ? (
         <div
           className="empty-state"
@@ -1087,9 +1086,7 @@ export default function InventoryItemsPage() {
                   Batches
                 </h3>
                 {loadingDetails ? (
-                  <div className="table-loading" style={{ padding: '1rem' }}>
-                    <span className="loader-ring" />
-                  </div>
+                  <TableSkeleton />
                 ) : detailBatches.length === 0 ? (
                   <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem', border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)' }}>
                     No stock batches recorded for this item.
@@ -1146,9 +1143,7 @@ export default function InventoryItemsPage() {
                   Recent Transactions
                 </h3>
                 {loadingDetails ? (
-                  <div className="table-loading" style={{ padding: '1rem' }}>
-                    <span className="loader-ring" />
-                  </div>
+                  <TableSkeleton />
                 ) : detailTransactions.length === 0 ? (
                   <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem', border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)' }}>
                     No recent transactions recorded for this item.

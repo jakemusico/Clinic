@@ -13,6 +13,7 @@ import { DEPARTMENTS, GRADE_LEVELS } from '../../constants/schoolData'
 import Avatar from '../../components/Avatar'
 import MobileInput, { isMobileValid, validateMobile } from '../../components/MobileInput'
 import useSubmitLock from '../../hooks/useSubmitLock'
+import { TableSkeleton } from '../../components/ui/Skeleton'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -514,7 +515,7 @@ export default function UsersPage() {
 
       {/* Table */}
       {loading ? (
-        <div className="table-loading"><span className="loader-ring" /></div>
+        <TableSkeleton />
       ) : users.length === 0 ? (
         <div className="empty-state">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-muted)', marginBottom: '0.75rem' }}>

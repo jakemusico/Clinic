@@ -4,6 +4,7 @@ import {
 } from 'recharts'
 import ChartCard from './ChartCard'
 import EmptyState from './EmptyState'
+import { ChartSkeleton } from '../ui/Skeleton'
 
 const BAR_COLOR = '#2563EB'
 const OTHERS_COLOR = '#CBD5E1'
@@ -55,9 +56,7 @@ export default function FrequentSymptomsBarChart({ data = [], loading = false, t
       badge={`${totalCount} log${totalCount === 1 ? '' : 's'}`}
     >
       {loading ? (
-        <div className="dash-loading-wrap">
-          <div className="loader-ring" />
-        </div>
+        <ChartSkeleton />
       ) : data.length === 0 || totalCount === 0 ? (
         <EmptyState
           message="No symptoms or consultation diagnoses found."
